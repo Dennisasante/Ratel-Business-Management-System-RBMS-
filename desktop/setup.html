@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Ratel RBMS — Setup</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f7fb;
+    color: #1a1a1a;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 74, 173, 0.12);
+    padding: 32px;
+  }
+  .logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #004aad;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  p.sub { font-size: 13px; color: #666; margin: 0 0 24px; line-height: 1.5; }
+  label { font-size: 13px; font-weight: 600; color: #333; display: block; margin-bottom: 6px; }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #d8dce3;
+    font-size: 14px;
+    outline: none;
+  }
+  input:focus { border-color: #004aad; box-shadow: 0 0 0 3px rgba(0, 74, 173, 0.15); }
+  button {
+    width: 100%;
+    margin-top: 18px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #004aad;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .error { color: #db1a1a; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .powered { text-align: center; font-size: 11px; color: #999; margin-top: 22px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">R</div>
+    <h1>Connect this computer to your Ratel account</h1>
+    <p class="sub">Enter the web address your business uses to sign in to Ratel (the same one you'd type in a browser). This only needs to be set once on this computer.</p>
+    <label for="url">Business URL</label>
+    <input id="url" type="text" placeholder="your-business.yourdomain.com" autofocus />
+    <button id="save">Continue</button>
+    <div class="error" id="error"></div>
+    <div class="powered">Powered by Ratel</div>
+  </div>
+  <script>
+    const input = document.getElementById("url");
+    const button = document.getElementById("save");
+    const errorEl = document.getElementById("error");
+
+    async function submit() {
+      const value = input.value.trim();
+      if (!value) {
+        errorEl.textContent = "Enter your business URL to continue.";
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Connecting...";
+      try {
+        await window.ratel.saveConfig(value);
+      } catch (err) {
+        errorEl.textContent = "Couldn't save that address. Please check it and try again.";
+        button.disabled = false;
+        button.textContent = "Continue";
+      }
+    }
+
+    button.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submit();
+    });
+  </script>
+</body>
+</html>

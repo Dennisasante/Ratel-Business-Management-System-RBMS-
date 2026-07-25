@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink-900 antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Money and quantity figures line up better with tabular numerals. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Visible keyboard focus everywhere, styled to match the accent rather than
+     the browser default blue. */
+  :focus-visible {
+    outline: 2px solid theme("colors.accent.DEFAULT");
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: theme("colors.border.strong");
+    border-radius: 999px;
+  }
+}
+
+@layer utilities {
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 8px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+  .animate-toast-in {
+    animation: toast-in 0.2s ease-out;
+  }
+
+  @keyframes overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .animate-overlay-in {
+    animation: overlay-in 0.15s ease-out;
+  }
+
+  @keyframes modal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+  .animate-modal-in {
+    animation: modal-in 0.18s ease-out;
+  }
+
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-row-in {
+    animation: row-in 0.25s ease-out;
+  }
+}
+
+@media print {
+  /* Belt-and-suspenders alongside each receipt's own print:bg-white — makes
+     sure no page chrome (gray canvas background, shadows) survives into print. */
+  body {
+    background: white !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

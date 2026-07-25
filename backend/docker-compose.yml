@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ratel_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ratel_db
+      POSTGRES_USER: ratel_user
+      POSTGRES_PASSWORD: ratel_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ratel_pg_data:/var/lib/postgresql/data
+
+volumes:
+  ratel_pg_data:

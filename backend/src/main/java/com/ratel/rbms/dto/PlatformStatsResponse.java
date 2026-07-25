@@ -1,0 +1,14 @@
+package com.ratel.rbms.dto;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+public record PlatformStatsResponse(
+        int totalBusinesses,
+        int activeBusinesses,
+        int totalUsers,
+        BigDecimal totalPlatformRevenue,
+        List<DayCount> signupsByDay,
+        List<DayCount> activityByDay
+) {
+}
