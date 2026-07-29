@@ -47,6 +47,16 @@ public class EmailService {
         send(toEmail, subject, body);
     }
 
+    public void sendBillingReminder(String toEmail, String businessName, long daysRemaining, String periodLabel) {
+        String daysLabel = daysRemaining + " day" + (daysRemaining == 1 ? "" : "s");
+        String subject = businessName + ": your " + periodLabel + " ends in " + daysLabel;
+        String body = "Hi,\n\n"
+                + "Your " + periodLabel + " for " + businessName + " on Ratel ends in " + daysLabel + ".\n\n"
+                + "Renew anytime from your Billing page to keep creating and editing without interruption.\n\n"
+                + "Already renewed? You can ignore this email.";
+        send(toEmail, subject, body);
+    }
+
     public void sendServiceOrderReady(String toEmail, String customerName, long orderNumber, String businessName) {
         String subject = businessName + ": your order is ready for pickup";
         String body = "Hi " + customerName + ",\n\n"

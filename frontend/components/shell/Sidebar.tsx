@@ -14,6 +14,7 @@ import {
   Truck,
   ClipboardList,
   Wrench,
+  CreditCard,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
   { href: "/dashboard/team", label: "Team", icon: UserCog },
   { href: "/dashboard/activity", label: "Activity Log", icon: History },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
 ];
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -73,7 +75,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-2">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !item.ownerOnly || session?.role === "OWNER").map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (

@@ -40,6 +40,7 @@ export interface BusinessSummary {
   subscriptionPlan: string;
   enabledModules: string[];
   logoUrl: string | null;
+  billingStatus: "TRIALING" | "ACTIVE" | "READ_ONLY";
 }
 
 export interface UserSummary {
@@ -427,6 +428,67 @@ export interface PlatformAdminSummary {
   id: string;
   fullName: string;
   email: string;
+  createdAt: string;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  billingPeriodDays: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface SubscriptionPlanPayload {
+  name: string;
+  price: number;
+  currency: string;
+  billingPeriodDays: number;
+  sortOrder: number;
+}
+
+export interface PlatformBillingSettings {
+  trialDays: number;
+  usdDisplayRate: number | null;
+}
+
+export interface PlatformBillingSettingsPayload {
+  trialDays: number;
+  usdDisplayRate: number | null;
+}
+
+export interface BillingStatus {
+  billingStatus: "TRIALING" | "ACTIVE" | "READ_ONLY";
+  plan: SubscriptionPlan | null;
+  trialEndsAt: string | null;
+  currentPeriodEndsAt: string | null;
+  daysRemaining: number;
+  usdDisplayRate: number | null;
+}
+
+export interface CheckoutResponse {
+  accessCode: string;
+  reference: string;
+}
+
+export interface VerifyPaymentResponse {
+  success: boolean;
+  billingStatus: string | null;
+  currentPeriodEndsAt: string | null;
+  message: string;
+}
+
+export interface SubscriptionPaymentSummary {
+  id: string;
+  planName: string | null;
+  amount: number;
+  currency: string;
+  status: "PENDING" | "SUCCESS" | "FAILED";
+  periodStart: string | null;
+  periodEnd: string | null;
+  paidAt: string | null;
   createdAt: string;
 }
 
@@ -829,6 +891,20 @@ export const api = {
     return request<ActivityLogEntry[]>(`/api/activity-logs${qs ? `?${qs}` : ""}`, {}, token);
   },
 
+  // --- Billing (Owner only) ---
+
+  getBillingStatus: (token: string) => request<BillingStatus>("/api/billing/status", {}, token),
+
+  listBillingPlans: (token: string) => request<SubscriptionPlan[]>("/api/billing/plans", {}, token),
+
+  getBillingHistory: (token: string) => request<SubscriptionPaymentSummary[]>("/api/billing/history", {}, token),
+
+  startBillingCheckout: (token: string, planId: string) =>
+    request<CheckoutResponse>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ planId }) }, token),
+
+  verifyBillingPayment: (token: string, reference: string) =>
+    request<VerifyPaymentResponse>("/api/billing/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
   // --- Platform (Super Admin) ---
 
   platformLogin: (email: string, password: string) =>
@@ -912,6 +988,39 @@ export const api = {
     request<PlatformAuditLogEntry[]>("/api/platform/audit-logs", {}, token),
 
   getPlatformStats: (token: string) => request<PlatformStats>("/api/platform/stats", {}, token),
+
+  listPlatformSubscriptionPlans: (token: string) =>
+    request<SubscriptionPlan[]>("/api/platform/subscription-plans", {}, token),
+
+  createPlatformSubscriptionPlan: (token: string, payload: SubscriptionPlanPayload) =>
+    request<SubscriptionPlan>(
+      "/api/platform/subscription-plans",
+      { method: "POST", body: JSON.stringify(payload) },
+      token
+    ),
+
+  updatePlatformSubscriptionPlan: (token: string, id: string, payload: SubscriptionPlanPayload) =>
+    request<SubscriptionPlan>(
+      `/api/platform/subscription-plans/${id}`,
+      { method: "PUT", body: JSON.stringify(payload) },
+      token
+    ),
+
+  archivePlatformSubscriptionPlan: (token: string, id: string) =>
+    request<SubscriptionPlan>(`/api/platform/subscription-plans/${id}/archive`, { method: "PATCH" }, token),
+
+  restorePlatformSubscriptionPlan: (token: string, id: string) =>
+    request<SubscriptionPlan>(`/api/platform/subscription-plans/${id}/restore`, { method: "PATCH" }, token),
+
+  getPlatformBillingSettings: (token: string) =>
+    request<PlatformBillingSettings>("/api/platform/billing-settings", {}, token),
+
+  updatePlatformBillingSettings: (token: string, payload: PlatformBillingSettingsPayload) =>
+    request<PlatformBillingSettings>(
+      "/api/platform/billing-settings",
+      { method: "PUT", body: JSON.stringify(payload) },
+      token
+    ),
 };
 
 export { ApiError };

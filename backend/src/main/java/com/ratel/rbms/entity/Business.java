@@ -1,5 +1,6 @@
 package com.ratel.rbms.entity;
 
+import com.ratel.rbms.entity.enums.BillingStatus;
 import com.ratel.rbms.entity.enums.Industry;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -48,9 +49,30 @@ public class Business {
     @Builder.Default
     private String currency = "GHS";
 
+    // Superseded by subscriptionPlanId/billingStatus below — kept for one release
+    // as a safety net, then dropped.
     @Column(name = "subscription_plan", nullable = false, length = 30)
     @Builder.Default
     private String subscriptionPlan = "FREE_TRIAL";
+
+    @Column(name = "subscription_plan_id")
+    private UUID subscriptionPlanId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_status", nullable = false, length = 20)
+    @Builder.Default
+    private BillingStatus billingStatus = BillingStatus.TRIALING;
+
+    @Column(name = "trial_ends_at")
+    private Instant trialEndsAt;
+
+    @Column(name = "current_period_ends_at")
+    private Instant currentPeriodEndsAt;
+
+    // Last time the "renew soon" reminder email went out, so the scheduled job
+    // doesn't re-send it every day during the 3-day warning window.
+    @Column(name = "expiry_reminder_sent_at")
+    private Instant expiryReminderSentAt;
 
     // Simple text array of enabled module codes, e.g. INVENTORY, SALES, CUSTOMERS, EXPENSES
     @JdbcTypeCode(SqlTypes.ARRAY)

@@ -12,6 +12,7 @@ import com.ratel.rbms.entity.enums.AuthProvider;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.PlatformBillingSettingsRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.security.GoogleTokenVerifier;
 import com.ratel.rbms.security.JwtService;
@@ -23,6 +24,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class AuthService {
@@ -34,6 +37,7 @@ public class AuthService {
     private final ActivityLogService activityLogService;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final RateLimiterService rateLimiterService;
+    private final PlatformBillingSettingsRepository platformBillingSettingsRepository;
 
     public AuthService(
             BusinessRepository businessRepository,
@@ -42,7 +46,8 @@ public class AuthService {
             JwtService jwtService,
             ActivityLogService activityLogService,
             GoogleTokenVerifier googleTokenVerifier,
-            RateLimiterService rateLimiterService
+            RateLimiterService rateLimiterService,
+            PlatformBillingSettingsRepository platformBillingSettingsRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -51,6 +56,7 @@ public class AuthService {
         this.activityLogService = activityLogService;
         this.googleTokenVerifier = googleTokenVerifier;
         this.rateLimiterService = rateLimiterService;
+        this.platformBillingSettingsRepository = platformBillingSettingsRepository;
     }
 
     @Transactional
@@ -133,12 +139,17 @@ public class AuthService {
     }
 
     private Business createBusiness(String name, com.ratel.rbms.entity.enums.Industry industry, String location, String contactEmail, String contactPhone) {
+        // billingStatus defaults to TRIALING and subscriptionPlanId stays null
+        // until this business's first successful payment (see BillingService).
+        int trialDays = platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc().getTrialDays();
+
         Business business = Business.builder()
                 .name(name)
                 .industry(industry)
                 .location(location)
                 .contactEmail(contactEmail)
                 .contactPhone(contactPhone)
+                .trialEndsAt(Instant.now().plus(trialDays, ChronoUnit.DAYS))
                 .build();
         return businessRepository.save(business);
     }

@@ -1,6 +1,7 @@
 package com.ratel.rbms.config;
 
 import com.ratel.rbms.tenant.JwtAuthenticationFilter;
+import com.ratel.rbms.tenant.ReadOnlyEnforcementFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,12 +25,14 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ReadOnlyEnforcementFilter readOnlyEnforcementFilter;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ReadOnlyEnforcementFilter readOnlyEnforcementFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.readOnlyEnforcementFilter = readOnlyEnforcementFilter;
     }
 
     @Bean
@@ -56,11 +59,13 @@ public class SecurityConfig {
                         .requestMatchers("/api/platform/auth/forgot-password").permitAll()
                         .requestMatchers("/api/platform/auth/reset-password").permitAll()
                         .requestMatchers("/api/platform/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/webhooks/paystack").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(readOnlyEnforcementFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

@@ -30,6 +30,13 @@ public final class TenantContext {
         return id;
     }
 
+    // Null-safe variant for code that legitimately runs for both business-scoped
+    // and non-business-scoped requests (platform admin, unauthenticated) and
+    // needs to branch on which one it's handling — e.g. ReadOnlyEnforcementFilter.
+    public static UUID getBusinessIdOrNull() {
+        return CURRENT_BUSINESS_ID.get();
+    }
+
     public static void setUserId(UUID userId) {
         CURRENT_USER_ID.set(userId);
     }

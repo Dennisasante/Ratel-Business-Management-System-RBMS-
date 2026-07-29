@@ -57,6 +57,10 @@ app:
     # Google ID tokens are only accepted if their "audience" matches this value,
     # so this must be the same Client ID the frontend uses to request sign-in.
     client-id: ${GOOGLE_CLIENT_ID:}
+  paystack:
+    # From your Paystack dashboard (Settings > API Keys & Webhooks).
+    secret-key: ${PAYSTACK_SECRET_KEY:}
+    public-key: ${PAYSTACK_PUBLIC_KEY:}
   super-admin:
     # If set (and no super admin exists yet), one is created automatically on
     # startup. Leave unset after the first run — see backend README.
@@ -72,3 +76,7 @@ app:
     # no offset) — so the default needs no adjustment for the primary market.
     # If you deploy for businesses elsewhere, override via env var.
     cron: ${DIGEST_CRON:0 0 6 * * *}
+  billing:
+    # Runs once a day, shortly after the digest — flips lapsed trials/subscriptions
+    # to read-only and sends the 3-day-out renewal reminder.
+    expiry-cron: ${BILLING_EXPIRY_CRON:0 30 6 * * *}

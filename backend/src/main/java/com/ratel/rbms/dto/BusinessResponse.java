@@ -15,7 +15,11 @@ public record BusinessResponse(
         String currency,
         String subscriptionPlan,
         List<String> enabledModules,
-        String logoUrl
+        String logoUrl,
+        // Every business-scoped user (not just Owners) needs to know this, so
+        // the read-only banner shows up for staff too — that's why it rides
+        // along here rather than only on the Owner-restricted /billing/status.
+        String billingStatus
 ) {
     public static BusinessResponse from(Business b) {
         return new BusinessResponse(
@@ -28,7 +32,8 @@ public record BusinessResponse(
                 b.getCurrency(),
                 b.getSubscriptionPlan(),
                 b.getEnabledModules(),
-                b.getLogoUrl()
+                b.getLogoUrl(),
+                b.getBillingStatus().name()
         );
     }
 }
