@@ -33,6 +33,11 @@ public record ProductRequest(
 
         String supplierName,
 
-        String imageUrl
+        String imageUrl,
+
+        // Nullable: create() defaults to false when omitted; update() leaves it
+        // unchanged (same "leave unchanged unless told otherwise" pattern used
+        // for service_catalog.bookable_online).
+        Boolean publishToWebsite
 ) {
 }

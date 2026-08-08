@@ -13,6 +13,9 @@ public record ServiceCatalogItemResponse(
         String name,
         BigDecimal price,
         boolean active,
+        boolean bookableOnline,
+        int durationMinutes,
+        int maxConcurrentBookings,
         Instant createdAt
 ) {
     public static ServiceCatalogItemResponse from(ServiceCatalogItem item, String serviceTypeName) {
@@ -23,6 +26,9 @@ public record ServiceCatalogItemResponse(
                 item.getName(),
                 item.getPrice(),
                 item.isActive(),
+                item.isBookableOnline(),
+                item.getDurationMinutes(),
+                item.getMaxConcurrentBookings(),
                 item.getCreatedAt()
         );
     }

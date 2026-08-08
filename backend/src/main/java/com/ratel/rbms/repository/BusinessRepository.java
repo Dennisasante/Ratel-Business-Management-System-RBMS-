@@ -16,6 +16,10 @@ import java.util.UUID;
 public interface BusinessRepository extends JpaRepository<Business, UUID> {
     List<Business> findByNameContainingIgnoreCase(String name);
 
+    boolean existsBySlug(String slug);
+
+    Optional<Business> findBySlug(String slug);
+
     // Locks the row for the rest of the transaction — used by BillingService.verifyPayment
     // so a concurrent webhook + client-triggered verify for the same business can't both
     // read a stale current_period_ends_at and independently extend it.

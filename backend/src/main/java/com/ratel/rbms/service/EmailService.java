@@ -57,11 +57,101 @@ public class EmailService {
         send(toEmail, subject, body);
     }
 
+    public void sendBookingConfirmation(
+            String toEmail, String customerName, String businessName, String serviceName,
+            String whenLabel, String manageLink
+    ) {
+        String subject = businessName + ": your booking is confirmed";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Your booking for " + serviceName + " at " + businessName + " is confirmed for " + whenLabel + ".\n\n"
+                + "Need to reschedule or cancel? Use this link any time: " + manageLink + "\n\n"
+                + "See you soon!";
+        send(toEmail, subject, body);
+    }
+
+    public void sendBookingRescheduled(String toEmail, String customerName, String businessName, String serviceName, String whenLabel) {
+        String subject = businessName + ": your booking was rescheduled";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Your booking for " + serviceName + " at " + businessName + " has been moved to " + whenLabel + ".\n\n"
+                + "See you then!";
+        send(toEmail, subject, body);
+    }
+
+    public void sendBookingCancelled(String toEmail, String customerName, String businessName, String serviceName) {
+        String subject = businessName + ": your booking was cancelled";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Your booking for " + serviceName + " at " + businessName + " has been cancelled.\n\n"
+                + "Want to book again? Just visit our booking page any time.";
+        send(toEmail, subject, body);
+    }
+
     public void sendServiceOrderReady(String toEmail, String customerName, long orderNumber, String businessName) {
         String subject = businessName + ": your order is ready for pickup";
         String body = "Hi " + customerName + ",\n\n"
                 + "Your order #" + orderNumber + " at " + businessName + " is complete and ready for pickup.\n\n"
                 + "See you soon!";
+        send(toEmail, subject, body);
+    }
+
+    // Owner-facing — sent to the business's own contact email so someone
+    // actually sees the booking arrive, with a one-tap link to message the
+    // customer straight away (no WhatsApp API needed, just a wa.me deep link).
+    public void sendNewBookingNotification(String toEmail, String customerName, String serviceName, String whenLabel, String whatsappLink) {
+        String subject = "New booking: " + customerName + " — " + serviceName;
+        String body = customerName + " just booked " + serviceName + " for " + whenLabel + ".\n\n"
+                + (whatsappLink != null ? "Message them on WhatsApp: " + whatsappLink + "\n\n" : "")
+                + "Full details are in your Ratel dashboard under Service Orders.";
+        send(toEmail, subject, body);
+    }
+
+    public void sendNewCustomWigRequestNotification(String toEmail, String customerName, String estimateLabel, String whatsappLink) {
+        String subject = "New custom wig request from " + customerName;
+        String body = customerName + " just submitted a custom wig request, estimated at " + estimateLabel + ".\n\n"
+                + (whatsappLink != null ? "Message them on WhatsApp: " + whatsappLink + "\n\n" : "")
+                + "Review it and send a quote from your Ratel dashboard under Custom Wig Requests.";
+        send(toEmail, subject, body);
+    }
+
+    public void sendEcommerceOrderReceived(String toEmail, String customerName, String orderNumber, String businessName) {
+        String subject = businessName + ": we've received your order";
+        String body = "Hi " + customerName + ",\n\n"
+                + "We've received your order #" + orderNumber + " at " + businessName + " and we're getting started on it.\n\n"
+                + "We'll let you know as it moves along.";
+        send(toEmail, subject, body);
+    }
+
+    public void sendEcommerceOrderStatusUpdate(String toEmail, String customerName, String orderNumber, String businessName, String statusMessage) {
+        String subject = businessName + ": order #" + orderNumber + " update";
+        String body = "Hi " + customerName + ",\n\n"
+                + statusMessage + "\n\n"
+                + "Order #" + orderNumber + " at " + businessName + ".";
+        send(toEmail, subject, body);
+    }
+
+    public void sendCustomWigRequestReceived(String toEmail, String customerName, long requestNumber, String businessName, String estimateLabel) {
+        String subject = businessName + ": we've received your custom wig request";
+        String body = "Hi " + customerName + ",\n\n"
+                + "We've received your custom wig request #" + requestNumber + " at " + businessName + ".\n\n"
+                + "Based on your selections, the estimated price is " + estimateLabel + ". "
+                + "We'll follow up with a final quote shortly.";
+        send(toEmail, subject, body);
+    }
+
+    public void sendCustomWigQuoteReady(String toEmail, String customerName, long requestNumber, String businessName, String priceLabel, String ownerMessage) {
+        String subject = businessName + ": your custom wig quote is ready";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Your quote for custom wig request #" + requestNumber + " at " + businessName + " is " + priceLabel + ".\n\n"
+                + (ownerMessage != null && !ownerMessage.isBlank() ? ownerMessage + "\n\n" : "")
+                + "Reply on WhatsApp or email to confirm and we'll get started.";
+        send(toEmail, subject, body);
+    }
+
+    public void sendCustomWigDeclined(String toEmail, String customerName, long requestNumber, String businessName, String ownerMessage) {
+        String subject = businessName + ": about your custom wig request";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Unfortunately we're not able to take on custom wig request #" + requestNumber + " at " + businessName + " at this time.\n\n"
+                + (ownerMessage != null && !ownerMessage.isBlank() ? ownerMessage + "\n\n" : "")
+                + "Thanks for thinking of us.";
         send(toEmail, subject, body);
     }
 

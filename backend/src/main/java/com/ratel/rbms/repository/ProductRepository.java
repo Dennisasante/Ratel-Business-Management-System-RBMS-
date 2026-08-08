@@ -17,6 +17,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     boolean existsByBusinessIdAndSku(UUID businessId, String sku);
 
+    // Matches an incoming WooCommerce order line item's product_id back to the
+    // RBMS product it was pushed from — see WooCommerceSyncService.
+    Optional<Product> findByBusinessIdAndWooProductId(UUID businessId, Long wooProductId);
+
     boolean existsByBusinessIdAndCategoryId(UUID businessId, UUID categoryId);
 
     long countByBusinessIdAndCategoryId(UUID businessId, UUID categoryId);

@@ -93,6 +93,13 @@ export default function InventoryPage() {
     setModal({ type: "none" });
   }
 
+  async function handleUploadPhoto(productId: string, file: File) {
+    if (!session) return;
+    const updated = await api.uploadProductPhoto(session.token, productId, file);
+    await loadProducts();
+    setModal((m) => (m.type === "edit" && m.product.id === productId ? { type: "edit", product: updated } : m));
+  }
+
   async function handleAdjustStock(productId: string, payload: StockAdjustmentPayload) {
     if (!session) return;
     await api.adjustStock(session.token, productId, payload);
@@ -324,6 +331,7 @@ export default function InventoryPage() {
             categories={categories}
             submitLabel="Save changes"
             onSubmit={(payload) => handleUpdate(modal.product.id, payload)}
+            onUploadPhoto={(file) => handleUploadPhoto(modal.product.id, file)}
           />
         </Modal>
       )}

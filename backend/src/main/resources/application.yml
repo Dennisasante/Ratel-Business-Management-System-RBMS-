@@ -61,6 +61,10 @@ app:
     # From your Paystack dashboard (Settings > API Keys & Webhooks).
     secret-key: ${PAYSTACK_SECRET_KEY:}
     public-key: ${PAYSTACK_PUBLIC_KEY:}
+  # Note: ENCRYPTION_KEY (business_integrations' Paystack/WooCommerce secrets,
+  # see EncryptedStringConverter) is read directly from the process
+  # environment, not resolved through this file — see that class's javadoc
+  # for why. Still needs to be set as a real env var, same as JWT_SECRET.
   super-admin:
     # If set (and no super admin exists yet), one is created automatically on
     # startup. Leave unset after the first run — see backend README.
@@ -68,6 +72,11 @@ app:
     password: ${SUPER_ADMIN_PASSWORD:}
     full-name: ${SUPER_ADMIN_NAME:Super Admin}
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  # Must be a publicly-reachable URL once deployed — this is where
+  # WooCommerce's own servers deliver order webhooks, so localhost only works
+  # for logic that doesn't need a live round-trip (e.g. registering the
+  # webhook itself, tested against the real WooCommerce API in Stage 2).
+  backend-url: ${BACKEND_URL:http://localhost:8090}
   mail:
     from: ${MAIL_FROM:no-reply@ratel.app}
   upload-dir: ${UPLOAD_DIR:./uploads}

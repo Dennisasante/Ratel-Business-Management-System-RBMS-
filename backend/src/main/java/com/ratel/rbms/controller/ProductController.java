@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -73,5 +74,10 @@ public class ProductController {
     @GetMapping("/{id}/stock-history")
     public List<StockMovementResponse> stockHistory(@PathVariable UUID id) {
         return productService.stockHistory(id).stream().map(StockMovementResponse::from).toList();
+    }
+
+    @PostMapping("/{id}/photo")
+    public ProductResponse uploadPhoto(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        return ProductResponse.from(productService.uploadPhoto(id, file));
     }
 }

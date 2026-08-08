@@ -43,6 +43,23 @@ public class ServiceCatalogItem {
     @Builder.Default
     private boolean active = true;
 
+    // Off by default — not every service a business offers is necessarily
+    // meant to be publicly bookable via the embed widget.
+    @Column(name = "bookable_online", nullable = false)
+    @Builder.Default
+    private boolean bookableOnline = false;
+
+    // How long a booking of this service occupies the schedule for, and how
+    // many customers can be booked into the same overlapping window — the
+    // two numbers BookingService uses to reject a double-booked slot.
+    @Column(name = "duration_minutes", nullable = false)
+    @Builder.Default
+    private int durationMinutes = 30;
+
+    @Column(name = "max_concurrent_bookings", nullable = false)
+    @Builder.Default
+    private int maxConcurrentBookings = 1;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

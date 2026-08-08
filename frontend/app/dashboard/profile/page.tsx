@@ -3,12 +3,14 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Building2, Upload, Pencil } from "lucide-react";
+import Link from "next/link";
+import { Building2, Upload, Pencil, Plug, Link2, Copy, Check } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, BusinessUpdatePayload } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import BusinessProfileForm from "@/components/BusinessProfileForm";
 
@@ -19,6 +21,12 @@ export default function ProfilePage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [editingSlug, setEditingSlug] = useState(false);
+  const [slugInput, setSlugInput] = useState("");
+  const [savingSlug, setSavingSlug] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
 
@@ -47,6 +55,36 @@ export default function ProfilePage() {
     await api.updateBusinessProfile(session.token, payload);
     await refreshBusiness();
     setShowEdit(false);
+  }
+
+  const bookingPageUrl = business ? `${typeof window !== "undefined" ? window.location.origin : ""}/book/${business.slug}` : "";
+
+  function startEditSlug() {
+    setSlugInput(business?.slug ?? "");
+    setSlugError(null);
+    setEditingSlug(true);
+  }
+
+  async function saveSlug(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session) return;
+    setSavingSlug(true);
+    setSlugError(null);
+    try {
+      await api.updateBusinessSlug(session.token, slugInput);
+      await refreshBusiness();
+      setEditingSlug(false);
+    } catch (err) {
+      setSlugError(err instanceof ApiError ? err.message : "Couldn't save that link.");
+    } finally {
+      setSavingSlug(false);
+    }
+  }
+
+  async function copyBookingLink() {
+    await navigator.clipboard.writeText(bookingPageUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   if (loading || !session) {
@@ -137,6 +175,73 @@ export default function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      <Card className="max-w-2xl p-5">
+        <div className="flex items-center gap-2">
+          <Link2 size={16} className="text-ink-500" />
+          <h2 className="text-base font-semibold text-ink-900">Booking page</h2>
+        </div>
+        <p className="mt-1 text-xs text-ink-500">
+          Share this link anywhere — bio, WhatsApp status, business card — so customers can book with you even if you
+          don&apos;t have your own website.
+        </p>
+
+        {!editingSlug ? (
+          <div className="mt-3 flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-canvas px-3 py-2 text-sm text-ink-900">{bookingPageUrl}</code>
+            <button
+              onClick={copyBookingLink}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-canvas"
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            {canEdit && (
+              <button onClick={startEditSlug} className="text-xs font-medium text-accent-hover hover:underline">
+                Edit
+              </button>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={saveSlug} className="mt-3 flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-ink-500">{typeof window !== "undefined" ? window.location.origin : ""}/book/</span>
+              <input
+                type="text"
+                value={slugInput}
+                onChange={(e) => setSlugInput(e.target.value)}
+                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+            {slugError && <p className="text-sm text-danger">{slugError}</p>}
+            <div className="flex gap-2">
+              <Button type="submit" disabled={savingSlug || !slugInput.trim()}>
+                {savingSlug ? "Saving..." : "Save"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setEditingSlug(false)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
+      </Card>
+
+      {session.role === "OWNER" && (
+        <Link
+          href="/dashboard/profile/integrations"
+          className="flex max-w-2xl items-center justify-between rounded-xl border border-border bg-surface p-5 shadow-card transition hover:border-accent"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-soft text-accent-hover">
+              <Plug size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Integrations</p>
+              <p className="text-xs text-ink-500">Your own Paystack, WooCommerce, and WhatsApp setup</p>
+            </div>
+          </div>
+        </Link>
+      )}
 
       {showEdit && business && (
         <Modal title="Edit business details" onClose={() => setShowEdit(false)}>

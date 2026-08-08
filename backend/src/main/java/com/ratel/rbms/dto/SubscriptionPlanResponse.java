@@ -3,6 +3,7 @@ package com.ratel.rbms.dto;
 import com.ratel.rbms.entity.SubscriptionPlan;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record SubscriptionPlanResponse(
@@ -12,12 +13,13 @@ public record SubscriptionPlanResponse(
         String currency,
         int billingPeriodDays,
         boolean active,
-        int sortOrder
+        int sortOrder,
+        List<String> features
 ) {
     public static SubscriptionPlanResponse from(SubscriptionPlan plan) {
         return new SubscriptionPlanResponse(
                 plan.getId(), plan.getName(), plan.getPrice(), plan.getCurrency(),
-                plan.getBillingPeriodDays(), plan.isActive(), plan.getSortOrder()
+                plan.getBillingPeriodDays(), plan.isActive(), plan.getSortOrder(), plan.getFeatures()
         );
     }
 }

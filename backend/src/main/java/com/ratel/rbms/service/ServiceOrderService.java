@@ -3,14 +3,17 @@ package com.ratel.rbms.service;
 import com.ratel.rbms.dto.ServiceOrderRequest;
 import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.ServiceOrderUpdateRequest;
+import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.User;
+import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.UserRepository;
@@ -52,6 +55,8 @@ public class ServiceOrderService {
     private final ServiceTypeService serviceTypeService;
     private final EmailService emailService;
     private final ActivityLogService activityLogService;
+    private final BookingRepository bookingRepository;
+    private final WhatsAppLinkService whatsAppLinkService;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -61,7 +66,9 @@ public class ServiceOrderService {
             ServiceCatalogService serviceCatalogService,
             ServiceTypeService serviceTypeService,
             EmailService emailService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            BookingRepository bookingRepository,
+            WhatsAppLinkService whatsAppLinkService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.userRepository = userRepository;
@@ -71,6 +78,8 @@ public class ServiceOrderService {
         this.serviceTypeService = serviceTypeService;
         this.emailService = emailService;
         this.activityLogService = activityLogService;
+        this.bookingRepository = bookingRepository;
+        this.whatsAppLinkService = whatsAppLinkService;
     }
 
     @Transactional
@@ -93,6 +102,13 @@ public class ServiceOrderService {
         if (price == null) price = BigDecimal.ZERO;
         BigDecimal discountAmount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
 
+        // A STAFF user can't hand work to someone else — every order they create
+        // lands on themselves, regardless of what the form submitted. Also keeps
+        // the order from becoming invisible to its own creator once list()/get()
+        // start scoping STAFF to only their own assigned orders, below.
+        User currentUser = currentUser();
+        UUID assignedStaffId = currentUser.getRole() == Role.STAFF ? currentUser.getId() : req.assignedStaffId();
+
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
                 .serviceTypeId(type.getId())
@@ -102,7 +118,7 @@ public class ServiceOrderService {
                 .notes(req.notes())
                 .price(price)
                 .discountAmount(discountAmount)
-                .assignedStaffId(req.assignedStaffId())
+                .assignedStaffId(assignedStaffId)
                 .receivedAt(Instant.now())
                 .scheduledAt(req.scheduledAt())
                 .createdBy(TenantContext.getUserId())
@@ -120,7 +136,9 @@ public class ServiceOrderService {
 
     public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page) {
         UUID businessId = TenantContext.getBusinessId();
-        List<ServiceOrder> orders = serviceOrderRepository.search(businessId, serviceTypeId, status, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
+        UUID staffScope = currentUser().getRole() == Role.STAFF ? TenantContext.getUserId() : null;
+        List<ServiceOrder> orders = serviceOrderRepository.search(
+                businessId, serviceTypeId, status, staffScope, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
         return orders.stream().map(this::toResponse).toList();
     }
 
@@ -131,10 +149,15 @@ public class ServiceOrderService {
     @Transactional
     public ServiceOrderResponse update(UUID id, ServiceOrderUpdateRequest req) {
         ServiceOrder order = getOwned(id);
+        User currentUser = currentUser();
+        // A STAFF user can only ever reassign an order to themselves — never hand
+        // it off to someone else, and never orphan it (which would make it
+        // invisible to everyone once it has no owner in their own scoped view).
+        UUID assignedStaffId = currentUser.getRole() == Role.STAFF ? currentUser.getId() : req.assignedStaffId();
         order.setNotes(req.notes());
         order.setPrice(req.price());
         order.setDiscountAmount(req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO);
-        order.setAssignedStaffId(req.assignedStaffId());
+        order.setAssignedStaffId(assignedStaffId);
         order.setScheduledAt(req.scheduledAt());
         order = serviceOrderRepository.save(order);
 
@@ -211,8 +234,20 @@ public class ServiceOrderService {
     }
 
     private ServiceOrder getOwned(UUID id) {
-        return serviceOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service order not found."));
+        User currentUser = currentUser();
+        // 404, not 403 — a STAFF user shouldn't be able to tell an order belonging
+        // to someone else even exists.
+        if (currentUser.getRole() == Role.STAFF && !currentUser.getId().equals(order.getAssignedStaffId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Service order not found.");
+        }
+        return order;
+    }
+
+    private User currentUser() {
+        return userRepository.findById(TenantContext.getUserId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
     }
 
     private ServiceOrderResponse toResponse(ServiceOrder order) {
@@ -247,6 +282,12 @@ public class ServiceOrderService {
         String createdByName = order.getCreatedBy() != null
                 ? userRepository.findById(order.getCreatedBy()).map(User::getFullName).orElse("Unknown")
                 : "Unknown";
+        Booking booking = bookingRepository.findByServiceOrderId(order.getId()).orElse(null);
+        String bookingPaymentStatus = booking != null ? booking.getPaymentStatus() : null;
+        String bookingWhatsappLink = booking != null
+                ? whatsAppLinkService.buildLink(booking.getCustomerWhatsapp(),
+                        "Hi " + booking.getCustomerName() + ", this is regarding your booking #" + booking.getBookingNumber() + ".")
+                : null;
 
         return ServiceOrderResponse.from(
                 order,
@@ -254,7 +295,9 @@ public class ServiceOrderService {
                 customer != null ? customer.getFullName() : null,
                 catalogItem != null ? catalogItem.getName() : null,
                 assignedStaffName,
-                createdByName
+                createdByName,
+                bookingPaymentStatus,
+                bookingWhatsappLink
         );
     }
 }

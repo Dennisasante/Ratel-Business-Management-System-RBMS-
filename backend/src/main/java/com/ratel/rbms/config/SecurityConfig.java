@@ -60,8 +60,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/platform/auth/reset-password").permitAll()
                         .requestMatchers("/api/platform/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/webhooks/paystack").permitAll()
+                        .requestMatchers("/api/webhooks/woocommerce/**").permitAll()
+                        .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/widget/**").permitAll()
+                        .requestMatchers("/branding/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
@@ -77,7 +81,21 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
+        // The booking/wig-configurator widgets embed on arbitrary client
+        // WordPress sites we can't enumerate in advance, so /api/public/**
+        // needs a permissive CORS policy of its own — unlike every other
+        // endpoint, which only ever gets called from Ratel's own frontend.
+        // No credentials (cookies) are involved on this path, only whatever
+        // businessId/manage_token the widget itself carries, so wildcard
+        // origins here don't widen who can act as an authenticated user.
+        CorsConfiguration publicConfiguration = new CorsConfiguration();
+        publicConfiguration.setAllowedOriginPatterns(List.of("*"));
+        publicConfiguration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        publicConfiguration.setAllowedHeaders(List.of("*"));
+        publicConfiguration.setAllowCredentials(false);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/public/**", publicConfiguration);
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }

@@ -37,6 +37,7 @@ public class PlatformSubscriptionPlanService {
                 .currency(req.currency())
                 .billingPeriodDays(req.billingPeriodDays())
                 .sortOrder(req.sortOrder())
+                .features(req.features() != null ? req.features() : List.of())
                 .build();
         return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
     }
@@ -48,6 +49,7 @@ public class PlatformSubscriptionPlanService {
         plan.setCurrency(req.currency());
         plan.setBillingPeriodDays(req.billingPeriodDays());
         plan.setSortOrder(req.sortOrder());
+        plan.setFeatures(req.features() != null ? req.features() : List.of());
         return SubscriptionPlanResponse.from(subscriptionPlanRepository.save(plan));
     }
 

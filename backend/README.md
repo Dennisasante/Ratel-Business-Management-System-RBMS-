@@ -29,10 +29,17 @@ methods scoped by it (see `UserRepository.findAllByBusinessId` as the template).
    docker compose up -d
    ```
 
-2. (Optional) copy values from `.env.example` as real environment variables —
+2. (Optional) copy values from `.env.example` into a `backend/.env` file —
    the app runs fine on defaults for local dev without setting anything, except
    for Google Sign-In and the Super Admin, which need explicit setup (see the
-   dedicated sections below).
+   dedicated sections below). `application.yml` reads these from the process
+   environment, not from the file directly, so export them before running the
+   app, e.g. `set -a; source .env; set +a`.
+
+   Before putting real secrets in it, confirm `backend/.gitignore` actually
+   excludes `.env` (`git check-ignore -v backend/.env` should print a match) —
+   don't assume it's covered without checking, especially if you rename the
+   file to something like `.env.local`.
 
 3. Run the app:
    ```bash

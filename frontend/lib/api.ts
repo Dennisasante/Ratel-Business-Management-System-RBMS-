@@ -32,6 +32,7 @@ export interface LoginPayload {
 export interface BusinessSummary {
   id: string;
   name: string;
+  slug: string;
   industry: string;
   location: string | null;
   contactEmail: string | null;
@@ -53,7 +54,7 @@ export interface UserSummary {
   createdAt: string;
 }
 
-export type StaffRole = "OWNER" | "MANAGER" | "SALES_PERSON" | "ACCOUNTANT";
+export type StaffRole = "OWNER" | "MANAGER" | "SALES_PERSON" | "ACCOUNTANT" | "STAFF";
 
 export interface CreateStaffPayload {
   fullName: string;
@@ -105,6 +106,8 @@ export interface Product {
   supplierName: string | null;
   imageUrl: string | null;
   active: boolean;
+  publishToWebsite: boolean;
+  syncedToWebsite: boolean;
   createdAt: string;
 }
 
@@ -119,6 +122,7 @@ export interface ProductPayload {
   lowStockThreshold?: number;
   supplierName?: string;
   imageUrl?: string;
+  publishToWebsite?: boolean;
 }
 
 export interface StockAdjustmentPayload {
@@ -324,6 +328,9 @@ export interface ServiceCatalogItem {
   name: string;
   price: number;
   active: boolean;
+  bookableOnline: boolean;
+  durationMinutes: number;
+  maxConcurrentBookings: number;
   createdAt: string;
 }
 
@@ -331,6 +338,9 @@ export interface ServiceCatalogItemPayload {
   serviceTypeId: string;
   name: string;
   price: number;
+  bookableOnline?: boolean;
+  durationMinutes?: number;
+  maxConcurrentBookings?: number;
 }
 
 export interface ServiceOrder {
@@ -355,6 +365,8 @@ export interface ServiceOrder {
   createdByName: string;
   createdAt: string;
   updatedAt: string;
+  bookingPaymentStatus: string | null;
+  bookingWhatsappLink: string | null;
 }
 
 export interface ServiceOrderPayload {
@@ -431,6 +443,8 @@ export interface PlatformAdminSummary {
   createdAt: string;
 }
 
+export type PlanFeature = "BOOKING_WIDGET" | "WOOCOMMERCE_SYNC" | "CUSTOM_WIG_REQUESTS";
+
 export interface SubscriptionPlan {
   id: string;
   name: string;
@@ -439,6 +453,7 @@ export interface SubscriptionPlan {
   billingPeriodDays: number;
   active: boolean;
   sortOrder: number;
+  features: PlanFeature[];
 }
 
 export interface SubscriptionPlanPayload {
@@ -447,6 +462,7 @@ export interface SubscriptionPlanPayload {
   currency: string;
   billingPeriodDays: number;
   sortOrder: number;
+  features: PlanFeature[];
 }
 
 export interface PlatformBillingSettings {
@@ -478,6 +494,204 @@ export interface VerifyPaymentResponse {
   billingStatus: string | null;
   currentPeriodEndsAt: string | null;
   message: string;
+}
+
+export interface BusinessIntegrations {
+  paystackPublicKey: string | null;
+  paystackSecretConfigured: boolean;
+  paystackSecretMasked: string | null;
+  woocommerceSiteUrl: string | null;
+  woocommerceConfigured: boolean;
+  woocommerceConsumerKeyMasked: string | null;
+  woocommerceWebhookRegistered: boolean;
+  whatsappNotifyNumber: string | null;
+  testMode: boolean;
+  bookingPaymentPolicy: "NONE" | "DEPOSIT" | "FULL";
+  bookingDepositPercent: number;
+  workingDays: number[];
+  workingHoursStart: string;
+  workingHoursEnd: string;
+}
+
+// Every field: undefined/omitted = leave unchanged, "" = clear, else = set.
+export interface BusinessIntegrationsPayload {
+  paystackPublicKey?: string;
+  paystackSecretKey?: string;
+  woocommerceSiteUrl?: string;
+  woocommerceConsumerKey?: string;
+  woocommerceConsumerSecret?: string;
+  whatsappNotifyNumber?: string;
+  testMode?: boolean;
+  bookingPaymentPolicy?: "NONE" | "DEPOSIT" | "FULL";
+  bookingDepositPercent?: number;
+  workingDays?: number[];
+  workingHoursStart?: string;
+  workingHoursEnd?: string;
+}
+
+export interface BlackoutDate {
+  id: string;
+  date: string;
+  label: string | null;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+}
+
+export interface BookingDetail {
+  bookingNumber: number;
+  businessName: string | null;
+  serviceName: string | null;
+  status: string;
+  scheduledAt: string;
+  price: number;
+  paymentStatus: string;
+  customerName: string;
+  amountDue: number | null;
+  currency: string;
+  businessWhatsappLink: string | null;
+}
+
+export type EcommerceOrderStatus = "RECEIVED" | "PROCESSING" | "READY" | "COMPLETED" | "CANCELLED";
+
+export interface EcommerceOrder {
+  id: string;
+  orderNumber: string;
+  status: EcommerceOrderStatus;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  totalAmount: number;
+  currency: string;
+  itemCount: number;
+  whatsappLink: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EcommerceOrderItem {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface EcommerceOrderDetail {
+  id: string;
+  orderNumber: string;
+  status: EcommerceOrderStatus;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  totalAmount: number;
+  currency: string;
+  whatsappLink: string | null;
+  items: EcommerceOrderItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomItemAttributeOption {
+  id: string;
+  label: string;
+  priceModifier: number;
+  sortOrder: number;
+}
+
+export interface CustomItemAttribute {
+  id: string;
+  name: string;
+  sortOrder: number;
+  options: CustomItemAttributeOption[];
+}
+
+export interface CustomItemAttributeOptionPayload {
+  label: string;
+  priceModifier: number;
+  sortOrder?: number;
+}
+
+export interface CustomItemAttributePayload {
+  name: string;
+  sortOrder?: number;
+  options: CustomItemAttributeOptionPayload[];
+}
+
+export type CustomWigRequestStatus = "SUBMITTED" | "QUOTED" | "ACCEPTED" | "DECLINED";
+
+export interface CustomWigRequest {
+  id: string;
+  requestNumber: number;
+  customerName: string;
+  customerEmail: string;
+  customerWhatsapp: string;
+  estimatedPrice: number;
+  status: CustomWigRequestStatus;
+  finalPrice: number | null;
+  whatsappLink: string | null;
+  createdAt: string;
+}
+
+export interface CustomWigSelection {
+  attributeName: string;
+  optionLabel: string;
+  priceModifier: number;
+}
+
+export interface CustomWigRequestDetail {
+  id: string;
+  requestNumber: number;
+  customerName: string;
+  customerEmail: string;
+  customerWhatsapp: string;
+  selections: CustomWigSelection[];
+  estimatedPrice: number;
+  inspirationPhotoUrl: string | null;
+  notes: string | null;
+  status: CustomWigRequestStatus;
+  finalPrice: number | null;
+  ownerMessage: string | null;
+  whatsappLink: string | null;
+  createdAt: string;
+}
+
+export interface BookingWidgetConfig {
+  businessId: string;
+  businessName: string;
+  enabled: boolean;
+  currency: string;
+  paystackPublicKey: string | null;
+  paymentPolicy: "NONE" | "DEPOSIT" | "FULL";
+  depositPercent: number;
+  workingDays: number[];
+  workingHoursStart: string;
+  workingHoursEnd: string;
+  businessWhatsappLink: string | null;
+}
+
+export interface BookableService {
+  serviceCatalogId: string;
+  serviceName: string;
+  serviceTypeName: string | null;
+  price: number;
+}
+
+export interface CreateBookingPayload {
+  serviceCatalogId: string;
+  scheduledAt: string;
+  customerName: string;
+  customerEmail: string;
+  customerWhatsapp: string;
+  notes?: string;
+}
+
+export interface BookingCreated {
+  manageToken: string;
+  bookingNumber: number;
+  message: string;
+  paymentRequired: boolean;
+  amountDue: number | null;
 }
 
 export interface SubscriptionPaymentSummary {
@@ -667,6 +881,13 @@ export const api = {
       token
     ),
 
+  updateBusinessSlug: (token: string, slug: string) =>
+    request<BusinessSummary>(
+      "/api/business/me/slug",
+      { method: "PATCH", body: JSON.stringify({ slug }) },
+      token
+    ),
+
   uploadBusinessLogo: async (_token: string, file: File): Promise<BusinessSummary> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -725,6 +946,21 @@ export const api = {
 
   stockHistory: (token: string, id: string) =>
     request<StockMovement[]>(`/api/products/${id}/stock-history`, {}, token),
+
+  uploadProductPhoto: async (_token: string, id: string, file: File): Promise<Product> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`/api/products/${id}/photo`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Upload failed");
+    }
+    return res.json();
+  },
 
   listProductCategories: (token: string) => request<ProductCategory[]>("/api/product-categories", {}, token),
 
@@ -905,6 +1141,27 @@ export const api = {
   verifyBillingPayment: (token: string, reference: string) =>
     request<VerifyPaymentResponse>("/api/billing/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
 
+  // --- Business Integrations (Owner only — client's own Paystack/WooCommerce keys) ---
+
+  getBusinessIntegrations: (token: string) => request<BusinessIntegrations>("/api/integrations", {}, token),
+
+  updateBusinessIntegrations: (token: string, payload: BusinessIntegrationsPayload) =>
+    request<BusinessIntegrations>("/api/integrations", { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  testPaystackIntegration: (token: string) =>
+    request<TestConnectionResult>("/api/integrations/test-paystack", { method: "POST" }, token),
+
+  testWooCommerceIntegration: (token: string) =>
+    request<TestConnectionResult>("/api/integrations/test-woocommerce", { method: "POST" }, token),
+
+  listBlackoutDates: (token: string) => request<BlackoutDate[]>("/api/integrations/blackout-dates", {}, token),
+
+  addBlackoutDate: (token: string, payload: { date: string; label?: string }) =>
+    request<BlackoutDate>("/api/integrations/blackout-dates", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  removeBlackoutDate: (token: string, id: string) =>
+    request<void>(`/api/integrations/blackout-dates/${id}`, { method: "DELETE" }, token),
+
   // --- Platform (Super Admin) ---
 
   platformLogin: (email: string, password: string) =>
@@ -1021,6 +1278,99 @@ export const api = {
       { method: "PUT", body: JSON.stringify(payload) },
       token
     ),
+
+  // Public booking self-service — reached via a manage_token from the
+  // confirmation email, no session/cookie involved.
+  getBookingByToken: (manageToken: string) =>
+    request<BookingDetail>(`/api/public/bookings/${manageToken}`),
+
+  rescheduleBooking: (manageToken: string, scheduledAt: string) =>
+    request<void>(`/api/public/bookings/${manageToken}/reschedule`, {
+      method: "PATCH",
+      body: JSON.stringify({ scheduledAt }),
+    }),
+
+  cancelBooking: (manageToken: string) =>
+    request<void>(`/api/public/bookings/${manageToken}`, { method: "DELETE" }),
+
+  startBookingPayment: (manageToken: string) =>
+    request<CheckoutResponse>(`/api/public/bookings/${manageToken}/pay`, { method: "POST" }),
+
+  verifyBookingPayment: (reference: string) =>
+    request<{ success: boolean; message: string }>("/api/public/bookings/verify", {
+      method: "POST",
+      body: JSON.stringify({ reference }),
+    }),
+
+  // Hosted booking page (ratel.app/book/{slug}) — for businesses with no
+  // website of their own to embed the widget on.
+  getBookingWidgetConfigBySlug: (slug: string) =>
+    request<BookingWidgetConfig>(`/api/public/bookings/by-slug/${slug}/widget-config`),
+
+  listPublicBookableServices: (businessId: string) =>
+    request<BookableService[]>(`/api/public/bookings/services?businessId=${businessId}`),
+
+  createPublicBooking: (businessId: string, payload: CreateBookingPayload) =>
+    request<BookingCreated>(`/api/public/bookings?businessId=${businessId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  listEcommerceOrders: (token: string) =>
+    request<EcommerceOrder[]>("/api/ecommerce-orders", {}, token),
+
+  getEcommerceOrder: (token: string, id: string) =>
+    request<EcommerceOrderDetail>(`/api/ecommerce-orders/${id}`, {}, token),
+
+  updateEcommerceOrderStatus: (token: string, id: string, status: EcommerceOrderStatus) =>
+    request<EcommerceOrder>(
+      `/api/ecommerce-orders/${id}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
+      token
+    ),
+
+  listCustomWigAttributes: (token: string) =>
+    request<CustomItemAttribute[]>("/api/custom-wig-attributes", {}, token),
+
+  createCustomWigAttribute: (token: string, payload: CustomItemAttributePayload) =>
+    request<CustomItemAttribute>(
+      "/api/custom-wig-attributes",
+      { method: "POST", body: JSON.stringify(payload) },
+      token
+    ),
+
+  updateCustomWigAttribute: (token: string, id: string, payload: CustomItemAttributePayload) =>
+    request<CustomItemAttribute>(
+      `/api/custom-wig-attributes/${id}`,
+      { method: "PUT", body: JSON.stringify(payload) },
+      token
+    ),
+
+  deleteCustomWigAttribute: (token: string, id: string) =>
+    request<void>(`/api/custom-wig-attributes/${id}`, { method: "DELETE" }, token),
+
+  listCustomWigRequests: (token: string) =>
+    request<CustomWigRequest[]>("/api/custom-wig-requests", {}, token),
+
+  getCustomWigRequest: (token: string, id: string) =>
+    request<CustomWigRequestDetail>(`/api/custom-wig-requests/${id}`, {}, token),
+
+  quoteCustomWigRequest: (token: string, id: string, finalPrice: number, message: string) =>
+    request<CustomWigRequest>(
+      `/api/custom-wig-requests/${id}/quote`,
+      { method: "PATCH", body: JSON.stringify({ finalPrice, message }) },
+      token
+    ),
+
+  declineCustomWigRequest: (token: string, id: string, message: string) =>
+    request<CustomWigRequest>(
+      `/api/custom-wig-requests/${id}/decline`,
+      { method: "PATCH", body: JSON.stringify({ message }) },
+      token
+    ),
+
+  acceptCustomWigRequest: (token: string, id: string) =>
+    request<CustomWigRequest>(`/api/custom-wig-requests/${id}/accept`, { method: "PATCH" }, token),
 };
 
 export { ApiError };

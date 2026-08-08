@@ -68,6 +68,15 @@ public class Product {
     @Builder.Default
     private boolean active = true;
 
+    // Set once this product has been pushed to WooCommerce — lets sync know
+    // whether to create or update on the next push.
+    @Column(name = "woo_product_id")
+    private Long wooProductId;
+
+    @Column(name = "publish_to_website", nullable = false)
+    @Builder.Default
+    private boolean publishToWebsite = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

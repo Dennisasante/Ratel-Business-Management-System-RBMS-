@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, Tags, CalendarDays } from "lucide-react";
+import { Plus, Wrench, BarChart3, Mail, Tags, CalendarDays, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -151,6 +151,22 @@ export default function ServiceOrdersPage() {
   async function handleToggleCatalogItem(id: string, active: boolean) {
     if (!session) return;
     const item = await api.setServiceCatalogItemActive(session.token, id, active);
+    setCatalog((prev) => prev.map((c) => (c.id === id ? item : c)));
+  }
+
+  async function handleUpdateCatalogBookingSettings(
+    id: string,
+    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number }
+  ) {
+    if (!session) return;
+    const existing = catalog.find((c) => c.id === id);
+    if (!existing) return;
+    const item = await api.updateServiceCatalogItem(session.token, id, {
+      serviceTypeId: existing.serviceTypeId,
+      name: existing.name,
+      price: existing.price,
+      ...settings,
+    });
     setCatalog((prev) => prev.map((c) => (c.id === id ? item : c)));
   }
 
@@ -312,7 +328,14 @@ export default function ServiceOrdersPage() {
                     <Td className="text-ink-500">{o.serviceTypeName ?? "—"}</Td>
                     <Td className="text-ink-500">{o.customerName ?? "Walk-in"}</Td>
                     <Td>
-                      <Badge tone={STATUS_TONES[o.status]}>{STATUS_LABELS[o.status]}</Badge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={STATUS_TONES[o.status]}>{STATUS_LABELS[o.status]}</Badge>
+                        {o.bookingPaymentStatus && o.bookingPaymentStatus !== "PAID" && (
+                          <Badge tone={o.bookingPaymentStatus === "FAILED" ? "danger" : "neutral"}>
+                            {o.bookingPaymentStatus === "FAILED" ? "Payment failed" : "Awaiting payment"}
+                          </Badge>
+                        )}
+                      </div>
                     </Td>
                     <Td className="tabular font-medium">GH₵{o.price.toFixed(2)}</Td>
                     <Td className="tabular text-ink-500">{new Date(o.receivedAt).toLocaleDateString()}</Td>
@@ -321,6 +344,17 @@ export default function ServiceOrdersPage() {
                     </Td>
                     <Td>
                       <div className="flex flex-wrap justify-end gap-3 whitespace-nowrap text-right">
+                        {o.bookingWhatsappLink && (
+                          <a
+                            href={o.bookingWhatsappLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-sm font-medium text-success hover:underline"
+                          >
+                            <MessageCircle size={13} />
+                            WhatsApp
+                          </a>
+                        )}
                         {nextStatus && (
                           <button
                             onClick={() => handleAdvanceStatus(o)}
@@ -404,6 +438,7 @@ export default function ServiceOrdersPage() {
             serviceTypes={serviceTypes}
             onCreate={handleCreateCatalogItem}
             onToggleActive={handleToggleCatalogItem}
+            onUpdateBookingSettings={handleUpdateCatalogBookingSettings}
           />
         </Modal>
       )}

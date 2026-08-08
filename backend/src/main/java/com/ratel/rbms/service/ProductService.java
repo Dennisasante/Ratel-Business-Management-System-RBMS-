@@ -9,29 +9,45 @@ import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.ProductRepository;
 import com.ratel.rbms.repository.StockMovementRepository;
 import com.ratel.rbms.tenant.TenantContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class ProductService {
 
+    private static final Set<String> ALLOWED_PHOTO_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
+
     private final ProductRepository productRepository;
     private final StockMovementRepository stockMovementRepository;
     private final ActivityLogService activityLogService;
+    private final WooCommerceSyncService wooCommerceSyncService;
+    private final String uploadDir;
 
     public ProductService(
             ProductRepository productRepository,
             StockMovementRepository stockMovementRepository,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            WooCommerceSyncService wooCommerceSyncService,
+            @Value("${app.upload-dir}") String uploadDir
     ) {
         this.productRepository = productRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.activityLogService = activityLogService;
+        this.wooCommerceSyncService = wooCommerceSyncService;
+        this.uploadDir = uploadDir;
     }
 
     public List<Product> listAll() {
@@ -78,6 +94,7 @@ public class ProductService {
                 .lowStockThreshold(req.lowStockThreshold() != null ? req.lowStockThreshold() : 5)
                 .supplierName(req.supplierName())
                 .imageUrl(req.imageUrl())
+                .publishToWebsite(req.publishToWebsite() != null && req.publishToWebsite())
                 .build();
 
         product = productRepository.save(product);
@@ -88,6 +105,8 @@ public class ProductService {
         if (product.getQuantity() > 0) {
             logMovement(product, MovementType.ADD, product.getQuantity(), product.getQuantity(), "Opening stock");
         }
+
+        wooCommerceSyncService.pushProduct(product);
 
         return product;
     }
@@ -110,10 +129,13 @@ public class ProductService {
         if (req.lowStockThreshold() != null) product.setLowStockThreshold(req.lowStockThreshold());
         product.setSupplierName(req.supplierName());
         product.setImageUrl(req.imageUrl());
+        if (req.publishToWebsite() != null) product.setPublishToWebsite(req.publishToWebsite());
         // Quantity is deliberately NOT editable here — it only ever changes through
         // adjustStock(), so every change is logged in stock_movements.
 
-        return productRepository.save(product);
+        product = productRepository.save(product);
+        wooCommerceSyncService.pushProduct(product);
+        return product;
     }
 
     // Archive, never hard delete — sale_items/purchase_order_items already snapshot
@@ -174,6 +196,46 @@ public class ProductService {
                         + (signedChange >= 0 ? "+" : "") + signedChange + " (now " + newQuantity + ")",
                 "PRODUCT", product.getId()
         );
+
+        wooCommerceSyncService.pushStockChange(product);
+
+        return product;
+    }
+
+    @Transactional
+    public Product uploadPhoto(UUID productId, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No file was uploaded.");
+        }
+        if (!ALLOWED_PHOTO_TYPES.contains(file.getContentType())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Photo must be a PNG, JPEG, or WEBP image.");
+        }
+
+        Product product = getOwned(productId);
+
+        String extension = switch (file.getContentType()) {
+            case "image/png" -> ".png";
+            case "image/webp" -> ".webp";
+            default -> ".jpg";
+        };
+        String filename = product.getId() + extension;
+
+        try {
+            Path photosDir = Paths.get(uploadDir, "products");
+            Files.createDirectories(photosDir);
+            Path target = photosDir.resolve(filename);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Couldn't save the photo. Please try again.");
+        }
+
+        // Cache-bust with a timestamp query param so the browser doesn't keep
+        // showing a stale cached photo after it's replaced at the same path.
+        product.setImageUrl("/uploads/products/" + filename + "?v=" + System.currentTimeMillis());
+        product = productRepository.save(product);
+
+        activityLogService.log("Updated the photo for \"" + product.getName() + "\"", "PRODUCT", product.getId());
+        wooCommerceSyncService.pushProduct(product);
 
         return product;
     }

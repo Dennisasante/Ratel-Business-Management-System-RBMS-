@@ -14,7 +14,11 @@ import Button from "@/components/ui/Button";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 
-const ROLES: StaffRole[] = ["OWNER", "MANAGER", "SALES_PERSON", "ACCOUNTANT"];
+const ROLES: StaffRole[] = ["OWNER", "MANAGER", "STAFF", "SALES_PERSON", "ACCOUNTANT"];
+
+const ROLE_LABELS: Partial<Record<StaffRole, string>> = {
+  MANAGER: "Administrator",
+};
 
 export default function TeamPage() {
   const { session, loading } = useAuth();
@@ -154,12 +158,12 @@ export default function TeamPage() {
                       >
                         {ROLES.map((r) => (
                           <option key={r} value={r}>
-                            {r}
+                            {ROLE_LABELS[r] ?? r}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <Badge tone="neutral">{u.role}</Badge>
+                      <Badge tone="neutral">{ROLE_LABELS[u.role as StaffRole] ?? u.role}</Badge>
                     )}
                   </Td>
                   <Td>

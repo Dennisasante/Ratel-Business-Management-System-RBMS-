@@ -54,6 +54,9 @@ public class ServiceCatalogService {
                 .serviceTypeId(type.getId())
                 .name(req.name())
                 .price(req.price())
+                .bookableOnline(req.bookableOnline() != null && req.bookableOnline())
+                .durationMinutes(req.durationMinutes() != null ? req.durationMinutes() : 30)
+                .maxConcurrentBookings(req.maxConcurrentBookings() != null ? req.maxConcurrentBookings() : 1)
                 .build();
         item = serviceCatalogItemRepository.save(item);
         activityLogService.log("Added service catalog item \"" + item.getName() + "\"", "SERVICE_CATALOG", item.getId());
@@ -67,6 +70,9 @@ public class ServiceCatalogService {
         item.setServiceTypeId(type.getId());
         item.setName(req.name());
         item.setPrice(req.price());
+        if (req.bookableOnline() != null) item.setBookableOnline(req.bookableOnline());
+        if (req.durationMinutes() != null) item.setDurationMinutes(req.durationMinutes());
+        if (req.maxConcurrentBookings() != null) item.setMaxConcurrentBookings(req.maxConcurrentBookings());
         item = serviceCatalogItemRepository.save(item);
         return ServiceCatalogItemResponse.from(item, type.getName());
     }

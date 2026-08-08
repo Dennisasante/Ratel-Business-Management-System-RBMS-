@@ -8,6 +8,7 @@ import java.util.UUID;
 public record BusinessResponse(
         UUID id,
         String name,
+        String slug,
         String industry,
         String location,
         String contactEmail,
@@ -25,6 +26,7 @@ public record BusinessResponse(
         return new BusinessResponse(
                 b.getId(),
                 b.getName(),
+                b.getSlug(),
                 b.getIndustry().name(),
                 b.getLocation(),
                 b.getContactEmail(),

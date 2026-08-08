@@ -14,6 +14,16 @@ public record ServiceCatalogItemRequest(
         String name,
 
         @NotNull(message = "Price is required")
-        BigDecimal price
+        BigDecimal price,
+
+        // Every field below is nullable and defaults sensibly when omitted, so
+        // existing callers (and the create form before it's updated) keep working.
+        Boolean bookableOnline,
+
+        @jakarta.validation.constraints.Min(value = 5, message = "Duration must be at least 5 minutes")
+        Integer durationMinutes,
+
+        @jakarta.validation.constraints.Min(value = 1, message = "Must allow at least 1 booking at a time")
+        Integer maxConcurrentBookings
 ) {
 }

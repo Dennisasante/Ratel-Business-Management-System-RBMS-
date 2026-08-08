@@ -14,4 +14,8 @@ public interface ServiceCatalogItemRepository extends JpaRepository<ServiceCatal
     Optional<ServiceCatalogItem> findByIdAndBusinessId(UUID id, UUID businessId);
 
     long countByBusinessIdAndServiceTypeId(UUID businessId, UUID serviceTypeId);
+
+    // The public booking widget's service picker — only ever shows what the
+    // business has explicitly opted in to online booking for.
+    List<ServiceCatalogItem> findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(UUID businessId);
 }

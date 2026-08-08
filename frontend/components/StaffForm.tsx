@@ -10,7 +10,8 @@ interface StaffFormProps {
 }
 
 const ROLES: { value: StaffRole; label: string }[] = [
-  { value: "MANAGER", label: "Manager" },
+  { value: "MANAGER", label: "Manager (Administrator)" },
+  { value: "STAFF", label: "Staff (sees only their own bookings)" },
   { value: "SALES_PERSON", label: "Sales Person" },
   { value: "ACCOUNTANT", label: "Accountant" },
   { value: "OWNER", label: "Owner" },

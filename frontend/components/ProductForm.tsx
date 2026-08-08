@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Globe, Upload } from "lucide-react";
 import { ApiError, Product, ProductCategory, ProductPayload } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
@@ -10,9 +11,10 @@ interface ProductFormProps {
   categories: ProductCategory[];
   submitLabel: string;
   onSubmit: (payload: ProductPayload) => Promise<void>;
+  onUploadPhoto?: (file: File) => Promise<void>;
 }
 
-export default function ProductForm({ initial, categories, submitLabel, onSubmit }: ProductFormProps) {
+export default function ProductForm({ initial, categories, submitLabel, onSubmit, onUploadPhoto }: ProductFormProps) {
   const [form, setForm] = useState({
     name: initial?.name ?? "",
     categoryId: initial?.categoryId ?? "",
@@ -23,8 +25,11 @@ export default function ProductForm({ initial, categories, submitLabel, onSubmit
     lowStockThreshold: initial ? String(initial.lowStockThreshold) : "5",
     supplierName: initial?.supplierName ?? "",
   });
+  const [publishToWebsite, setPublishToWebsite] = useState(initial?.publishToWebsite ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -44,11 +49,27 @@ export default function ProductForm({ initial, categories, submitLabel, onSubmit
         quantity: initial ? undefined : Number(form.quantity) || 0,
         lowStockThreshold: Number(form.lowStockThreshold) || 5,
         supplierName: form.supplierName || undefined,
+        publishToWebsite,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !onUploadPhoto) return;
+    setPhotoError(null);
+    setUploadingPhoto(true);
+    try {
+      await onUploadPhoto(file);
+    } catch (err) {
+      setPhotoError(err instanceof ApiError ? err.message : "Couldn't upload that photo.");
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = "";
     }
   }
 
@@ -121,6 +142,56 @@ export default function ProductForm({ initial, categories, submitLabel, onSubmit
       {initial && (
         <p className="text-xs text-ink-500">
           To change quantity, use &ldquo;Adjust stock&rdquo; instead — it keeps a history of every change.
+        </p>
+      )}
+
+      {initial && onUploadPhoto && (
+        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+          {initial.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={initial.imageUrl} alt="" className="h-14 w-14 rounded-lg object-cover" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-canvas text-ink-300">
+              <Upload size={18} />
+            </div>
+          )}
+          <div>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handlePhotoSelected}
+              className="hidden"
+              id="product-photo-upload"
+            />
+            <label
+              htmlFor="product-photo-upload"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-canvas"
+            >
+              <Upload size={13} />
+              {uploadingPhoto ? "Uploading..." : initial.imageUrl ? "Change photo" : "Upload photo"}
+            </label>
+            <p className="mt-1 text-xs text-ink-500">PNG, JPEG, or WEBP</p>
+            {photoError && <p className="mt-1 text-xs text-danger">{photoError}</p>}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 rounded-lg bg-canvas px-3 py-2">
+        <input
+          id="publishToWebsite"
+          type="checkbox"
+          checked={publishToWebsite}
+          onChange={(e) => setPublishToWebsite(e.target.checked)}
+          className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+        />
+        <label htmlFor="publishToWebsite" className="flex items-center gap-1.5 text-sm text-ink-700">
+          <Globe size={14} className="text-ink-500" />
+          Publish to your website
+        </label>
+      </div>
+      {initial?.publishToWebsite && (
+        <p className="-mt-2 text-xs text-ink-500">
+          {initial.syncedToWebsite ? "Synced to WooCommerce." : "Will sync to WooCommerce once connected in Integrations."}
         </p>
       )}
 

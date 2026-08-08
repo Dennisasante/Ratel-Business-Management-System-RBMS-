@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record SubscriptionPlanRequest(
         @NotBlank(message = "Plan name is required")
@@ -21,6 +22,9 @@ public record SubscriptionPlanRequest(
         @Min(value = 1, message = "Billing period must be at least 1 day")
         int billingPeriodDays,
 
-        int sortOrder
+        int sortOrder,
+
+        // Feature codes this plan grants: BOOKING_WIDGET, WOOCOMMERCE_SYNC, CUSTOM_WIG_REQUESTS.
+        List<String> features
 ) {
 }

@@ -2,10 +2,12 @@ package com.ratel.rbms.controller;
 
 import com.ratel.rbms.dto.BusinessResponse;
 import com.ratel.rbms.dto.BusinessUpdateRequest;
+import com.ratel.rbms.dto.UpdateSlugRequest;
 import com.ratel.rbms.service.BusinessService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,6 +35,12 @@ public class BusinessController {
     @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
     public BusinessResponse update(@Valid @RequestBody BusinessUpdateRequest request) {
         return businessService.updateProfile(request);
+    }
+
+    @PatchMapping("/me/slug")
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
+    public BusinessResponse updateSlug(@Valid @RequestBody UpdateSlugRequest request) {
+        return businessService.updateSlug(request);
     }
 
     @PostMapping("/logo")

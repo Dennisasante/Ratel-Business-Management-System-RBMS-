@@ -20,6 +20,8 @@ public record ProductResponse(
         String supplierName,
         String imageUrl,
         boolean active,
+        boolean publishToWebsite,
+        boolean syncedToWebsite,
         Instant createdAt
 ) {
     public static ProductResponse from(Product p) {
@@ -37,6 +39,8 @@ public record ProductResponse(
                 p.getSupplierName(),
                 p.getImageUrl(),
                 p.isActive(),
+                p.isPublishToWebsite(),
+                p.getWooProductId() != null,
                 p.getCreatedAt()
         );
     }

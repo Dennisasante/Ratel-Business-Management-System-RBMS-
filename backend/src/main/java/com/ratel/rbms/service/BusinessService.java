@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.BusinessResponse;
 import com.ratel.rbms.dto.BusinessUpdateRequest;
+import com.ratel.rbms.dto.UpdateSlugRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
@@ -17,11 +18,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 public class BusinessService {
 
     private static final Set<String> ALLOWED_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
+    private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
 
     private final BusinessRepository businessRepository;
     private final ActivityLogService activityLogService;
@@ -51,6 +54,26 @@ public class BusinessService {
         business = businessRepository.save(business);
 
         activityLogService.log("Updated business profile", "BUSINESS", business.getId());
+
+        return BusinessResponse.from(business);
+    }
+
+    public BusinessResponse updateSlug(UpdateSlugRequest req) {
+        String slug = req.slug().trim().toLowerCase();
+        if (!SLUG_PATTERN.matcher(slug).matches() || slug.length() > 80) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Booking page links can only use lowercase letters, numbers, and hyphens.");
+        }
+
+        Business business = getOwned();
+        if (!slug.equals(business.getSlug()) && businessRepository.existsBySlug(slug)) {
+            throw new ApiException(HttpStatus.CONFLICT, "That link is already taken — try another.");
+        }
+
+        business.setSlug(slug);
+        business = businessRepository.save(business);
+
+        activityLogService.log("Updated the booking page link", "BUSINESS", business.getId());
 
         return BusinessResponse.from(business);
     }

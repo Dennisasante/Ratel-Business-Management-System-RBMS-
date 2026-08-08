@@ -27,7 +27,9 @@ public record ServiceOrderResponse(
         Instant readyEmailSentAt,
         String createdByName,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        String bookingPaymentStatus,
+        String bookingWhatsappLink
 ) {
     public static ServiceOrderResponse from(
             ServiceOrder o,
@@ -35,7 +37,9 @@ public record ServiceOrderResponse(
             String customerName,
             String serviceCatalogName,
             String assignedStaffName,
-            String createdByName
+            String createdByName,
+            String bookingPaymentStatus,
+            String bookingWhatsappLink
     ) {
         return new ServiceOrderResponse(
                 o.getId(),
@@ -58,7 +62,9 @@ public record ServiceOrderResponse(
                 o.getReadyEmailSentAt(),
                 createdByName,
                 o.getCreatedAt(),
-                o.getUpdatedAt()
+                o.getUpdatedAt(),
+                bookingPaymentStatus,
+                bookingWhatsappLink
         );
     }
 }

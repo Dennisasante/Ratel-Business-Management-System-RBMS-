@@ -6,6 +6,8 @@ import {
   LayoutDashboard,
   Package,
   ShoppingCart,
+  ShoppingBag,
+  Sparkles,
   Users,
   Receipt,
   BarChart3,
@@ -19,19 +21,35 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import PoweredByRatel from "@/components/PoweredByRatel";
+import { StaffRole } from "@/lib/api";
+
+// STAFF performs services rather than managing the business — everything
+// financial/administrative is hidden from them, leaving just what they need
+// to work their own scheduled bookings (already scoped server-side too,
+// see ServiceOrderService — this hides the door, the backend locks it).
+const STAFF_HIDDEN: StaffRole[] = ["STAFF"];
+
+// MANAGER manages the business day-to-day (clients, the system) without
+// touching billing — "Administrator" is what that actually means to an owner
+// hiring for the role, even though the underlying permission name stays MANAGER.
+const ROLE_LABELS: Partial<Record<StaffRole, string>> = {
+  MANAGER: "Administrator",
+};
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/inventory", label: "Inventory", icon: Package },
-  { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart },
+  { href: "/dashboard/inventory", label: "Inventory", icon: Package, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart, hiddenFrom: STAFF_HIDDEN },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
-  { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck },
-  { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
+  { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList, hiddenFrom: STAFF_HIDDEN },
   { href: "/dashboard/service-orders", label: "Service Orders", icon: Wrench },
-  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
-  { href: "/dashboard/team", label: "Team", icon: UserCog },
-  { href: "/dashboard/activity", label: "Activity Log", icon: History },
+  { href: "/dashboard/ecommerce-orders", label: "E-commerce Orders", icon: ShoppingBag, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/custom-wig-requests", label: "Custom Wig Requests", icon: Sparkles, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/team", label: "Team", icon: UserCog, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/activity", label: "Activity Log", icon: History, hiddenFrom: STAFF_HIDDEN },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
 ];
 
@@ -62,7 +80,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <p className="truncate text-base font-semibold tracking-tight text-sidebar-text-active">
               {business?.name ?? session?.businessName ?? "Ratel"}
             </p>
-            <p className="truncate text-xs text-sidebar-text">{session?.role ?? "Business Management"}</p>
+            <p className="truncate text-xs text-sidebar-text">
+              {(session?.role && ROLE_LABELS[session.role as StaffRole]) ?? session?.role ?? "Business Management"}
+            </p>
           </div>
         </div>
         <button
@@ -75,7 +95,11 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-2">
-        {NAV_ITEMS.filter((item) => !item.ownerOnly || session?.role === "OWNER").map((item) => {
+        {NAV_ITEMS.filter(
+          (item) =>
+            (!item.ownerOnly || session?.role === "OWNER") &&
+            !item.hiddenFrom?.includes(session?.role as StaffRole)
+        ).map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (

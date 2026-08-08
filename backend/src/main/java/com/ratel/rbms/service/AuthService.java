@@ -38,6 +38,7 @@ public class AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final RateLimiterService rateLimiterService;
     private final PlatformBillingSettingsRepository platformBillingSettingsRepository;
+    private final SlugGenerator slugGenerator;
 
     public AuthService(
             BusinessRepository businessRepository,
@@ -47,7 +48,8 @@ public class AuthService {
             ActivityLogService activityLogService,
             GoogleTokenVerifier googleTokenVerifier,
             RateLimiterService rateLimiterService,
-            PlatformBillingSettingsRepository platformBillingSettingsRepository
+            PlatformBillingSettingsRepository platformBillingSettingsRepository,
+            SlugGenerator slugGenerator
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -57,6 +59,7 @@ public class AuthService {
         this.googleTokenVerifier = googleTokenVerifier;
         this.rateLimiterService = rateLimiterService;
         this.platformBillingSettingsRepository = platformBillingSettingsRepository;
+        this.slugGenerator = slugGenerator;
     }
 
     @Transactional
@@ -145,6 +148,7 @@ public class AuthService {
 
         Business business = Business.builder()
                 .name(name)
+                .slug(slugGenerator.generate(name, businessRepository::existsBySlug))
                 .industry(industry)
                 .location(location)
                 .contactEmail(contactEmail)

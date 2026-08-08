@@ -33,6 +33,11 @@ public class Business {
     @Column(nullable = false, length = 150)
     private String name;
 
+    // URL-friendly identifier for the hosted booking page (ratel.app/book/{slug}),
+    // for businesses with no website of their own to embed the widget on.
+    @Column(nullable = false, unique = true, length = 80)
+    private String slug;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private Industry industry;

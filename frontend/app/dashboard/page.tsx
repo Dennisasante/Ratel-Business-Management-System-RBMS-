@@ -48,6 +48,7 @@ const QUICK_ACTIONS = [
 export default function DashboardPage() {
   const { session, business, loading } = useAuth();
   const router = useRouter();
+  const isStaff = session?.role === "STAFF";
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [todaySalesCount, setTodaySalesCount] = useState(0);
@@ -56,8 +57,16 @@ export default function DashboardPage() {
   const [recentActivity, setRecentActivity] = useState<ActivityLogEntry[]>([]);
   const [fetching, setFetching] = useState(true);
 
+  // STAFF only ever sees their own scheduled work — the business-wide
+  // financial/staffing/audit stats below aren't theirs to see, so skip
+  // fetching them entirely rather than fetch-then-hide.
   const loadDashboard = useCallback(async () => {
     if (!session) return;
+    if (isStaff) {
+      const orders = await api.listServiceOrders(session.token);
+      setActiveServiceOrders(orders.filter((o: ServiceOrder) => o.status === "RECEIVED" || o.status === "IN_PROGRESS").length);
+      return;
+    }
     const today = new Date().toISOString().slice(0, 10);
     const [u, summary, orders, lowStock, activity] = await Promise.all([
       api.listUsers(session.token),
@@ -72,7 +81,7 @@ export default function DashboardPage() {
     setActiveServiceOrders(orders.filter((o: ServiceOrder) => o.status === "RECEIVED" || o.status === "IN_PROGRESS").length);
     setLowStockCount(lowStock.length);
     setRecentActivity(activity.slice(0, 6));
-  }, [session]);
+  }, [session, isStaff]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -96,6 +105,16 @@ export default function DashboardPage() {
 
       {fetching ? (
         <CardSkeleton count={4} />
+      ) : isStaff ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Your service orders"
+            value={activeServiceOrders}
+            hint="Received or in progress"
+            icon={Wrench}
+            tone="info"
+          />
+        </div>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
