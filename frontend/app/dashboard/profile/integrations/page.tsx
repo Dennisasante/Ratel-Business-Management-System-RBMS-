@@ -293,7 +293,7 @@ export default function IntegrationsPage() {
               </button>
             </div>
             <p className="mt-1 text-xs text-ink-500">
-              Turn this on while you're setting up a client's site — test bookings won&apos;t look like real business
+              Turn this on while you&apos;re setting up a client&apos;s site — test bookings won&apos;t look like real business
               until you turn it back off.
             </p>
           </Card>
@@ -349,7 +349,7 @@ export default function IntegrationsPage() {
             <h2 className="text-base font-semibold text-ink-900">Booking payments</h2>
             <p className="mt-1 text-xs text-ink-500">
               Whether a customer has to pay before their booking counts as confirmed. Needs a Paystack secret key
-              above — until one's saved, bookings are confirmed without payment regardless of this setting.
+              above — until one&apos;s saved, bookings are confirmed without payment regardless of this setting.
             </p>
 
             <form onSubmit={savePolicy} className="mt-4 flex flex-col gap-3">
@@ -394,7 +394,7 @@ export default function IntegrationsPage() {
           <Card className="max-w-2xl p-5">
             <h2 className="text-base font-semibold text-ink-900">Booking hours</h2>
             <p className="mt-1 text-xs text-ink-500">
-              When online bookings are allowed. A customer can't pick a day, time, or date outside of this — it's
+              When online bookings are allowed. A customer can&apos;t pick a day, time, or date outside of this — it&apos;s
               enforced on the server, not just hidden in the widget.
             </p>
 
@@ -451,7 +451,7 @@ export default function IntegrationsPage() {
 
             <div className="mt-5 border-t border-border pt-4">
               <label className="text-sm font-medium text-ink-700">Closed dates</label>
-              <p className="mt-1 text-xs text-ink-500">Holidays, staff retreats — any specific day you're not taking bookings.</p>
+              <p className="mt-1 text-xs text-ink-500">Holidays, staff retreats — any specific day you&apos;re not taking bookings.</p>
 
               <form onSubmit={addBlackoutDate} className="mt-3 flex items-end gap-2">
                 <input
@@ -560,7 +560,7 @@ export default function IntegrationsPage() {
           <Card className="max-w-2xl p-5">
             <h2 className="text-base font-semibold text-ink-900">WhatsApp</h2>
             <p className="mt-1 text-xs text-ink-500">
-              Where "new booking" notifications get a one-tap WhatsApp link sent to. E.164 format, e.g. +233550995080.
+              Where &quot;new booking&quot; notifications get a one-tap WhatsApp link sent to. E.164 format, e.g. +233550995080.
             </p>
             <form onSubmit={saveWhatsapp} className="mt-4 flex items-end gap-2">
               <div className="flex-1">

@@ -71,7 +71,7 @@ export default function ServiceOrderPhotoGallery({ serviceOrderId }: { serviceOr
       {loading ? (
         <p className="text-xs text-ink-500">Loading photos...</p>
       ) : photos.length === 0 ? (
-        <p className="text-xs text-ink-500">No photos yet — add before/after shots or a client's reference image.</p>
+        <p className="text-xs text-ink-500">No photos yet — add before/after shots or a client&apos;s reference image.</p>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {photos.map((photo) => (
