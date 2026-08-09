@@ -28,20 +28,24 @@ public class BusinessService {
 
     private final BusinessRepository businessRepository;
     private final ActivityLogService activityLogService;
+    private final PlanFeatureService planFeatureService;
     private final String uploadDir;
 
     public BusinessService(
             BusinessRepository businessRepository,
             ActivityLogService activityLogService,
+            PlanFeatureService planFeatureService,
             @Value("${app.upload-dir}") String uploadDir
     ) {
         this.businessRepository = businessRepository;
         this.activityLogService = activityLogService;
+        this.planFeatureService = planFeatureService;
         this.uploadDir = uploadDir;
     }
 
     public BusinessResponse getMine() {
-        return BusinessResponse.from(getOwned());
+        Business business = getOwned();
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
     }
 
     public BusinessResponse updateProfile(BusinessUpdateRequest req) {
@@ -55,7 +59,7 @@ public class BusinessService {
 
         activityLogService.log("Updated business profile", "BUSINESS", business.getId());
 
-        return BusinessResponse.from(business);
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
     }
 
     public BusinessResponse updateSlug(UpdateSlugRequest req) {
@@ -75,7 +79,7 @@ public class BusinessService {
 
         activityLogService.log("Updated the booking page link", "BUSINESS", business.getId());
 
-        return BusinessResponse.from(business);
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
     }
 
     public BusinessResponse uploadLogo(MultipartFile file) {
@@ -112,7 +116,7 @@ public class BusinessService {
 
         activityLogService.log("Updated the business logo", "BUSINESS", business.getId());
 
-        return BusinessResponse.from(business);
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
     }
 
     private Business getOwned() {

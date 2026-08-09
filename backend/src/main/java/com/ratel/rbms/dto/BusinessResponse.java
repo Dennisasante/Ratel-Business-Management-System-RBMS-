@@ -20,9 +20,14 @@ public record BusinessResponse(
         // Every business-scoped user (not just Owners) needs to know this, so
         // the read-only banner shows up for staff too — that's why it rides
         // along here rather than only on the Owner-restricted /billing/status.
-        String billingStatus
+        String billingStatus,
+        // The current plan's feature codes (BOOKING_WIDGET, WOOCOMMERCE_SYNC,
+        // CUSTOM_WIG_REQUESTS) — rides along here, not just the Owner-only
+        // /billing/status, so Managers can also know what to show on the
+        // dashboard without a second, role-gated fetch.
+        List<String> planFeatures
 ) {
-    public static BusinessResponse from(Business b) {
+    public static BusinessResponse from(Business b, List<String> planFeatures) {
         return new BusinessResponse(
                 b.getId(),
                 b.getName(),
@@ -35,7 +40,8 @@ public record BusinessResponse(
                 b.getSubscriptionPlan(),
                 b.getEnabledModules(),
                 b.getLogoUrl(),
-                b.getBillingStatus().name()
+                b.getBillingStatus().name(),
+                planFeatures
         );
     }
 }

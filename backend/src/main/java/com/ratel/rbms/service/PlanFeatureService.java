@@ -1,6 +1,7 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.entity.Business;
+import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
@@ -8,6 +9,7 @@ import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -51,5 +53,16 @@ public class PlanFeatureService {
         return subscriptionPlanRepository.findById(business.getSubscriptionPlanId())
                 .map(plan -> plan.getFeatures().contains(featureCode))
                 .orElse(false);
+    }
+
+    /** The current plan's full feature list — lets any business-scoped user (not just Owners) know what's available, e.g. to decide what to show on the dashboard. */
+    public List<String> listFeatures(UUID businessId) {
+        Business business = businessRepository.findById(businessId).orElse(null);
+        if (business == null || business.getSubscriptionPlanId() == null) {
+            return List.of();
+        }
+        return subscriptionPlanRepository.findById(business.getSubscriptionPlanId())
+                .map(SubscriptionPlan::getFeatures)
+                .orElse(List.of());
     }
 }
