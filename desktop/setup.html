@@ -27,15 +27,12 @@
   .logo {
     width: 44px;
     height: 44px;
-    border-radius: 10px;
-    background: #004aad;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 20px;
     margin-bottom: 20px;
+  }
+  .logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   h1 { font-size: 18px; margin: 0 0 6px; }
   p.sub { font-size: 13px; color: #666; margin: 0 0 24px; line-height: 1.5; }
@@ -68,14 +65,14 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo">R</div>
+    <div class="logo"><img src="assets/icon.png" alt="" /></div>
     <h1>Connect this computer to your Ratel account</h1>
     <p class="sub">Enter the web address your business uses to sign in to Ratel (the same one you'd type in a browser). This only needs to be set once on this computer.</p>
     <label for="url">Business URL</label>
     <input id="url" type="text" placeholder="your-business.yourdomain.com" autofocus />
     <button id="save">Continue</button>
     <div class="error" id="error"></div>
-    <div class="powered">Powered by Ratel</div>
+    <div class="powered">Powered by Ratel Systems</div>
   </div>
   <script>
     const input = document.getElementById("url");

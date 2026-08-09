@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Ratel RBMS desktop shell — a lightweight installable/portable wrapper around the hosted web app.",
   "main": "main.js",
+  "author": "Ratel Systems",
   "private": true,
   "scripts": {
     "start": "electron .",
@@ -10,7 +11,7 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.ratel.rbms.desktop",
@@ -22,10 +23,15 @@
       "main.js",
       "preload.js",
       "setup.html",
-      "offline.html"
+      "offline.html",
+      "assets/**"
     ],
     "win": {
-      "target": ["portable", "nsis"]
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
     },
     "portable": {
       "artifactName": "RatelRBMS-Portable-${version}.exe"

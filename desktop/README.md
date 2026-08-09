@@ -50,8 +50,21 @@ Outputs land in `release/`:
 - `RatelRBMS-Setup-<version>.exe` — a normal Windows installer, for shops that
   want a Start Menu shortcut instead.
 
+Both are unsigned (no code-signing cert configured), so Windows SmartScreen
+will show an "unknown publisher" warning on first run — expected, not a
+build error. Users click "More info" → "Run anyway".
+
+If `npm run dist` fails with `Cannot create symbolic link` while extracting
+`winCodeSign`: that's electron-builder trying to prep macOS signing tools we
+don't need for a Windows-only build, and Windows blocks symlink creation for
+non-admin/non-Developer-Mode users. Fixed here by pinning
+`electron-builder@^26` (older 24.x always hit this); if it recurs, confirm
+you're still on 26+ before reaching for Developer Mode or an admin shell.
+
 ## Icon
 
-No app icon is bundled yet — electron-builder will fall back to its default.
-To brand it, drop a `256x256`+ `assets/icon.ico` next to `main.js` and add
-`"icon": "assets/icon.ico"` under `build.win` in `package.json`.
+`assets/icon.ico` (the Ratel "R" mark, same source as `frontend/public/branding/ratel-icon.png`)
+is bundled and set via `build.win.icon` in `package.json` — used for the exe
+file icon, the taskbar, and the window titlebar. `assets/icon.png` is the
+same mark at 128px, used inside `setup.html`. To rebrand, regenerate both
+from a new source image and keep the same filenames.

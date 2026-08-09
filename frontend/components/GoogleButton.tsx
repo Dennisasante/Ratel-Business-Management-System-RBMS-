@@ -27,10 +27,19 @@ export default function GoogleButton({ onCredential }: { onCredential: (idToken:
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const [width, setWidth] = useState(MAX_WIDTH);
+  // Starts unmeasured (null) rather than defaulting to MAX_WIDTH — rendering
+  // Google's button once at a guessed width and then trying to re-render it
+  // at the real width doesn't reliably resize the already-mounted iframe, so
+  // on narrow phones it stayed stuck at 380px and overflowed the card. Safer
+  // to just wait for the real measurement before rendering at all.
+  const [width, setWidth] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!wrapperRef.current || typeof ResizeObserver === "undefined") return;
+    if (!wrapperRef.current) return;
+    if (typeof ResizeObserver === "undefined") {
+      setWidth(MAX_WIDTH);
+      return;
+    }
     const observer = new ResizeObserver((entries) => {
       const measured = entries[0]?.contentRect.width ?? MAX_WIDTH;
       setWidth(Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, measured))));
@@ -40,7 +49,7 @@ export default function GoogleButton({ onCredential }: { onCredential: (idToken:
   }, []);
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId || width === null) return;
 
     function render() {
       if (!window.google || !buttonRef.current) return;
