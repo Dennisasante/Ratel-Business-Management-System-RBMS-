@@ -6,7 +6,7 @@ import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
+import AuthShell from "@/components/auth/AuthShell";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -45,13 +45,13 @@ function ResetPasswordForm() {
   }
 
   if (done) {
-    return <p className="mt-4 text-sm text-ink-700">Password updated. Redirecting you to log in...</p>;
+    return <p className="text-sm text-ink-700">Password updated. Redirecting you to log in...</p>;
   }
 
   return (
     <>
-      <p className="mt-1 text-sm text-ink-500">Choose a new password for your account.</p>
-      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+      <p className="mb-6 text-sm text-ink-500">Choose a new password for your account.</p>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <FormField
           label="New password"
           name="password"
@@ -82,23 +82,16 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-12">
-      <Card className="w-full max-w-sm p-8">
-        <Link href="/" className="text-sm font-semibold text-ink-900">
-          Ratel
+    <AuthShell title="Set a new password">
+      <Suspense fallback={<p className="text-sm text-ink-500">Loading...</p>}>
+        <ResetPasswordForm />
+      </Suspense>
+
+      <p className="mt-5 text-center text-sm text-ink-500">
+        <Link href="/login" className="font-medium text-accent-hover hover:underline">
+          Back to log in
         </Link>
-        <h1 className="mt-4 text-xl font-semibold text-ink-900">Set a new password</h1>
-
-        <Suspense fallback={<p className="mt-4 text-sm text-ink-500">Loading...</p>}>
-          <ResetPasswordForm />
-        </Suspense>
-
-        <p className="mt-5 text-center text-sm text-ink-500">
-          <Link href="/login" className="font-medium text-accent-hover hover:underline">
-            Back to log in
-          </Link>
-        </p>
-      </Card>
-    </main>
+      </p>
+    </AuthShell>
   );
 }
