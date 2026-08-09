@@ -259,6 +259,7 @@ function RequestDetailModal({
             <div key={i} className="flex items-center justify-between text-sm">
               <span className="text-ink-700">
                 {sel.attributeName}: {sel.optionLabel}
+                {sel.requiresManualQuote && <span className="ml-1.5 text-xs font-medium text-accent-hover">(manual quote)</span>}
               </span>
               <span className="tabular text-ink-500">+{sel.priceModifier.toFixed(2)}</span>
             </div>

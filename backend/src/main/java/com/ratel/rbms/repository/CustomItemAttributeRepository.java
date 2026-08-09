@@ -12,4 +12,8 @@ public interface CustomItemAttributeRepository extends JpaRepository<CustomItemA
     List<CustomItemAttribute> findAllByBusinessIdOrderBySortOrderAsc(UUID businessId);
 
     Optional<CustomItemAttribute> findByIdAndBusinessId(UUID id, UUID businessId);
+
+    // Cheap "is the custom-order configurator usable at all" check for the
+    // /start hub — avoids loading the full list just to see if it's non-empty.
+    boolean existsByBusinessId(UUID businessId);
 }

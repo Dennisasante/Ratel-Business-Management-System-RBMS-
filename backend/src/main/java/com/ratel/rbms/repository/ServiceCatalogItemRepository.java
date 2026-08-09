@@ -18,4 +18,8 @@ public interface ServiceCatalogItemRepository extends JpaRepository<ServiceCatal
     // The public booking widget's service picker — only ever shows what the
     // business has explicitly opted in to online booking for.
     List<ServiceCatalogItem> findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(UUID businessId);
+
+    // Cheap "is booking usable at all" check for the /start hub — avoids
+    // loading the full list just to see if it's non-empty.
+    boolean existsByBusinessIdAndActiveTrueAndBookableOnlineTrue(UUID businessId);
 }

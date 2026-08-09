@@ -119,7 +119,15 @@ export default function CustomWigAttributesPage() {
           {attributes.map((attr) => (
             <Card key={attr.id} className="p-5">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold text-ink-900">{attr.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-ink-900">{attr.name}</h3>
+                  {attr.selectionType === "MULTIPLE" && (
+                    <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-medium text-ink-500">Multiple choice</span>
+                  )}
+                  {attr.stepGroup && (
+                    <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-medium text-ink-500">Group: {attr.stepGroup}</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setModal({ type: "edit", attribute: attr })}
@@ -145,6 +153,7 @@ export default function CustomWigAttributesPage() {
                     className="rounded-full border border-border bg-canvas px-2.5 py-1 text-xs text-ink-700"
                   >
                     {opt.label} <span className="text-ink-500">+{opt.priceModifier.toFixed(2)}</span>
+                    {opt.requiresManualQuote && <span className="ml-1 text-accent-hover">(manual quote)</span>}
                   </span>
                 ))}
               </div>

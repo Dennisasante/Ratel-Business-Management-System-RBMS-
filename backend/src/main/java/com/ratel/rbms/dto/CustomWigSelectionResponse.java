@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 public record CustomWigSelectionResponse(
         String attributeName,
         String optionLabel,
-        BigDecimal priceModifier
+        BigDecimal priceModifier,
+        boolean requiresManualQuote
 ) {
 }

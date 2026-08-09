@@ -97,6 +97,20 @@ public class CustomWigRequestService {
     public PublicCustomWigConfigResponse getConfig(UUID businessId) {
         Business business = businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return buildConfig(business);
+    }
+
+    // Backs the hosted custom-order page (ratel.app/order/{slug}) for businesses
+    // with no website of their own to embed the widget on — same reasoning as
+    // BookingService.getWidgetConfigBySlug.
+    public PublicCustomWigConfigResponse getConfigBySlug(String slug) {
+        Business business = businessRepository.findBySlug(slug)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return buildConfig(business);
+    }
+
+    private PublicCustomWigConfigResponse buildConfig(Business business) {
+        UUID businessId = business.getId();
         boolean enabled = planFeatureService.hasFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
         List<CustomItemAttributeResponse> attributes = enabled
                 ? attributeRepository.findAllByBusinessIdOrderBySortOrderAsc(businessId).stream()
@@ -108,7 +122,7 @@ public class CustomWigRequestService {
                 ? whatsAppLinkService.buildLink(integrations.getWhatsappNotifyNumber(),
                         "Hi " + business.getName() + ", I have a question about a custom wig request.")
                 : null;
-        return new PublicCustomWigConfigResponse(business.getName(), enabled, business.getCurrency(), attributes, businessWhatsappLink);
+        return new PublicCustomWigConfigResponse(businessId, business.getName(), enabled, business.getCurrency(), attributes, businessWhatsappLink);
     }
 
     @Transactional
@@ -257,7 +271,7 @@ public class CustomWigRequestService {
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That selection isn't valid."));
         CustomItemAttributeOption option = optionRepository.findByIdAndAttributeId(sel.optionId(), attribute.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That selection isn't valid."));
-        return new CustomWigSelectionResponse(attribute.getName(), option.getLabel(), option.getPriceModifier());
+        return new CustomWigSelectionResponse(attribute.getName(), option.getLabel(), option.getPriceModifier(), option.isRequiresManualQuote());
     }
 
     private String savePhoto(UUID businessId, MultipartFile file) {

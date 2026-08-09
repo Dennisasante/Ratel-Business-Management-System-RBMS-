@@ -10,6 +10,9 @@ public record CustomItemAttributeOptionRequest(
 
         BigDecimal priceModifier,
 
-        Integer sortOrder
+        Integer sortOrder,
+
+        // e.g. "Custom Colour" — null/false is the common case.
+        Boolean requiresManualQuote
 ) {
 }

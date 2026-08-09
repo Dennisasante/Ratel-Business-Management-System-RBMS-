@@ -6,6 +6,7 @@ import com.ratel.rbms.dto.CustomItemAttributeRequest;
 import com.ratel.rbms.dto.CustomItemAttributeResponse;
 import com.ratel.rbms.entity.CustomItemAttribute;
 import com.ratel.rbms.entity.CustomItemAttributeOption;
+import com.ratel.rbms.entity.enums.AttributeSelectionType;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.CustomItemAttributeOptionRepository;
 import com.ratel.rbms.repository.CustomItemAttributeRepository;
@@ -52,6 +53,8 @@ public class CustomItemAttributeService {
                 .businessId(businessId)
                 .name(req.name())
                 .sortOrder(req.sortOrder() != null ? req.sortOrder() : 0)
+                .selectionType(parseSelectionType(req.selectionType()))
+                .stepGroup(blankToNull(req.stepGroup()))
                 .build();
         attribute = attributeRepository.save(attribute);
         saveOptions(attribute.getId(), req.options());
@@ -63,12 +66,27 @@ public class CustomItemAttributeService {
         CustomItemAttribute attribute = getOwned(id);
         attribute.setName(req.name());
         attribute.setSortOrder(req.sortOrder() != null ? req.sortOrder() : 0);
+        attribute.setSelectionType(parseSelectionType(req.selectionType()));
+        attribute.setStepGroup(blankToNull(req.stepGroup()));
         attribute = attributeRepository.save(attribute);
 
         optionRepository.deleteAllByAttributeId(attribute.getId());
         saveOptions(attribute.getId(), req.options());
 
         return toResponse(attribute);
+    }
+
+    private AttributeSelectionType parseSelectionType(String value) {
+        if (value == null || value.isBlank()) return AttributeSelectionType.SINGLE;
+        try {
+            return AttributeSelectionType.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Selection type must be SINGLE or MULTIPLE.");
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     @Transactional
@@ -86,6 +104,7 @@ public class CustomItemAttributeService {
                     .label(opt.label())
                     .priceModifier(opt.priceModifier() != null ? opt.priceModifier() : BigDecimal.ZERO)
                     .sortOrder(opt.sortOrder() != null ? opt.sortOrder() : i)
+                    .requiresManualQuote(opt.requiresManualQuote() != null && opt.requiresManualQuote())
                     .build());
             i++;
         }

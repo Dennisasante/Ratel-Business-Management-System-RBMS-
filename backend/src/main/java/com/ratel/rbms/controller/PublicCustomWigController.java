@@ -37,6 +37,14 @@ public class PublicCustomWigController {
         return customWigRequestService.getConfig(businessId);
     }
 
+    // Backs the hosted custom-order page (ratel.app/order/{slug}) for businesses
+    // with no website of their own — same reasoning as PublicBookingController's
+    // by-slug/{slug}/widget-config.
+    @GetMapping("/by-slug/{slug}/config")
+    public PublicCustomWigConfigResponse configBySlug(@PathVariable String slug) {
+        return customWigRequestService.getConfigBySlug(slug);
+    }
+
     @PostMapping(value = "/requests", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CustomWigRequestCreatedResponse> submit(
             @RequestParam UUID businessId,

@@ -9,9 +9,10 @@ public record CustomItemAttributeOptionResponse(
         UUID id,
         String label,
         BigDecimal priceModifier,
-        int sortOrder
+        int sortOrder,
+        boolean requiresManualQuote
 ) {
     public static CustomItemAttributeOptionResponse from(CustomItemAttributeOption o) {
-        return new CustomItemAttributeOptionResponse(o.getId(), o.getLabel(), o.getPriceModifier(), o.getSortOrder());
+        return new CustomItemAttributeOptionResponse(o.getId(), o.getLabel(), o.getPriceModifier(), o.getSortOrder(), o.isRequiresManualQuote());
     }
 }

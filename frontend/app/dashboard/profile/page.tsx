@@ -26,7 +26,7 @@ export default function ProfilePage() {
   const [slugInput, setSlugInput] = useState("");
   const [savingSlug, setSavingSlug] = useState(false);
   const [slugError, setSlugError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
 
@@ -57,7 +57,13 @@ export default function ProfilePage() {
     setShowEdit(false);
   }
 
-  const bookingPageUrl = business ? `${typeof window !== "undefined" ? window.location.origin : ""}/book/${business.slug}` : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const startPageUrl = business ? `${origin}/start/${business.slug}` : "";
+  const bookingPageUrl = business ? `${origin}/book/${business.slug}` : "";
+  const orderPageUrl = business ? `${origin}/order/${business.slug}` : "";
+  const whatsappGreeting = business
+    ? `Hi! Thanks for reaching out to ${business.name} 👋 Tap here to book or place a custom order: ${startPageUrl}`
+    : "";
 
   function startEditSlug() {
     setSlugInput(business?.slug ?? "");
@@ -81,10 +87,10 @@ export default function ProfilePage() {
     }
   }
 
-  async function copyBookingLink() {
-    await navigator.clipboard.writeText(bookingPageUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyToClipboard(text: string, field: string) {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
   }
 
   if (loading || !session) {
@@ -179,33 +185,75 @@ export default function ProfilePage() {
       <Card className="max-w-2xl p-5">
         <div className="flex items-center gap-2">
           <Link2 size={16} className="text-ink-500" />
-          <h2 className="text-base font-semibold text-ink-900">Booking page</h2>
+          <h2 className="text-base font-semibold text-ink-900">Your customer link</h2>
         </div>
         <p className="mt-1 text-xs text-ink-500">
-          Share this link anywhere — bio, WhatsApp status, business card — so customers can book with you even if you
-          don&apos;t have your own website.
+          One link for everything — booking, custom orders, and whatever ships next. Put this in your WhatsApp bio or
+          pinned chat so customers can reach you even without a website.
         </p>
 
         {!editingSlug ? (
-          <div className="mt-3 flex items-center gap-2">
-            <code className="flex-1 truncate rounded-lg bg-canvas px-3 py-2 text-sm text-ink-900">{bookingPageUrl}</code>
-            <button
-              onClick={copyBookingLink}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-canvas"
-            >
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? "Copied" : "Copy"}
-            </button>
-            {canEdit && (
-              <button onClick={startEditSlug} className="text-xs font-medium text-accent-hover hover:underline">
-                Edit
+          <>
+            <div className="mt-3 flex items-center gap-2">
+              <code className="flex-1 truncate rounded-lg bg-accent-soft px-3 py-2 text-sm font-medium text-accent-hover">{startPageUrl}</code>
+              <button
+                onClick={() => copyToClipboard(startPageUrl, "start")}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-canvas"
+              >
+                {copiedField === "start" ? <Check size={13} /> : <Copy size={13} />}
+                {copiedField === "start" ? "Copied" : "Copy"}
               </button>
-            )}
-          </div>
+              {canEdit && (
+                <button onClick={startEditSlug} className="text-xs font-medium text-accent-hover hover:underline">
+                  Edit
+                </button>
+              )}
+            </div>
+
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs font-medium text-ink-500 hover:text-ink-700">
+                Direct links (for a website you already have)
+              </summary>
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-lg bg-canvas px-3 py-2 text-xs text-ink-700">{bookingPageUrl}</code>
+                  <button
+                    onClick={() => copyToClipboard(bookingPageUrl, "book")}
+                    className="shrink-0 rounded-lg border border-border p-2 text-ink-700 hover:bg-canvas"
+                    aria-label="Copy booking link"
+                  >
+                    {copiedField === "book" ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-lg bg-canvas px-3 py-2 text-xs text-ink-700">{orderPageUrl}</code>
+                  <button
+                    onClick={() => copyToClipboard(orderPageUrl, "order")}
+                    className="shrink-0 rounded-lg border border-border p-2 text-ink-700 hover:bg-canvas"
+                    aria-label="Copy custom order link"
+                  >
+                    {copiedField === "order" ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="text-xs font-medium text-ink-700">Suggested WhatsApp greeting</p>
+              <p className="mt-1 rounded-lg bg-canvas px-3 py-2 text-xs text-ink-700">{whatsappGreeting}</p>
+              <button
+                onClick={() => copyToClipboard(whatsappGreeting, "greeting")}
+                className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-canvas"
+              >
+                {copiedField === "greeting" ? <Check size={13} /> : <Copy size={13} />}
+                {copiedField === "greeting" ? "Copied" : "Copy message"}
+              </button>
+            </div>
+          </>
         ) : (
           <form onSubmit={saveSlug} className="mt-3 flex flex-col gap-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm text-ink-500">{typeof window !== "undefined" ? window.location.origin : ""}/book/</span>
+              <span className="text-sm text-ink-500">{origin}/start/</span>
               <input
                 type="text"
                 value={slugInput}
@@ -213,6 +261,7 @@ export default function ProfilePage() {
                 className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
             </div>
+            <p className="text-xs text-ink-500">This changes the link for booking and custom orders too — they all share the same one.</p>
             {slugError && <p className="text-sm text-danger">{slugError}</p>}
             <div className="flex gap-2">
               <Button type="submit" disabled={savingSlug || !slugInput.trim()}>

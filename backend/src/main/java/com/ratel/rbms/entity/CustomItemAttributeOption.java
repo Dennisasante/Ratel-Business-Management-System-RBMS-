@@ -36,4 +36,11 @@ public class CustomItemAttributeOption {
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private int sortOrder = 0;
+
+    // e.g. "Custom Colour" — priceModifier stays informational (typically 0);
+    // the customer-facing estimate is labeled "final price confirmed by us"
+    // whenever a selected option carries this flag.
+    @Column(name = "requires_manual_quote", nullable = false)
+    @Builder.Default
+    private boolean requiresManualQuote = false;
 }
