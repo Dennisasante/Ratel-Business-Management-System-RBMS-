@@ -3,10 +3,10 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import PasswordInput from "@/components/PasswordInput";
+import PlatformAuthShell from "@/components/auth/PlatformAuthShell";
 
 const DARK_INPUT_CLASS =
   "rounded-lg border border-sidebar-border bg-sidebar px-3 py-2 text-sm text-sidebar-text-active focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30";
@@ -46,11 +46,11 @@ function ResetForm() {
   }
 
   if (done) {
-    return <p className="mt-4 text-sm text-sidebar-text">Password updated. Redirecting you to log in...</p>;
+    return <p className="text-sm text-sidebar-text">Password updated. Redirecting you to log in...</p>;
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <PasswordInput
         label="New password"
         required
@@ -81,24 +81,16 @@ function ResetForm() {
 
 export default function PlatformResetPasswordPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-sidebar px-4 py-12">
-      <div className="w-full max-w-sm rounded-xl border border-sidebar-border bg-[#20242E] p-8 shadow-panel">
-        <div className="flex items-center gap-2 text-sidebar-text-active">
-          <ShieldCheck size={20} />
-          <span className="text-sm font-semibold tracking-wide">RATEL PLATFORM</span>
-        </div>
-        <h1 className="mt-4 text-xl font-semibold text-sidebar-text-active">Set a new password</h1>
+    <PlatformAuthShell title="Set a new password">
+      <Suspense fallback={<p className="text-sm text-sidebar-text">Loading...</p>}>
+        <ResetForm />
+      </Suspense>
 
-        <Suspense fallback={<p className="mt-4 text-sm text-sidebar-text">Loading...</p>}>
-          <ResetForm />
-        </Suspense>
-
-        <p className="mt-5 text-center text-sm text-sidebar-text">
-          <Link href="/platform/login" className="font-medium text-accent-hover hover:underline">
-            Back to log in
-          </Link>
-        </p>
-      </div>
-    </main>
+      <p className="mt-5 text-center text-sm text-sidebar-text">
+        <Link href="/platform/login" className="font-medium hover:underline" style={{ color: "#7fa5e8" }}>
+          Back to log in
+        </Link>
+      </p>
+    </PlatformAuthShell>
   );
 }
