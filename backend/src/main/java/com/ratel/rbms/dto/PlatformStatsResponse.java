@@ -9,6 +9,12 @@ public record PlatformStatsResponse(
         int totalUsers,
         BigDecimal totalPlatformRevenue,
         List<DayCount> signupsByDay,
-        List<DayCount> activityByDay
+        List<DayCount> activityByDay,
+        List<PlatformBillingStatusCount> billingStatusBreakdown,
+        List<PlatformPlanMixEntry> planMix,
+        long totalBookings,
+        long totalEcommerceOrders,
+        long totalCustomWigRequests,
+        long totalServiceOrders
 ) {
 }

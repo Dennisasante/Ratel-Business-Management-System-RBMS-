@@ -12,6 +12,7 @@ public record PlatformBusinessSummaryResponse(
         boolean active,
         int userCount,
         String ownerEmail,
-        Instant createdAt
+        Instant createdAt,
+        String billingStatus
 ) {
 }

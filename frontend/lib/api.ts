@@ -81,6 +81,17 @@ export interface DayCount {
   count: number;
 }
 
+export interface PlatformBillingStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface PlatformPlanMixEntry {
+  planName: string;
+  businessCount: number;
+  mrr: number;
+}
+
 export interface PlatformStats {
   totalBusinesses: number;
   activeBusinesses: number;
@@ -88,6 +99,12 @@ export interface PlatformStats {
   totalPlatformRevenue: number;
   signupsByDay: DayCount[];
   activityByDay: DayCount[];
+  billingStatusBreakdown: PlatformBillingStatusCount[];
+  planMix: PlatformPlanMixEntry[];
+  totalBookings: number;
+  totalEcommerceOrders: number;
+  totalCustomWigRequests: number;
+  totalServiceOrders: number;
 }
 
 export type MovementType = "ADD" | "REMOVE" | "ADJUST";
@@ -706,6 +723,8 @@ export interface SubscriptionPaymentSummary {
   createdAt: string;
 }
 
+export type PlatformBillingStatus = "TRIALING" | "ACTIVE" | "READ_ONLY";
+
 export interface PlatformBusinessSummary {
   id: string;
   name: string;
@@ -716,6 +735,7 @@ export interface PlatformBusinessSummary {
   userCount: number;
   ownerEmail: string;
   createdAt: string;
+  billingStatus: PlatformBillingStatus;
 }
 
 export interface PlatformBusinessDetail {
@@ -737,6 +757,18 @@ export interface PlatformBusinessDetail {
   totalRevenue: number;
   expenseCount: number;
   totalExpenses: number;
+  billingStatus: PlatformBillingStatus;
+  trialEndsAt: string | null;
+  currentPeriodEndsAt: string | null;
+  planName: string;
+  bookingCount: number;
+  ecommerceOrderCount: number;
+  customWigRequestCount: number;
+  serviceOrderCount: number;
+  paystackConfigured: boolean;
+  woocommerceConfigured: boolean;
+  whatsappConfigured: boolean;
+  staffByRole: Record<string, number>;
 }
 
 class ApiError extends Error {

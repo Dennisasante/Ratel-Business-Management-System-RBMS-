@@ -15,6 +15,18 @@ import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 
 type StatusFilter = "all" | "active" | "inactive";
 
+const BILLING_STATUS_LABEL: Record<string, string> = {
+  TRIALING: "Trialing",
+  ACTIVE: "Active",
+  READ_ONLY: "Read-only",
+};
+
+const BILLING_STATUS_TONE: Record<string, "success" | "info" | "danger"> = {
+  ACTIVE: "success",
+  TRIALING: "info",
+  READ_ONLY: "danger",
+};
+
 export default function PlatformBusinessesPage() {
   const { session } = usePlatformAuth();
   const [businesses, setBusinesses] = useState<PlatformBusinessSummary[]>([]);
@@ -69,7 +81,7 @@ export default function PlatformBusinessesPage() {
 
         <Card>
           {fetching ? (
-            <TableSkeleton cols={7} />
+            <TableSkeleton cols={8} />
           ) : businesses.length === 0 ? (
             <EmptyState icon={Building2} title="No matching businesses" description="Try a different search or filter." />
           ) : (
@@ -82,6 +94,7 @@ export default function PlatformBusinessesPage() {
                   <Th>Owner</Th>
                   <Th>Users</Th>
                   <Th>Plan</Th>
+                  <Th>Billing</Th>
                   <Th>Status</Th>
                 </Tr>
               </THead>
@@ -98,6 +111,11 @@ export default function PlatformBusinessesPage() {
                     <Td className="text-ink-500">{b.ownerEmail}</Td>
                     <Td className="tabular text-ink-500">{b.userCount}</Td>
                     <Td className="text-ink-500">{b.subscriptionPlan}</Td>
+                    <Td>
+                      <Badge tone={BILLING_STATUS_TONE[b.billingStatus] ?? "info"}>
+                        {BILLING_STATUS_LABEL[b.billingStatus] ?? b.billingStatus}
+                      </Badge>
+                    </Td>
                     <Td>
                       <Badge tone={b.active ? "success" : "danger"}>{b.active ? "Active" : "Suspended"}</Badge>
                     </Td>

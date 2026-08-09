@@ -3,6 +3,7 @@ package com.ratel.rbms.dto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record PlatformBusinessDetailResponse(
@@ -23,6 +24,18 @@ public record PlatformBusinessDetailResponse(
         int salesCount,
         BigDecimal totalRevenue,
         int expenseCount,
-        BigDecimal totalExpenses
+        BigDecimal totalExpenses,
+        String billingStatus,
+        Instant trialEndsAt,
+        Instant currentPeriodEndsAt,
+        String planName,
+        long bookingCount,
+        long ecommerceOrderCount,
+        long customWigRequestCount,
+        long serviceOrderCount,
+        boolean paystackConfigured,
+        boolean woocommerceConfigured,
+        boolean whatsappConfigured,
+        Map<String, Long> staffByRole
 ) {
 }

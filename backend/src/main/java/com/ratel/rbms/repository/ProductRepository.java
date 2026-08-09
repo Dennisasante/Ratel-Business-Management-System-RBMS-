@@ -25,6 +25,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     long countByBusinessIdAndCategoryId(UUID businessId, UUID categoryId);
 
+    // Per-business usage count (super admin stats).
+    long countByBusinessId(UUID businessId);
+
     // Backs the Inventory search box + category filter, and the identical params
     // on the Sales/PO product pickers. includeArchived=false is the default view;
     // true (or an explicit categoryId) still respects the other filters.

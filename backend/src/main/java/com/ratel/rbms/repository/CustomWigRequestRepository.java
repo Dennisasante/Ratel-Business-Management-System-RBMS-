@@ -12,4 +12,10 @@ public interface CustomWigRequestRepository extends JpaRepository<CustomWigReque
     List<CustomWigRequest> findAllByBusinessIdOrderByCreatedAtDesc(UUID businessId);
 
     Optional<CustomWigRequest> findByIdAndBusinessId(UUID id, UUID businessId);
+
+    // Per-business and platform-wide usage counts (super admin stats) — both
+    // exclude test-mode submissions, same convention as BookingRepository.
+    long countByBusinessIdAndTest(UUID businessId, boolean test);
+
+    long countByTest(boolean test);
 }

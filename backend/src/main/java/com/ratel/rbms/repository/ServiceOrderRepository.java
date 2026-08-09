@@ -41,6 +41,10 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, UUID
 
     long countByBusinessIdAndServiceTypeId(UUID businessId, UUID serviceTypeId);
 
+    // Per-business usage count (super admin stats). Platform-wide total uses
+    // the inherited count().
+    long countByBusinessId(UUID businessId);
+
     // Candidates that could possibly overlap a requested booking window, narrowed
     // by the caller to [requestedStart - duration, requestedEnd) — any wider bound
     // is unnecessary since every order for the same catalog item shares that

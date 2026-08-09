@@ -20,4 +20,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     // Matches a returning booking-widget customer by phone/WhatsApp so repeat
     // bookings link to the same customer record instead of creating duplicates.
     Optional<Customer> findFirstByBusinessIdAndPhone(UUID businessId, String phone);
+
+    // Per-business usage count (super admin stats).
+    long countByBusinessId(UUID businessId);
 }

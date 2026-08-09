@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Users, TrendingUp, Wallet } from "lucide-react";
+import { Building2, Users, TrendingUp, Wallet, CalendarDays, ShoppingBag, Sparkles, Wrench } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 import { api, PlatformBusinessSummary, PlatformStats } from "@/lib/api";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -13,6 +13,18 @@ import Badge from "@/components/ui/Badge";
 import MiniBarChart from "@/components/ui/MiniBarChart";
 import CardSkeleton from "@/components/ui/CardSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+
+const BILLING_STATUS_LABEL: Record<string, string> = {
+  TRIALING: "Trialing",
+  ACTIVE: "Active",
+  READ_ONLY: "Read-only",
+};
+
+const BILLING_STATUS_TONE: Record<string, "success" | "info" | "danger"> = {
+  ACTIVE: "success",
+  TRIALING: "info",
+  READ_ONLY: "danger",
+};
 
 export default function PlatformOverviewPage() {
   const { session } = usePlatformAuth();
@@ -52,6 +64,16 @@ export default function PlatformOverviewPage() {
               <StatCard label="Signups (30d)" value={stats.signupsByDay.reduce((s, d) => s + d.count, 0)} icon={TrendingUp} tone="danger" />
             </div>
 
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-ink-500">Feature usage, platform-wide</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Bookings" value={stats.totalBookings} icon={CalendarDays} tone="accent" />
+                <StatCard label="E-commerce orders" value={stats.totalEcommerceOrders} icon={ShoppingBag} tone="info" />
+                <StatCard label="Custom wig requests" value={stats.totalCustomWigRequests} icon={Sparkles} tone="danger" />
+                <StatCard label="Service orders" value={stats.totalServiceOrders} icon={Wrench} tone="success" />
+              </div>
+            </div>
+
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="p-5">
                 <h2 className="text-base font-semibold text-ink-900">New businesses — last 30 days</h2>
@@ -64,6 +86,45 @@ export default function PlatformOverviewPage() {
                 <div className="mt-3">
                   <MiniBarChart data={stats.activityByDay} color="#0E7C86" />
                 </div>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="p-5">
+                <h2 className="text-base font-semibold text-ink-900">Billing status</h2>
+                <div className="mt-4 flex flex-col gap-3">
+                  {stats.billingStatusBreakdown.length === 0 ? (
+                    <p className="text-sm text-ink-500">No businesses yet.</p>
+                  ) : (
+                    stats.billingStatusBreakdown.map((b) => (
+                      <div key={b.status} className="flex items-center justify-between">
+                        <Badge tone={BILLING_STATUS_TONE[b.status] ?? "info"}>
+                          {BILLING_STATUS_LABEL[b.status] ?? b.status}
+                        </Badge>
+                        <span className="tabular text-sm font-semibold text-ink-900">{b.count}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+              <Card className="p-5">
+                <h2 className="text-base font-semibold text-ink-900">Plan mix</h2>
+                <p className="mt-1 text-xs text-ink-500">MRR reflects only currently-paying (Active) businesses on each plan.</p>
+                {stats.planMix.length === 0 ? (
+                  <p className="mt-4 text-sm text-ink-500">No businesses on a paid plan yet.</p>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-3">
+                    {stats.planMix.map((p) => (
+                      <div key={p.planName} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-ink-900">{p.planName}</p>
+                          <p className="text-xs text-ink-500">{p.businessCount} business{p.businessCount === 1 ? "" : "es"}</p>
+                        </div>
+                        <span className="tabular text-sm font-semibold text-ink-900">GH₵{p.mrr.toFixed(2)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Card>
             </div>
 

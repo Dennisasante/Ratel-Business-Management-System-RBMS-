@@ -16,4 +16,7 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
 
     // Used by the reports endpoint to total expenses within a date range.
     List<Expense> findAllByBusinessIdAndExpenseDateBetween(UUID businessId, LocalDate from, LocalDate to);
+
+    // Per-business usage count (super admin stats).
+    long countByBusinessId(UUID businessId);
 }

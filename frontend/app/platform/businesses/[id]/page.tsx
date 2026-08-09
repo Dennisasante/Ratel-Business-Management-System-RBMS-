@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Package, Users2, ShoppingCart, Wallet, Trash2, Power } from "lucide-react";
+import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 import { api, ApiError, PlatformBusinessDetail } from "@/lib/api";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -14,6 +14,31 @@ import Button from "@/components/ui/Button";
 import StatCard from "@/components/ui/StatCard";
 import Modal from "@/components/Modal";
 import CardSkeleton from "@/components/ui/CardSkeleton";
+
+const BILLING_STATUS_LABEL: Record<string, string> = {
+  TRIALING: "Trialing",
+  ACTIVE: "Active",
+  READ_ONLY: "Read-only",
+};
+
+const BILLING_STATUS_TONE: Record<string, "success" | "info" | "danger"> = {
+  ACTIVE: "success",
+  TRIALING: "info",
+  READ_ONLY: "danger",
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  OWNER: "Owner",
+  MANAGER: "Administrator",
+  SALES_PERSON: "Sales person",
+  ACCOUNTANT: "Accountant",
+  STAFF: "Staff",
+};
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
 export default function PlatformBusinessDetailPage() {
   const { session } = usePlatformAuth();
@@ -119,7 +144,18 @@ export default function PlatformBusinessDetailPage() {
               <StatCard label="Expenses" value={business.expenseCount} hint={`GH₵${business.totalExpenses.toFixed(2)} total`} icon={Wallet} tone="danger" />
             </div>
 
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-ink-500">Feature usage</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Bookings" value={business.bookingCount} icon={CalendarDays} tone="accent" />
+                <StatCard label="E-commerce orders" value={business.ecommerceOrderCount} icon={ShoppingBag} tone="info" />
+                <StatCard label="Custom wig requests" value={business.customWigRequestCount} icon={Sparkles} tone="danger" />
+                <StatCard label="Service orders" value={business.serviceOrderCount} icon={Wrench} tone="success" />
+              </div>
+            </div>
+
             <div className="grid gap-6 lg:grid-cols-2">
+              <div className="flex flex-col gap-6">
               <Card className="p-5">
                 <h2 className="text-base font-semibold text-ink-900">Business details</h2>
                 <dl className="mt-4 space-y-3 text-sm">
@@ -135,9 +171,23 @@ export default function PlatformBusinessDetailPage() {
                     <dt className="text-ink-500">Currency</dt>
                     <dd className="font-medium text-ink-900">{business.currency}</dd>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between border-b border-border pb-3">
                     <dt className="text-ink-500">Plan</dt>
-                    <dd className="font-medium text-ink-900">{business.subscriptionPlan}</dd>
+                    <dd className="font-medium text-ink-900">{business.planName}</dd>
+                  </div>
+                  <div className="flex justify-between border-b border-border pb-3">
+                    <dt className="text-ink-500">Billing status</dt>
+                    <dd>
+                      <Badge tone={BILLING_STATUS_TONE[business.billingStatus] ?? "info"}>
+                        {BILLING_STATUS_LABEL[business.billingStatus] ?? business.billingStatus}
+                      </Badge>
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-ink-500">{business.billingStatus === "TRIALING" ? "Trial ends" : "Renews"}</dt>
+                    <dd className="font-medium text-ink-900">
+                      {formatDate(business.billingStatus === "TRIALING" ? business.trialEndsAt : business.currentPeriodEndsAt)}
+                    </dd>
                   </div>
                 </dl>
                 <div className="mt-4">
@@ -153,7 +203,53 @@ export default function PlatformBusinessDetailPage() {
               </Card>
 
               <Card className="p-5">
-                <h2 className="text-base font-semibold text-ink-900">Team ({business.users.length})</h2>
+                <h2 className="text-base font-semibold text-ink-900">Integrations</h2>
+                <ul className="mt-4 space-y-3 text-sm">
+                  <li className="flex items-center justify-between border-b border-border pb-3">
+                    <span className="flex items-center gap-2 text-ink-700">
+                      <CreditCard size={15} className="text-ink-500" />
+                      Paystack
+                    </span>
+                    <Badge tone={business.paystackConfigured ? "success" : "neutral"}>
+                      {business.paystackConfigured ? "Configured" : "Not set up"}
+                    </Badge>
+                  </li>
+                  <li className="flex items-center justify-between border-b border-border pb-3">
+                    <span className="flex items-center gap-2 text-ink-700">
+                      <ShoppingBag size={15} className="text-ink-500" />
+                      WooCommerce
+                    </span>
+                    <Badge tone={business.woocommerceConfigured ? "success" : "neutral"}>
+                      {business.woocommerceConfigured ? "Configured" : "Not set up"}
+                    </Badge>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-ink-700">
+                      <MessageCircle size={15} className="text-ink-500" />
+                      WhatsApp notify number
+                    </span>
+                    <Badge tone={business.whatsappConfigured ? "success" : "neutral"}>
+                      {business.whatsappConfigured ? "Configured" : "Not set up"}
+                    </Badge>
+                  </li>
+                </ul>
+              </Card>
+              </div>
+
+              <Card className="p-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-ink-900">Team ({business.users.length})</h2>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {Object.entries(business.staffByRole)
+                    .filter(([, count]) => count > 0)
+                    .map(([role, count]) => (
+                      <Badge key={role} tone="neutral">
+                        {count} {ROLE_LABEL[role] ?? role}
+                        {count === 1 ? "" : "s"}
+                      </Badge>
+                    ))}
+                </div>
                 <ul className="mt-4 space-y-3">
                   {business.users.map((u) => (
                     <li key={u.id} className="flex items-center justify-between gap-2 border-b border-border pb-3 text-sm last:border-0 last:pb-0">
@@ -162,7 +258,7 @@ export default function PlatformBusinessDetailPage() {
                         <p className="text-ink-500">{u.email}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
-                        <Badge tone="neutral">{u.role}</Badge>
+                        <Badge tone="neutral">{ROLE_LABEL[u.role] ?? u.role}</Badge>
                         <button
                           onClick={() => handleResetPassword(u.id, u.fullName)}
                           disabled={resettingUserId === u.id}

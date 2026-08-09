@@ -27,4 +27,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     // Used by the Super Admin's business list to show who owns each account.
     Optional<User> findFirstByBusinessIdAndRole(UUID businessId, Role role);
+
+    // Per-business usage count (super admin stats) — avoids loading the full
+    // list just to call .size() when only a count is needed.
+    long countByBusinessId(UUID businessId);
 }

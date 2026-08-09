@@ -5,16 +5,22 @@ import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.UserResponse;
 import com.ratel.rbms.entity.Business;
-import com.ratel.rbms.entity.Sale;
-import com.ratel.rbms.entity.Expense;
+import com.ratel.rbms.entity.BusinessIntegrations;
+import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.BookingRepository;
+import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.CustomerRepository;
+import com.ratel.rbms.repository.EcommerceOrderRepository;
 import com.ratel.rbms.repository.ExpenseRepository;
 import com.ratel.rbms.repository.ProductRepository;
 import com.ratel.rbms.repository.SaleRepository;
+import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,7 +28,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -37,6 +45,12 @@ public class PlatformBusinessService {
     private final CustomerRepository customerRepository;
     private final SaleRepository saleRepository;
     private final ExpenseRepository expenseRepository;
+    private final BookingRepository bookingRepository;
+    private final EcommerceOrderRepository ecommerceOrderRepository;
+    private final CustomWigRequestRepository customWigRequestRepository;
+    private final ServiceOrderRepository serviceOrderRepository;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final PasswordEncoder passwordEncoder;
     private final PlatformAuditLogService auditLogService;
 
@@ -47,6 +61,12 @@ public class PlatformBusinessService {
             CustomerRepository customerRepository,
             SaleRepository saleRepository,
             ExpenseRepository expenseRepository,
+            BookingRepository bookingRepository,
+            EcommerceOrderRepository ecommerceOrderRepository,
+            CustomWigRequestRepository customWigRequestRepository,
+            ServiceOrderRepository serviceOrderRepository,
+            SubscriptionPlanRepository subscriptionPlanRepository,
+            BusinessIntegrationsRepository businessIntegrationsRepository,
             PasswordEncoder passwordEncoder,
             PlatformAuditLogService auditLogService
     ) {
@@ -56,6 +76,12 @@ public class PlatformBusinessService {
         this.customerRepository = customerRepository;
         this.saleRepository = saleRepository;
         this.expenseRepository = expenseRepository;
+        this.bookingRepository = bookingRepository;
+        this.ecommerceOrderRepository = ecommerceOrderRepository;
+        this.customWigRequestRepository = customWigRequestRepository;
+        this.serviceOrderRepository = serviceOrderRepository;
+        this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogService = auditLogService;
     }
@@ -75,17 +101,44 @@ public class PlatformBusinessService {
         Business business = businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
 
-        List<UserResponse> users = userRepository.findAllByBusinessId(businessId).stream()
-                .map(UserResponse::from)
-                .toList();
+        List<User> rawUsers = userRepository.findAllByBusinessId(businessId);
+        List<UserResponse> users = rawUsers.stream().map(UserResponse::from).toList();
 
-        int productCount = productRepository.findAllByBusinessIdOrderByNameAsc(businessId).size();
-        int customerCount = customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId).size();
-        List<Sale> sales = saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
-        List<Expense> expenses = expenseRepository.findAllByBusinessIdOrderByExpenseDateDesc(businessId);
+        int productCount = (int) productRepository.countByBusinessId(businessId);
+        int customerCount = (int) customerRepository.countByBusinessId(businessId);
+        List<com.ratel.rbms.entity.Sale> sales = saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
+        List<com.ratel.rbms.entity.Expense> expenses = expenseRepository.findAllByBusinessIdOrderByExpenseDateDesc(businessId);
 
-        BigDecimal totalRevenue = sales.stream().map(Sale::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalExpenses = expenses.stream().map(Expense::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalRevenue = sales.stream().map(com.ratel.rbms.entity.Sale::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalExpenses = expenses.stream().map(com.ratel.rbms.entity.Expense::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        String planName = business.getSubscriptionPlanId() != null
+                ? subscriptionPlanRepository.findById(business.getSubscriptionPlanId())
+                        .map(SubscriptionPlan::getName)
+                        .orElse("Unknown plan")
+                : "No plan";
+
+        long bookingCount = bookingRepository.countByBusinessIdAndTest(businessId, false);
+        long ecommerceOrderCount = ecommerceOrderRepository.countByBusinessId(businessId);
+        long customWigRequestCount = customWigRequestRepository.countByBusinessIdAndTest(businessId, false);
+        long serviceOrderCount = serviceOrderRepository.countByBusinessId(businessId);
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
+        boolean paystackConfigured = integrations != null && integrations.getPaystackSecretKey() != null;
+        boolean woocommerceConfigured = integrations != null
+                && integrations.getWoocommerceConsumerKey() != null
+                && integrations.getWoocommerceConsumerSecret() != null;
+        boolean whatsappConfigured = integrations != null
+                && integrations.getWhatsappNotifyNumber() != null
+                && !integrations.getWhatsappNotifyNumber().isBlank();
+
+        Map<String, Long> staffByRole = new LinkedHashMap<>();
+        for (Role role : Role.values()) {
+            staffByRole.put(role.name(), 0L);
+        }
+        for (User user : rawUsers) {
+            staffByRole.merge(user.getRole().name(), 1L, Long::sum);
+        }
 
         return new PlatformBusinessDetailResponse(
                 business.getId(),
@@ -105,7 +158,19 @@ public class PlatformBusinessService {
                 sales.size(),
                 totalRevenue,
                 expenses.size(),
-                totalExpenses
+                totalExpenses,
+                business.getBillingStatus().name(),
+                business.getTrialEndsAt(),
+                business.getCurrentPeriodEndsAt(),
+                planName,
+                bookingCount,
+                ecommerceOrderCount,
+                customWigRequestCount,
+                serviceOrderCount,
+                paystackConfigured,
+                woocommerceConfigured,
+                whatsappConfigured,
+                staffByRole
         );
     }
 
@@ -172,7 +237,8 @@ public class PlatformBusinessService {
                 business.isActive(),
                 users.size(),
                 ownerEmail,
-                business.getCreatedAt()
+                business.getCreatedAt(),
+                business.getBillingStatus().name()
         );
     }
 

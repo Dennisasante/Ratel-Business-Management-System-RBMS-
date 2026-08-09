@@ -15,4 +15,8 @@ public interface EcommerceOrderRepository extends JpaRepository<EcommerceOrder, 
 
     // Idempotency for webhook retries — Woo may redeliver the same order.created event.
     Optional<EcommerceOrder> findByBusinessIdAndWooOrderId(UUID businessId, long wooOrderId);
+
+    // Per-business usage count (super admin stats). Platform-wide total uses
+    // the inherited count().
+    long countByBusinessId(UUID businessId);
 }

@@ -34,6 +34,38 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
 
     long countBySubscriptionPlanId(UUID planId);
 
+    // Super admin platform stats: totalBusinesses uses the inherited count().
+    long countByActive(boolean active);
+
+    @Query("SELECT b.billingStatus AS billingStatus, COUNT(b) AS total FROM Business b GROUP BY b.billingStatus")
+    List<BillingStatusCount> countGroupedByBillingStatus();
+
+    @Query("SELECT b.subscriptionPlanId AS planId, COUNT(b) AS total FROM Business b "
+            + "WHERE b.subscriptionPlanId IS NOT NULL GROUP BY b.subscriptionPlanId")
+    List<PlanBusinessCount> countGroupedBySubscriptionPlan();
+
+    // Same shape, but only businesses currently paying (ACTIVE) — used to
+    // compute MRR per plan, since a TRIALING or READ_ONLY business still has
+    // a subscriptionPlanId set but isn't actually contributing revenue.
+    @Query("SELECT b.subscriptionPlanId AS planId, COUNT(b) AS total FROM Business b "
+            + "WHERE b.subscriptionPlanId IS NOT NULL AND b.billingStatus = com.ratel.rbms.entity.enums.BillingStatus.ACTIVE "
+            + "GROUP BY b.subscriptionPlanId")
+    List<PlanBusinessCount> countActiveGroupedBySubscriptionPlan();
+
+    // Signups-by-day chart — only needs businesses created within the window,
+    // not a full-table load.
+    List<Business> findAllByCreatedAtAfter(Instant cutoff);
+
+    interface BillingStatusCount {
+        BillingStatus getBillingStatus();
+        long getTotal();
+    }
+
+    interface PlanBusinessCount {
+        UUID getPlanId();
+        long getTotal();
+    }
+
     // Scheduled expiry job: still-trialing businesses whose trial has lapsed.
     List<Business> findAllByBillingStatusAndTrialEndsAtBefore(BillingStatus status, Instant cutoff);
 

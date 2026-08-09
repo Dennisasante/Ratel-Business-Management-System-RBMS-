@@ -1,13 +1,20 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.DayCount;
+import com.ratel.rbms.dto.PlatformBillingStatusCount;
+import com.ratel.rbms.dto.PlatformPlanMixEntry;
 import com.ratel.rbms.dto.PlatformStatsResponse;
 import com.ratel.rbms.entity.ActivityLog;
 import com.ratel.rbms.entity.Business;
-import com.ratel.rbms.entity.Sale;
+import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.repository.ActivityLogRepository;
+import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.CustomWigRequestRepository;
+import com.ratel.rbms.repository.EcommerceOrderRepository;
 import com.ratel.rbms.repository.SaleRepository;
+import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +26,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,45 +38,103 @@ public class PlatformStatsService {
     private final UserRepository userRepository;
     private final SaleRepository saleRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final BookingRepository bookingRepository;
+    private final EcommerceOrderRepository ecommerceOrderRepository;
+    private final CustomWigRequestRepository customWigRequestRepository;
+    private final ServiceOrderRepository serviceOrderRepository;
+    private final SubscriptionPlanRepository subscriptionPlanRepository;
 
     public PlatformStatsService(
             BusinessRepository businessRepository,
             UserRepository userRepository,
             SaleRepository saleRepository,
-            ActivityLogRepository activityLogRepository
+            ActivityLogRepository activityLogRepository,
+            BookingRepository bookingRepository,
+            EcommerceOrderRepository ecommerceOrderRepository,
+            CustomWigRequestRepository customWigRequestRepository,
+            ServiceOrderRepository serviceOrderRepository,
+            SubscriptionPlanRepository subscriptionPlanRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
         this.saleRepository = saleRepository;
         this.activityLogRepository = activityLogRepository;
+        this.bookingRepository = bookingRepository;
+        this.ecommerceOrderRepository = ecommerceOrderRepository;
+        this.customWigRequestRepository = customWigRequestRepository;
+        this.serviceOrderRepository = serviceOrderRepository;
+        this.subscriptionPlanRepository = subscriptionPlanRepository;
     }
 
     public PlatformStatsResponse getStats() {
-        List<Business> businesses = businessRepository.findAll();
-        int totalUsers = userRepository.findAll().size();
-
-        BigDecimal totalRevenue = saleRepository.findAll().stream()
-                .map(Sale::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         Instant cutoff = Instant.now().minus(WINDOW_DAYS, ChronoUnit.DAYS);
 
-        Map<String, Long> signupsByDay = businesses.stream()
-                .filter(b -> b.getCreatedAt() != null && b.getCreatedAt().isAfter(cutoff))
+        int totalBusinesses = (int) businessRepository.count();
+        int activeBusinesses = (int) businessRepository.countByActive(true);
+        int totalUsers = (int) userRepository.count();
+        BigDecimal totalRevenue = saleRepository.sumTotalAmount();
+
+        List<Business> recentBusinesses = businessRepository.findAllByCreatedAtAfter(cutoff);
+        Map<String, Long> signupsByDay = recentBusinesses.stream()
                 .collect(Collectors.groupingBy(b -> dayKey(b.getCreatedAt()), TreeMap::new, Collectors.counting()));
 
         List<ActivityLog> recentActivity = activityLogRepository.findAllByCreatedAtAfter(cutoff);
         Map<String, Long> activityByDay = recentActivity.stream()
                 .collect(Collectors.groupingBy(a -> dayKey(a.getCreatedAt()), TreeMap::new, Collectors.counting()));
 
+        List<PlatformBillingStatusCount> billingStatusBreakdown = businessRepository.countGroupedByBillingStatus().stream()
+                .map(row -> new PlatformBillingStatusCount(row.getBillingStatus().name(), row.getTotal()))
+                .toList();
+
+        // Non-test usage, platform-wide — Booking/CustomWigRequest have a test-mode
+        // flag (same one BookingService checks before sending real notifications);
+        // EcommerceOrder/ServiceOrder don't, so their plain count() is already real usage.
+        long totalBookings = bookingRepository.countByTest(false);
+        long totalEcommerceOrders = ecommerceOrderRepository.count();
+        long totalCustomWigRequests = customWigRequestRepository.countByTest(false);
+        long totalServiceOrders = serviceOrderRepository.count();
+
         return new PlatformStatsResponse(
-                businesses.size(),
-                (int) businesses.stream().filter(Business::isActive).count(),
+                totalBusinesses,
+                activeBusinesses,
                 totalUsers,
                 totalRevenue,
                 fillGaps(signupsByDay),
-                fillGaps(activityByDay)
+                fillGaps(activityByDay),
+                billingStatusBreakdown,
+                buildPlanMix(),
+                totalBookings,
+                totalEcommerceOrders,
+                totalCustomWigRequests,
+                totalServiceOrders
         );
+    }
+
+    private List<PlatformPlanMixEntry> buildPlanMix() {
+        List<BusinessRepository.PlanBusinessCount> totalCounts = businessRepository.countGroupedBySubscriptionPlan();
+        if (totalCounts.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, Long> activeCounts = businessRepository.countActiveGroupedBySubscriptionPlan().stream()
+                .collect(Collectors.toMap(BusinessRepository.PlanBusinessCount::getPlanId, BusinessRepository.PlanBusinessCount::getTotal));
+
+        Map<UUID, SubscriptionPlan> plans = subscriptionPlanRepository
+                .findAllById(totalCounts.stream().map(BusinessRepository.PlanBusinessCount::getPlanId).toList())
+                .stream()
+                .collect(Collectors.toMap(SubscriptionPlan::getId, p -> p));
+
+        return totalCounts.stream()
+                .map(row -> {
+                    SubscriptionPlan plan = plans.get(row.getPlanId());
+                    String planName = plan != null ? plan.getName() : "Unknown plan";
+                    long activeCount = activeCounts.getOrDefault(row.getPlanId(), 0L);
+                    BigDecimal mrr = plan != null
+                            ? plan.getPrice().multiply(BigDecimal.valueOf(activeCount))
+                            : BigDecimal.ZERO;
+                    return new PlatformPlanMixEntry(planName, row.getTotal(), mrr);
+                })
+                .toList();
     }
 
     private String dayKey(Instant instant) {

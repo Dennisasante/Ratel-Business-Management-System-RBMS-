@@ -22,5 +22,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     // field `test`, and Spring Data resolves the property from that as "test").
     long countByBusinessIdAndTest(UUID businessId, boolean test);
 
+    // Platform-wide total (super admin stats) — non-test bookings across every business.
+    long countByTest(boolean test);
+
     List<Booking> findAllByBusinessIdAndTest(UUID businessId, boolean test);
 }
