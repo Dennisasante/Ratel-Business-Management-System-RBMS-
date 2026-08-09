@@ -223,7 +223,7 @@ export default function DashboardPage() {
 
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink-900">Needs your attention</h2>
-            <p className="mt-1 text-sm text-ink-500">A running list of what's waiting on you today.</p>
+            <p className="mt-1 text-sm text-ink-500">A running list of what&apos;s waiting on you today.</p>
             <div className="mt-3 flex flex-col">
               <AttentionRow
                 href="/dashboard/inventory"
