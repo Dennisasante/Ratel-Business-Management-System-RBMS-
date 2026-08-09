@@ -92,6 +92,54 @@
   .animate-row-in {
     animation: row-in 0.25s ease-out;
   }
+
+  /* Marketing landing page only — scroll-reveal + hero motion. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  .reveal.is-visible {
+    animation: reveal-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes reveal-in {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-14px) rotate(1.5deg); }
+  }
+  .animate-float-slow {
+    animation: float-slow 7s ease-in-out infinite;
+  }
+
+  @keyframes float-slower {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(-2deg); }
+  }
+  .animate-float-slower {
+    animation: float-slower 9s ease-in-out infinite;
+  }
+
+  @keyframes blob-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(3%, -4%) scale(1.06); }
+    66% { transform: translate(-3%, 3%) scale(0.97); }
+  }
+  .animate-blob-drift {
+    animation: blob-drift 16s ease-in-out infinite;
+  }
+
+  @keyframes marquee-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .animate-marquee {
+    animation: marquee-scroll 28s linear infinite;
+  }
 }
 
 @media print {
