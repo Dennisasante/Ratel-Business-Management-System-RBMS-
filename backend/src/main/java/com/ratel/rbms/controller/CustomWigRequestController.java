@@ -6,6 +6,7 @@ import com.ratel.rbms.dto.DeclineCustomWigRequestRequest;
 import com.ratel.rbms.dto.QuoteCustomWigRequestRequest;
 import com.ratel.rbms.service.CustomWigRequestService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/custom-wig-requests")
+@PreAuthorize("hasAnyRole('OWNER','MANAGER','SALES_PERSON','ACCOUNTANT')")
 public class CustomWigRequestController {
 
     private final CustomWigRequestService customWigRequestService;

@@ -36,7 +36,7 @@ public class PlatformAuditLog {
     @Column(name = "business_id")
     private UUID businessId;
 
-    @Column(name = "business_name_snapshot")
+    @Column(name = "business_name_snapshot", length = 150)
     private String businessNameSnapshot;
 
     @Column(name = "target_user_id")

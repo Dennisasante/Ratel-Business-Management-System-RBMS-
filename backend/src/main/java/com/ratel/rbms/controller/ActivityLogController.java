@@ -4,6 +4,7 @@ import com.ratel.rbms.dto.ActivityLogResponse;
 import com.ratel.rbms.service.ActivityLogService;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/activity-logs")
+@PreAuthorize("hasAnyRole('OWNER','MANAGER','SALES_PERSON','ACCOUNTANT')")
 public class ActivityLogController {
 
     private final ActivityLogService activityLogService;

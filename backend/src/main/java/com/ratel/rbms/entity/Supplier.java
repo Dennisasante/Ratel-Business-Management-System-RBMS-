@@ -31,8 +31,10 @@ public class Supplier {
     @Column(nullable = false, length = 150)
     private String name;
 
+    @Column(length = 50)
     private String phone;
 
+    @Column(length = 150)
     private String email;
 
     @Column(columnDefinition = "TEXT")

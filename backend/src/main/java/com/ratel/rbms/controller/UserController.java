@@ -30,6 +30,7 @@ public class UserController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER','SALES_PERSON','ACCOUNTANT')")
     public List<UserResponse> listUsers() {
         return userRepository.findAllByBusinessId(TenantContext.getBusinessId())
                 .stream()

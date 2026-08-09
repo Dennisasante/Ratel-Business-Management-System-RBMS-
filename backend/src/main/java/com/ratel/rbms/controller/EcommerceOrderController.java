@@ -5,6 +5,7 @@ import com.ratel.rbms.dto.EcommerceOrderResponse;
 import com.ratel.rbms.dto.UpdateEcommerceOrderStatusRequest;
 import com.ratel.rbms.service.EcommerceOrderService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/ecommerce-orders")
+@PreAuthorize("hasAnyRole('OWNER','MANAGER','SALES_PERSON','ACCOUNTANT')")
 public class EcommerceOrderController {
 
     private final EcommerceOrderService ecommerceOrderService;

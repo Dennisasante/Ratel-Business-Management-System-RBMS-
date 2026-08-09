@@ -35,11 +35,13 @@ public class Product {
     private String name;
 
     // Kept for one release as a safety net alongside category_id (see V8), then dropped in V9.
+    @Column(length = 100)
     private String category;
 
     @Column(name = "category_id")
     private UUID categoryId;
 
+    @Column(length = 100)
     private String sku;
 
     @Column(name = "cost_price", nullable = false, precision = 12, scale = 2)
@@ -58,10 +60,10 @@ public class Product {
     @Builder.Default
     private int lowStockThreshold = 5;
 
-    @Column(name = "supplier_name")
+    @Column(name = "supplier_name", length = 150)
     private String supplierName;
 
-    @Column(name = "image_url")
+    @Column(name = "image_url", length = 500)
     private String imageUrl;
 
     @Column(name = "is_active", nullable = false)

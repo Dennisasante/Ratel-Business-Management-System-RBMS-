@@ -96,7 +96,7 @@ public class BusinessIntegrations {
     // ISO weekday numbers (1=Mon..7=Sun) the business takes online bookings on.
     // Business-wide for now — see BookingService for the enforcement logic.
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "working_days", columnDefinition = "int[]")
+    @Column(name = "working_days", columnDefinition = "int[]", nullable = false)
     @Builder.Default
     private List<Integer> workingDays = List.of(1, 2, 3, 4, 5, 6);
 

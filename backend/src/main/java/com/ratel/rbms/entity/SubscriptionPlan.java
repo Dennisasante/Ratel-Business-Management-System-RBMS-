@@ -56,7 +56,7 @@ public class SubscriptionPlan {
     // CUSTOM_WIG_REQUESTS. Only gates the new modules built alongside this
     // field — existing core functionality isn't retroactively restricted.
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(columnDefinition = "text[]")
+    @Column(columnDefinition = "text[]", nullable = false)
     @Builder.Default
     private List<String> features = List.of();
 

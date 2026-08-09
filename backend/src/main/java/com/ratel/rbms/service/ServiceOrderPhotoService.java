@@ -1,10 +1,14 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.ServiceOrderPhotoResponse;
+import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderPhoto;
+import com.ratel.rbms.entity.User;
+import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.ServiceOrderPhotoRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -29,17 +33,20 @@ public class ServiceOrderPhotoService {
 
     private final ServiceOrderPhotoRepository photoRepository;
     private final ServiceOrderRepository serviceOrderRepository;
+    private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
     private final String uploadDir;
 
     public ServiceOrderPhotoService(
             ServiceOrderPhotoRepository photoRepository,
             ServiceOrderRepository serviceOrderRepository,
+            UserRepository userRepository,
             ActivityLogService activityLogService,
             @Value("${app.upload-dir}") String uploadDir
     ) {
         this.photoRepository = photoRepository;
         this.serviceOrderRepository = serviceOrderRepository;
+        this.userRepository = userRepository;
         this.activityLogService = activityLogService;
         this.uploadDir = uploadDir;
     }
@@ -115,7 +122,15 @@ public class ServiceOrderPhotoService {
     }
 
     private void assertOrderOwned(UUID serviceOrderId, UUID businessId) {
-        serviceOrderRepository.findByIdAndBusinessId(serviceOrderId, businessId)
+        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(serviceOrderId, businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service order not found."));
+        User currentUser = userRepository.findById(TenantContext.getUserId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
+        // Same STAFF-ownership check as ServiceOrderService.getOwned() — a STAFF
+        // user shouldn't be able to list/upload/delete photos on an order that
+        // isn't assigned to them, even within their own business.
+        if (currentUser.getRole() == Role.STAFF && !currentUser.getId().equals(order.getAssignedStaffId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Service order not found.");
+        }
     }
 }

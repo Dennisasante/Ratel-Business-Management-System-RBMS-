@@ -42,12 +42,15 @@ public class Business {
     @Column(nullable = false, length = 50)
     private Industry industry;
 
+    @Column(length = 500)
     private String logoUrl;
 
     private String location;
 
+    @Column(length = 150)
     private String contactEmail;
 
+    @Column(length = 50)
     private String contactPhone;
 
     @Column(nullable = false, length = 10)
@@ -81,7 +84,7 @@ public class Business {
 
     // Simple text array of enabled module codes, e.g. INVENTORY, SALES, CUSTOMERS, EXPENSES
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "enabled_modules", columnDefinition = "text[]")
+    @Column(name = "enabled_modules", columnDefinition = "text[]", nullable = false)
     @Builder.Default
     private List<String> enabledModules = List.of("INVENTORY", "SALES", "CUSTOMERS", "EXPENSES");
 

@@ -31,8 +31,10 @@ public class Customer {
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
+    @Column(length = 50)
     private String phone;
 
+    @Column(length = 150)
     private String email;
 
     @Column(columnDefinition = "TEXT")

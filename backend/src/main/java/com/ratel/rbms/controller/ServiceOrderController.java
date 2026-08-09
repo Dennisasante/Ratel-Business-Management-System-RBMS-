@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -49,7 +50,11 @@ public class ServiceOrderController {
         return serviceOrderService.list(serviceTypeId, status, page);
     }
 
+    // Business-wide revenue/turnaround — unlike list()/get() below, this isn't
+    // (and shouldn't be) scoped to a STAFF user's own assigned orders, so it's
+    // gated to the same roles as ReportController's sales-side equivalent.
     @GetMapping("/report")
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER','SALES_PERSON','ACCOUNTANT')")
     public ServiceOrderReportResponse report(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
