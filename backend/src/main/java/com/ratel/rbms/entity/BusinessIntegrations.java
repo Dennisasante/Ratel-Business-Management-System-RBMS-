@@ -75,6 +75,20 @@ public class BusinessIntegrations {
     @Builder.Default
     private Integer bookingDepositPercent = 50;
 
+    // When the policy above requires payment, whether a customer can still
+    // opt to pay in person instead of through Paystack — off by default so
+    // a DEPOSIT/FULL policy stays a hard requirement unless the owner
+    // explicitly opts in.
+    @Column(name = "booking_allow_pay_in_person", nullable = false)
+    @Builder.Default
+    private boolean allowPayInPerson = false;
+
+    // Hours before the scheduled appointment that cancel/reschedule stop
+    // being allowed. 0 = no restriction (today's behavior).
+    @Column(name = "booking_cancellation_cutoff_hours", nullable = false)
+    @Builder.Default
+    private int cancellationCutoffHours = 0;
+
     @Column(name = "test_mode", nullable = false)
     @Builder.Default
     private boolean testMode = false;

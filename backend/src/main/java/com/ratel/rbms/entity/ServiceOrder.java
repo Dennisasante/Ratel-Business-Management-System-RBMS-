@@ -51,6 +51,11 @@ public class ServiceOrder {
     @Column(name = "service_catalog_id")
     private UUID serviceCatalogId;
 
+    // A booking-originated order references exactly one of serviceCatalogId
+    // (a plain service) or servicePackageId (a bundle) — never both.
+    @Column(name = "service_package_id")
+    private UUID servicePackageId;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

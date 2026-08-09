@@ -8,8 +8,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record CreateBookingRequest(
-        @NotNull(message = "Select a service")
+        // Exactly one of serviceCatalogId/packageId must be set — validated in
+        // BookingService.createBooking() since "exactly one of two optional
+        // fields" isn't expressible with bean validation annotations alone.
         UUID serviceCatalogId,
+
+        UUID packageId,
 
         @NotBlank(message = "Your name is required")
         String customerName,
@@ -24,6 +28,9 @@ public record CreateBookingRequest(
         @NotNull(message = "Choose a date and time")
         Instant scheduledAt,
 
-        String notes
+        String notes,
+
+        // Required only when the resolved service/package has requiresLocation set.
+        String customerLocation
 ) {
 }

@@ -14,7 +14,7 @@ interface ServiceCatalogManagerProps {
   onToggleActive: (id: string, active: boolean) => Promise<void>;
   onUpdateBookingSettings: (
     id: string,
-    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number }
+    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }
   ) => Promise<void>;
 }
 
@@ -31,6 +31,7 @@ export default function ServiceCatalogManager({
   const [bookableOnline, setBookableOnline] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [maxConcurrentBookings, setMaxConcurrentBookings] = useState("1");
+  const [requiresLocation, setRequiresLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -48,12 +49,14 @@ export default function ServiceCatalogManager({
         bookableOnline,
         durationMinutes: Number(durationMinutes) || 30,
         maxConcurrentBookings: Number(maxConcurrentBookings) || 1,
+        requiresLocation,
       });
       setName("");
       setPrice("0");
       setBookableOnline(false);
       setDurationMinutes("30");
       setMaxConcurrentBookings("1");
+      setRequiresLocation(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't add that catalog item.");
     } finally {
@@ -110,21 +113,35 @@ export default function ServiceCatalogManager({
         </div>
 
         {bookableOnline && (
-          <div className="grid grid-cols-2 gap-3">
-            <FormField
-              label="Duration (minutes)"
-              name="catalogDuration"
-              type="number"
-              value={durationMinutes}
-              onChange={setDurationMinutes}
-            />
-            <FormField
-              label="Max bookings at once"
-              name="catalogCapacity"
-              type="number"
-              value={maxConcurrentBookings}
-              onChange={setMaxConcurrentBookings}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                label="Duration (minutes)"
+                name="catalogDuration"
+                type="number"
+                value={durationMinutes}
+                onChange={setDurationMinutes}
+              />
+              <FormField
+                label="Max bookings at once"
+                name="catalogCapacity"
+                type="number"
+                value={maxConcurrentBookings}
+                onChange={setMaxConcurrentBookings}
+              />
+            </div>
+            <div className="flex items-center gap-2 rounded-lg bg-canvas px-3 py-2">
+              <input
+                id="catalogRequiresLocation"
+                type="checkbox"
+                checked={requiresLocation}
+                onChange={(e) => setRequiresLocation(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+              />
+              <label htmlFor="catalogRequiresLocation" className="text-sm text-ink-700">
+                Requires customer location (home service)
+              </label>
+            </div>
           </div>
         )}
 
@@ -198,12 +215,13 @@ function BookingSettingsEditor({
   onCancel,
 }: {
   item: ServiceCatalogItem;
-  onSave: (settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number }) => Promise<void>;
+  onSave: (settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }) => Promise<void>;
   onCancel: () => void;
 }) {
   const [bookableOnline, setBookableOnline] = useState(item.bookableOnline);
   const [durationMinutes, setDurationMinutes] = useState(String(item.durationMinutes));
   const [maxConcurrentBookings, setMaxConcurrentBookings] = useState(String(item.maxConcurrentBookings));
+  const [requiresLocation, setRequiresLocation] = useState(item.requiresLocation);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -215,6 +233,7 @@ function BookingSettingsEditor({
         bookableOnline,
         durationMinutes: Number(durationMinutes) || 30,
         maxConcurrentBookings: Number(maxConcurrentBookings) || 1,
+        requiresLocation,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save.");
@@ -240,6 +259,18 @@ function BookingSettingsEditor({
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Duration (minutes)" name="editDuration" type="number" value={durationMinutes} onChange={setDurationMinutes} />
         <FormField label="Max bookings at once" name="editCapacity" type="number" value={maxConcurrentBookings} onChange={setMaxConcurrentBookings} />
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          id={`requiresLocation-${item.id}`}
+          type="checkbox"
+          checked={requiresLocation}
+          onChange={(e) => setRequiresLocation(e.target.checked)}
+          className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+        />
+        <label htmlFor={`requiresLocation-${item.id}`} className="text-sm text-ink-700">
+          Requires customer location (home service)
+        </label>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">

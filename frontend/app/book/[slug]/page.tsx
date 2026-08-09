@@ -9,18 +9,19 @@ import {
   User,
   Mail,
   Phone,
+  MapPin,
   ArrowLeft,
   CheckCircle2,
   Clock3,
   Lock,
   MessageCircle,
+  PackageCheck,
 } from "lucide-react";
 import { api, ApiError, BookableService, BookingCreated, BookingWidgetConfig } from "@/lib/api";
 import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
 import PoweredByRatel from "@/components/PoweredByRatel";
 
 const ACCENT = "#a76545";
-const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function formatMoney(amount: number, currency: string) {
   return `${currency} ${amount.toFixed(2)}`;
@@ -33,6 +34,8 @@ function formatTimeLabel(hhmmss: string) {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${m} ${ampm}`;
 }
+
+const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function workingHoursHint(config: BookingWidgetConfig) {
   const days = [...config.workingDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(", ");
@@ -59,6 +62,10 @@ function policyNote(config: BookingWidgetConfig, service: BookableService | unde
   return `A ${config.depositPercent}% deposit (${formatMoney(deposit, config.currency)}) is required to confirm this booking.`;
 }
 
+function serviceKey(s: BookableService) {
+  return s.isPackage ? `pkg:${s.packageId}` : `svc:${s.serviceCatalogId}`;
+}
+
 export default function HostedBookingPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
@@ -69,19 +76,22 @@ export default function HostedBookingPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedKey, setSelectedKey] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [step1Error, setStep1Error] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerWhatsapp, setCustomerWhatsapp] = useState("");
+  const [customerLocation, setCustomerLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [created, setCreated] = useState<BookingCreated | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  const [choosingPayInPerson, setChoosingPayInPerson] = useState(false);
+  const [paidInPerson, setPaidInPerson] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -102,11 +112,11 @@ export default function HostedBookingPage() {
     load();
   }, [load]);
 
-  const selectedService = services.find((s) => s.serviceCatalogId === selectedServiceId);
+  const selectedService = services.find((s) => serviceKey(s) === selectedKey);
 
   function handleContinue() {
     setStep1Error(null);
-    if (!selectedServiceId) {
+    if (!selectedService) {
       setStep1Error("Pick a service to continue.");
       return;
     }
@@ -123,17 +133,24 @@ export default function HostedBookingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!config) return;
+    if (!config || !selectedService) return;
+    if (selectedService.requiresLocation && !customerLocation.trim()) {
+      setSubmitError("Please share your location for this service.");
+      return;
+    }
     setSubmitError(null);
     setSubmitting(true);
     try {
       const result = await api.createPublicBooking(config.businessId, {
-        serviceCatalogId: selectedServiceId,
+        ...(selectedService.isPackage
+          ? { packageId: selectedService.packageId ?? undefined }
+          : { serviceCatalogId: selectedService.serviceCatalogId ?? undefined }),
         scheduledAt: new Date(scheduledAt).toISOString(),
         customerName,
         customerEmail,
         customerWhatsapp,
         notes: notes || undefined,
+        customerLocation: selectedService.requiresLocation ? customerLocation.trim() : undefined,
       });
       setCreated(result);
       setStep(3);
@@ -141,6 +158,20 @@ export default function HostedBookingPage() {
       setSubmitError(err instanceof ApiError ? err.message : "Couldn't create that booking.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handlePayInPerson() {
+    if (!created) return;
+    setPayError(null);
+    setChoosingPayInPerson(true);
+    try {
+      await api.payInPersonBooking(created.manageToken);
+      setPaidInPerson(true);
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't save that choice — please try paying now instead.");
+    } finally {
+      setChoosingPayInPerson(false);
     }
   }
 
@@ -189,23 +220,44 @@ export default function HostedBookingPage() {
                 </label>
                 <div className="mt-2 flex flex-col gap-2">
                   {services.map((s) => {
-                    const selected = s.serviceCatalogId === selectedServiceId;
+                    const key = serviceKey(s);
+                    const selected = key === selectedKey;
                     return (
                       <button
-                        key={s.serviceCatalogId}
+                        key={key}
                         type="button"
-                        onClick={() => setSelectedServiceId(s.serviceCatalogId)}
-                        className="flex items-center justify-between rounded-2xl border-[1.5px] px-4 py-3 text-left transition"
+                        onClick={() => setSelectedKey(key)}
+                        className="flex items-start justify-between gap-3 rounded-2xl border-[1.5px] px-4 py-3 text-left transition"
                         style={{
                           borderColor: selected ? ACCENT : "#ece1d2",
                           background: selected ? "rgba(167,101,69,0.08)" : "#fff",
                         }}
                       >
                         <div>
-                          <p className="text-sm font-semibold text-[#2a2018]">{s.serviceName}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-[#2a2018]">{s.serviceName}</p>
+                            {s.isPackage && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                                style={{ background: "rgba(167,101,69,0.12)", color: ACCENT }}
+                              >
+                                <PackageCheck size={10} /> Package
+                              </span>
+                            )}
+                          </div>
                           {s.serviceTypeName && <p className="text-xs text-[#9a8c7c]">{s.serviceTypeName}</p>}
+                          {s.description && <p className="mt-1 text-xs text-[#7a6d5f]">{s.description}</p>}
+                          {s.includedItems.length > 0 && (
+                            <ul className="mt-1 space-y-0.5">
+                              {s.includedItems.map((line) => (
+                                <li key={line} className="text-xs text-[#7a6d5f]">
+                                  • {line}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
-                        <p className="text-sm font-semibold" style={{ color: ACCENT }}>
+                        <p className="shrink-0 text-sm font-semibold" style={{ color: ACCENT }}>
                           {formatMoney(s.price, config.currency)}
                         </p>
                       </button>
@@ -294,6 +346,23 @@ export default function HostedBookingPage() {
                   className="mt-2 w-full rounded-xl border-[1.5px] border-[#ece1d2] px-3 py-2.5 text-sm text-[#2a2018] focus:border-[#a76545] focus:outline-none"
                 />
 
+                {selectedService?.requiresLocation && (
+                  <>
+                    <label className="mt-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]" htmlFor="location">
+                      <MapPin size={14} className="opacity-60" /> Your location
+                    </label>
+                    <textarea
+                      id="location"
+                      required
+                      value={customerLocation}
+                      onChange={(e) => setCustomerLocation(e.target.value)}
+                      rows={2}
+                      placeholder="Where should we come to?"
+                      className="mt-2 w-full rounded-xl border-[1.5px] border-[#ece1d2] px-3 py-2.5 text-sm text-[#2a2018] focus:border-[#a76545] focus:outline-none"
+                    />
+                  </>
+                )}
+
                 <label className="mt-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]" htmlFor="notes">
                   Notes (optional)
                 </label>
@@ -320,7 +389,7 @@ export default function HostedBookingPage() {
 
             {step === 3 && created && (
               <div className="text-center">
-                {created.paymentRequired ? (
+                {created.paymentRequired && !paidInPerson ? (
                   <>
                     <div className="mx-auto mb-4 flex h-13 w-13 items-center justify-center rounded-full" style={{ background: "rgba(167,101,69,0.12)", color: ACCENT, width: 52, height: 52 }}>
                       <Clock3 size={26} />
@@ -347,6 +416,17 @@ export default function HostedBookingPage() {
                         <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-[#b3a690]">
                           <Lock size={12} /> Secured by Paystack
                         </p>
+                        {config.allowPayInPerson && (
+                          <button
+                            type="button"
+                            onClick={handlePayInPerson}
+                            disabled={choosingPayInPerson}
+                            className="mt-3 w-full rounded-full border-[1.5px] py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-55"
+                            style={{ borderColor: ACCENT, color: ACCENT }}
+                          >
+                            {choosingPayInPerson ? "Saving..." : "I'll pay in person instead"}
+                          </button>
+                        )}
                       </>
                     )}
                   </>
@@ -356,7 +436,9 @@ export default function HostedBookingPage() {
                       <CheckCircle2 size={26} />
                     </div>
                     <h1 className="text-xl font-semibold text-[#1c140d]">Booking #{created.bookingNumber} confirmed</h1>
-                    <p className="mt-1 text-sm text-[#7a6d5f]">{created.message}</p>
+                    <p className="mt-1 text-sm text-[#7a6d5f]">
+                      {paidInPerson ? "Great — pay when you arrive. We'll see you then!" : created.message}
+                    </p>
                   </>
                 )}
 

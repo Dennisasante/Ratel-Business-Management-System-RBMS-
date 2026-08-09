@@ -53,4 +53,10 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, UUID
             UUID businessId, UUID serviceCatalogId, com.ratel.rbms.entity.enums.ServiceOrderStatus status,
             Instant from, Instant to
     );
+
+    // Same overlap-candidate query as above, scoped to a package booking instead.
+    List<ServiceOrder> findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+            UUID businessId, UUID servicePackageId, com.ratel.rbms.entity.enums.ServiceOrderStatus status,
+            Instant from, Instant to
+    );
 }

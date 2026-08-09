@@ -129,7 +129,15 @@
     "font-size:14.5px;font-weight:600;text-decoration:none;}" +
     ".rbw .rbw-whatsapp-link:hover{opacity:0.9;text-decoration:none;}";
 
-  var state = { step: 1, config: null, services: [], selectedServiceId: null };
+  var state = { step: 1, config: null, services: [], selectedKey: null };
+
+  function serviceKey(s) {
+    return s.isPackage ? "pkg:" + s.packageId : "svc:" + s.serviceCatalogId;
+  }
+
+  function findSelectedService() {
+    return state.services.find(function (s) { return serviceKey(s) === state.selectedKey; });
+  }
 
   var POWERED_BY =
     '<div class="rbw-poweredby">' +
@@ -265,11 +273,24 @@
 
     var cards = state.services
       .map(function (s) {
-        var selected = s.serviceCatalogId === state.selectedServiceId;
+        var key = serviceKey(s);
+        var selected = key === state.selectedKey;
+        var badge = s.isPackage
+          ? '<span style="display:inline-flex;align-items:center;border-radius:999px;padding:1px 8px;font-size:10px;' +
+            "font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-left:6px;background:" + accentSoft +
+            ";color:" + accentColor + ';">Package</span>'
+          : "";
+        var description = s.description
+          ? '<div class="rbw-service-type">' + escapeHtml(s.description) + "</div>"
+          : "";
+        var included = (s.includedItems || []).length
+          ? '<div class="rbw-service-type">' + s.includedItems.map(function (i) { return "• " + escapeHtml(i); }).join("<br/>") + "</div>"
+          : "";
         return (
-          '<div class="rbw-service-card' + (selected ? " rbw-selected" : "") + '" data-id="' + s.serviceCatalogId + '">' +
-          '<div><div class="rbw-service-name">' + escapeHtml(s.serviceName) + "</div>" +
+          '<div class="rbw-service-card' + (selected ? " rbw-selected" : "") + '" data-key="' + key + '">' +
+          '<div><div class="rbw-service-name">' + escapeHtml(s.serviceName) + badge + "</div>" +
           (s.serviceTypeName ? '<div class="rbw-service-type">' + escapeHtml(s.serviceTypeName) + "</div>" : "") +
+          description + included +
           "</div>" +
           '<div class="rbw-service-price">' + formatMoney(s.price, state.config.currency) + "</div>" +
           "</div>"
@@ -283,7 +304,7 @@
         stepDots(1) +
         '<label>' + ICONS.calendar + " Choose a service</label>" +
         '<div class="rbw-services">' + cards + "</div>" +
-        '<div id="rbw-policy-note">' + policyNote(state.services.find(function (s) { return s.serviceCatalogId === state.selectedServiceId; })) + "</div>" +
+        '<div id="rbw-policy-note">' + policyNote(findSelectedService()) + "</div>" +
         '<label for="rbw-when">' + ICONS.calendar + " Date &amp; time</label>" +
         '<input type="datetime-local" id="rbw-when" min="' + minDateTime + '" />' +
         '<p class="rbw-field-hint">' + escapeHtml(workingHoursHint(state.config)) + "</p>" +
@@ -294,18 +315,17 @@
 
     root.querySelectorAll(".rbw-service-card").forEach(function (card) {
       card.addEventListener("click", function () {
-        state.selectedServiceId = card.getAttribute("data-id");
+        state.selectedKey = card.getAttribute("data-key");
         root.querySelectorAll(".rbw-service-card").forEach(function (c) { c.classList.remove("rbw-selected"); });
         card.classList.add("rbw-selected");
-        var service = state.services.find(function (s) { return s.serviceCatalogId === state.selectedServiceId; });
-        qs("#rbw-policy-note").innerHTML = policyNote(service);
+        qs("#rbw-policy-note").innerHTML = policyNote(findSelectedService());
       });
     });
 
     qs("#rbw-next").addEventListener("click", function () {
       var errorEl = qs("#rbw-step1-error");
       var when = qs("#rbw-when").value;
-      if (!state.selectedServiceId) {
+      if (!state.selectedKey) {
         errorEl.innerHTML = '<p class="rbw-error">Pick a service to continue.</p>';
         return;
       }
@@ -323,6 +343,12 @@
   }
 
   function renderStepTwo() {
+    var service = findSelectedService();
+    var locationField = service && service.requiresLocation
+      ? '<label for="rbw-location">' + ICONS.calendar + " Your location</label>" +
+        '<textarea id="rbw-location" required placeholder="Where should we come to?"></textarea>'
+      : "";
+
     render(
       '<div class="rbw">' +
         '<button class="rbw-back" id="rbw-back">&larr; Back</button>' +
@@ -335,6 +361,7 @@
         '<input type="email" id="rbw-email" required />' +
         '<label for="rbw-whatsapp">' + ICONS.whatsapp + " WhatsApp number</label>" +
         '<input type="tel" id="rbw-whatsapp" placeholder="+233 55 000 0000" required />' +
+        locationField +
         '<label for="rbw-notes">Notes (optional)</label>' +
         '<textarea id="rbw-notes"></textarea>' +
         '<div id="rbw-form-error"></div>' +
@@ -353,14 +380,20 @@
       var errorEl = qs("#rbw-form-error");
       errorEl.innerHTML = "";
 
+      var locationEl = qs("#rbw-location");
       var payload = {
-        serviceCatalogId: state.selectedServiceId,
         scheduledAt: state.scheduledAt ? new Date(state.scheduledAt).toISOString() : null,
         customerName: qs("#rbw-name").value.trim(),
         customerEmail: qs("#rbw-email").value.trim(),
         customerWhatsapp: qs("#rbw-whatsapp").value.trim(),
         notes: qs("#rbw-notes").value.trim() || null,
+        customerLocation: locationEl ? locationEl.value.trim() : null,
       };
+      if (service && service.isPackage) {
+        payload.packageId = service.packageId;
+      } else {
+        payload.serviceCatalogId = service ? service.serviceCatalogId : null;
+      }
 
       button.disabled = true;
       button.textContent = "Submitting…";
@@ -370,7 +403,6 @@
         body: JSON.stringify(payload),
       })
         .then(function (created) {
-          var service = state.services.find(function (s) { return s.serviceCatalogId === state.selectedServiceId; });
           renderSuccess(created, service);
         })
         .catch(function (err) {
@@ -388,6 +420,7 @@
       : '<p class="rbw-muted">Check your email for a confirmation with a link to manage this booking.</p>';
 
     var payButton = "";
+    var payInPersonButton = "";
     var statusBlock;
 
     if (booking.paymentRequired) {
@@ -400,6 +433,9 @@
       payButton =
         '<button id="rbw-pay">' + formatMoney(booking.amountDue, state.config.currency) + " &middot; Pay to confirm</button>" +
         '<div class="rbw-secure">' + ICONS.lock + " Secured by Paystack</div>";
+      if (state.config.allowPayInPerson) {
+        payInPersonButton = '<button id="rbw-pay-in-person" class="rbw-secondary">I&rsquo;ll pay in person instead</button>';
+      }
     } else {
       statusBlock =
         '<div class="rbw-success">' +
@@ -407,7 +443,7 @@
         "<h3>Booking #" + booking.bookingNumber + " confirmed</h3>" +
         "<p>" + escapeHtml(booking.message || "We'll be in touch on WhatsApp shortly.") + "</p>" +
         "</div>";
-      if (state.config.paystackPublicKey && service && Number(service.price) > 0) {
+      if (!booking._paidInPerson && state.config.paystackPublicKey && service && Number(service.price) > 0) {
         payButton =
           '<button id="rbw-pay" class="rbw-secondary">' + formatMoney(service.price, state.config.currency) + " &middot; Pay now</button>" +
           '<div class="rbw-secure">' + ICONS.lock + " Secured by Paystack</div>";
@@ -424,6 +460,7 @@
         stepDots(3) +
         statusBlock +
         payButton +
+        payInPersonButton +
         '<div id="rbw-pay-error"></div>' +
         whatsappLink +
         manageLink +
@@ -434,6 +471,28 @@
     if (payEl) {
       payEl.addEventListener("click", function () {
         startPayment(booking.manageToken, payEl, qs("#rbw-pay-error"));
+      });
+    }
+
+    var payInPersonEl = qs("#rbw-pay-in-person");
+    if (payInPersonEl) {
+      payInPersonEl.addEventListener("click", function () {
+        var errorEl = qs("#rbw-pay-error");
+        errorEl.innerHTML = "";
+        payInPersonEl.disabled = true;
+        payInPersonEl.textContent = "Saving…";
+        api("/api/public/bookings/" + booking.manageToken + "/pay-in-person", { method: "POST" })
+          .then(function () {
+            renderSuccess(
+              Object.assign({}, booking, { paymentRequired: false, _paidInPerson: true, message: "Great — pay when you arrive. We'll see you then!" }),
+              service
+            );
+          })
+          .catch(function (err) {
+            errorEl.innerHTML = '<p class="rbw-error">' + escapeHtml(err.message) + "</p>";
+            payInPersonEl.disabled = false;
+            payInPersonEl.textContent = "I’ll pay in person instead";
+          });
       });
     }
   }

@@ -5,8 +5,13 @@ import java.util.UUID;
 
 public record BookableServiceResponse(
         UUID serviceCatalogId,
+        UUID packageId,
         String serviceName,
         String serviceTypeName,
-        BigDecimal price
+        String description,
+        BigDecimal price,
+        boolean isPackage,
+        boolean requiresLocation,
+        java.util.List<String> includedItems
 ) {
 }

@@ -52,13 +52,17 @@ public class Booking {
     @Column(name = "customer_whatsapp", nullable = false, length = 20)
     private String customerWhatsapp;
 
+    // Only set when the booked service/package requires it (home-service, bridal work).
+    @Column(name = "customer_location", columnDefinition = "TEXT")
+    private String customerLocation;
+
     // Reschedule/cancel without an account — see spec's "no customer login" decision.
     @Column(name = "manage_token", nullable = false, unique = true, length = 64)
     private String manageToken;
 
     @Column(name = "payment_status", nullable = false, length = 20)
     @Builder.Default
-    private String paymentStatus = "UNPAID"; // UNPAID, PAID, FAILED
+    private String paymentStatus = "UNPAID"; // UNPAID, PAID, FAILED, PAY_IN_PERSON
 
     @Column(name = "paystack_reference", unique = true, length = 100)
     private String paystackReference;

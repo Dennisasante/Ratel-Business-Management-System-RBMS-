@@ -12,6 +12,7 @@ public record BookingWidgetConfigResponse(
         String paystackPublicKey,
         String paymentPolicy,
         int depositPercent,
+        boolean allowPayInPerson,
         List<Integer> workingDays,
         LocalTime workingHoursStart,
         LocalTime workingHoursEnd,

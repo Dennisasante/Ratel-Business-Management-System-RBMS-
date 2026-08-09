@@ -16,6 +16,7 @@ public record ServiceCatalogItemResponse(
         boolean bookableOnline,
         int durationMinutes,
         int maxConcurrentBookings,
+        boolean requiresLocation,
         Instant createdAt
 ) {
     public static ServiceCatalogItemResponse from(ServiceCatalogItem item, String serviceTypeName) {
@@ -29,6 +30,7 @@ public record ServiceCatalogItemResponse(
                 item.isBookableOnline(),
                 item.getDurationMinutes(),
                 item.getMaxConcurrentBookings(),
+                item.isRequiresLocation(),
                 item.getCreatedAt()
         );
     }

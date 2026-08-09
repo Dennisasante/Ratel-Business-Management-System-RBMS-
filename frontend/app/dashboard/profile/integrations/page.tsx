@@ -45,8 +45,14 @@ export default function IntegrationsPage() {
   // Booking payment policy
   const [paymentPolicy, setPaymentPolicy] = useState<"NONE" | "DEPOSIT" | "FULL">("NONE");
   const [depositPercent, setDepositPercent] = useState(50);
+  const [allowPayInPerson, setAllowPayInPerson] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [policyError, setPolicyError] = useState<string | null>(null);
+
+  // Cancellation cutoff
+  const [cancellationCutoffHours, setCancellationCutoffHours] = useState(0);
+  const [savingCutoff, setSavingCutoff] = useState(false);
+  const [cutoffError, setCutoffError] = useState<string | null>(null);
 
   // Booking hours
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
@@ -74,6 +80,8 @@ export default function IntegrationsPage() {
     setTestMode(result.testMode);
     setPaymentPolicy(result.bookingPaymentPolicy);
     setDepositPercent(result.bookingDepositPercent);
+    setAllowPayInPerson(result.bookingAllowPayInPerson);
+    setCancellationCutoffHours(result.bookingCancellationCutoffHours);
     setWorkingDays(result.workingDays);
     setWorkingHoursStart(result.workingHoursStart.slice(0, 5));
     setWorkingHoursEnd(result.workingHoursEnd.slice(0, 5));
@@ -185,12 +193,30 @@ export default function IntegrationsPage() {
       const result = await api.updateBusinessIntegrations(session.token, {
         bookingPaymentPolicy: paymentPolicy,
         ...(paymentPolicy === "DEPOSIT" ? { bookingDepositPercent: depositPercent } : {}),
+        bookingAllowPayInPerson: allowPayInPerson,
       });
       setData(result);
     } catch (err) {
       setPolicyError(err instanceof ApiError ? err.message : "Couldn't save.");
     } finally {
       setSavingPolicy(false);
+    }
+  }
+
+  async function saveCutoff(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session) return;
+    setSavingCutoff(true);
+    setCutoffError(null);
+    try {
+      const result = await api.updateBusinessIntegrations(session.token, {
+        bookingCancellationCutoffHours: cancellationCutoffHours,
+      });
+      setData(result);
+    } catch (err) {
+      setCutoffError(err instanceof ApiError ? err.message : "Couldn't save.");
+    } finally {
+      setSavingCutoff(false);
     }
   }
 
@@ -383,10 +409,56 @@ export default function IntegrationsPage() {
                 </div>
               )}
 
+              {paymentPolicy !== "NONE" && (
+                <div className="flex items-center gap-2 rounded-lg bg-canvas px-3 py-2">
+                  <input
+                    id="allowPayInPerson"
+                    type="checkbox"
+                    checked={allowPayInPerson}
+                    onChange={(e) => setAllowPayInPerson(e.target.checked)}
+                    className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+                  />
+                  <label htmlFor="allowPayInPerson" className="text-sm text-ink-700">
+                    Let customers choose to pay in person instead
+                  </label>
+                </div>
+              )}
+
               {policyError && <p className="text-sm text-danger">{policyError}</p>}
 
               <Button type="submit" disabled={savingPolicy} className="self-start">
                 {savingPolicy ? "Saving..." : "Save"}
+              </Button>
+            </form>
+          </Card>
+
+          <Card className="max-w-2xl p-5">
+            <h2 className="text-base font-semibold text-ink-900">Cancellation policy</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              Owner sets a rule like &ldquo;no cancellation within 1–2 hours of the appointment&rdquo; — applies to both
+              cancelling and rescheduling a booking.
+            </p>
+
+            <form onSubmit={saveCutoff} className="mt-4 flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-ink-700">Cancellation cutoff (hours before appointment)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={cancellationCutoffHours}
+                    onChange={(e) => setCancellationCutoffHours(Number(e.target.value))}
+                    placeholder="e.g. 1 or 2"
+                    className="w-24 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                  <span className="text-sm text-ink-500">0 = no restriction</span>
+                </div>
+              </div>
+
+              {cutoffError && <p className="text-sm text-danger">{cutoffError}</p>}
+
+              <Button type="submit" disabled={savingCutoff} className="self-start">
+                {savingCutoff ? "Saving..." : "Save"}
               </Button>
             </form>
           </Card>

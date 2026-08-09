@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   ArrowLeft,
   MessageCircle,
+  MapPin,
+  AlertCircle,
 } from "lucide-react";
 
 const ACCENT = "#a76545";
@@ -112,6 +114,12 @@ export default function ManageBookingPage() {
 
   const isTerminal = booking && (booking.status === "CANCELLED" || booking.status === "PICKED_UP");
   const statusStyle = booking ? STATUS_STYLE[booking.status] ?? { label: booking.status, bg: "#f3ede4", fg: "#7a6d5f" } : null;
+  // Mirrors BookingService's server-side enforceCancellationCutoff — server stays
+  // authoritative regardless, this just avoids showing controls that will 400.
+  const withinCutoff =
+    !!booking &&
+    booking.cancellationCutoffHours > 0 &&
+    new Date(booking.scheduledAt).getTime() - Date.now() < booking.cancellationCutoffHours * 60 * 60 * 1000;
 
   return (
     <main
@@ -173,12 +181,20 @@ export default function ManageBookingPage() {
                 <Banknote size={16} className="text-[#a76545]/70" />
                 {booking.paymentStatus === "PAID"
                   ? "Paid"
-                  : booking.paymentStatus === "FAILED"
-                    ? "Payment failed"
-                    : booking.amountDue != null
-                      ? `${formatMoney(booking.amountDue, booking.currency)} due`
-                      : "Payment pending"}
+                  : booking.paymentStatus === "PAY_IN_PERSON"
+                    ? "Paying in person"
+                    : booking.paymentStatus === "FAILED"
+                      ? "Payment failed"
+                      : booking.amountDue != null
+                        ? `${formatMoney(booking.amountDue, booking.currency)} due`
+                        : "Payment pending"}
               </div>
+              {booking.customerLocation && (
+                <div className="flex items-start gap-2 text-sm text-[#5c5041]">
+                  <MapPin size={16} className="mt-0.5 shrink-0 text-[#a76545]/70" />
+                  {booking.customerLocation}
+                </div>
+              )}
             </div>
 
             {booking.businessWhatsappLink && (
@@ -213,7 +229,18 @@ export default function ManageBookingPage() {
               </div>
             )}
 
-            {!isTerminal && (
+            {!isTerminal && withinCutoff && (
+              <div className="flex items-start gap-2 rounded-2xl bg-[#fdf1e7] p-4 text-sm text-[#7a3324]">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  This booking can no longer be changed — it&apos;s within {booking.cancellationCutoffHours} hour
+                  {booking.cancellationCutoffHours === 1 ? "" : "s"} of the appointment. Please contact the business
+                  directly if you need to make a change.
+                </span>
+              </div>
+            )}
+
+            {!isTerminal && !withinCutoff && (
               <div className="flex flex-col gap-3 border-t border-[#f0e6d8] pt-5">
                 {!rescheduling ? (
                   <button

@@ -13,6 +13,8 @@ import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
+import com.ratel.rbms.entity.ServicePackage;
+import com.ratel.rbms.entity.ServicePackageItem;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
@@ -23,6 +25,8 @@ import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.ServicePackageItemRepository;
+import com.ratel.rbms.repository.ServicePackageRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import org.springframework.http.HttpStatus;
@@ -36,6 +40,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +55,7 @@ import java.util.UUID;
  * set) so it shows up in the existing Service Orders list/calendar/status
  * pipeline instead of a second parallel system — Booking just carries the
  * public-booking-specific bits (customer contact, the no-login manage
- * token, payment) that don't belong on ServiceOrder itself.
+ * token, payment, location) that don't belong on ServiceOrder itself.
  */
 @Service
 public class BookingService {
@@ -62,6 +68,8 @@ public class BookingService {
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServiceTypeRepository serviceTypeRepository;
     private final ServiceOrderRepository serviceOrderRepository;
+    private final ServicePackageRepository servicePackageRepository;
+    private final ServicePackageItemRepository servicePackageItemRepository;
     private final CustomerRepository customerRepository;
     private final BookingRepository bookingRepository;
     private final PlanFeatureService planFeatureService;
@@ -78,6 +86,8 @@ public class BookingService {
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServiceTypeRepository serviceTypeRepository,
             ServiceOrderRepository serviceOrderRepository,
+            ServicePackageRepository servicePackageRepository,
+            ServicePackageItemRepository servicePackageItemRepository,
             CustomerRepository customerRepository,
             BookingRepository bookingRepository,
             PlanFeatureService planFeatureService,
@@ -93,6 +103,8 @@ public class BookingService {
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.serviceTypeRepository = serviceTypeRepository;
         this.serviceOrderRepository = serviceOrderRepository;
+        this.servicePackageRepository = servicePackageRepository;
+        this.servicePackageItemRepository = servicePackageItemRepository;
         this.customerRepository = customerRepository;
         this.bookingRepository = bookingRepository;
         this.planFeatureService = planFeatureService;
@@ -128,6 +140,7 @@ public class BookingService {
         return new BookingWidgetConfigResponse(
                 business.getId(), business.getName(), enabled, business.getCurrency(), paystackPublicKey,
                 effectivePolicy(integrations), integrations != null ? integrations.getBookingDepositPercent() : 50,
+                integrations != null && integrations.isAllowPayInPerson(),
                 integrations != null ? integrations.getWorkingDays() : DEFAULT_WORKING_DAYS,
                 integrations != null ? integrations.getWorkingHoursStart() : DEFAULT_HOURS_START,
                 integrations != null ? integrations.getWorkingHoursEnd() : DEFAULT_HOURS_END,
@@ -139,14 +152,45 @@ public class BookingService {
         if (!planFeatureService.hasFeature(businessId, PlanFeature.BOOKING_WIDGET)) {
             return List.of();
         }
-        return serviceCatalogItemRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).stream()
-                .map(item -> new BookableServiceResponse(
+        List<BookableServiceResponse> results = new ArrayList<>();
+        serviceCatalogItemRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).forEach(item ->
+                results.add(new BookableServiceResponse(
                         item.getId(),
+                        null,
                         item.getName(),
                         serviceTypeRepository.findByIdAndBusinessId(item.getServiceTypeId(), businessId)
                                 .map(ServiceType::getName).orElse(null),
-                        item.getPrice()
+                        null,
+                        item.getPrice(),
+                        false,
+                        item.isRequiresLocation(),
+                        List.of()
                 ))
+        );
+        servicePackageRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).forEach(pkg ->
+                results.add(new BookableServiceResponse(
+                        null,
+                        pkg.getId(),
+                        pkg.getName(),
+                        serviceTypeRepository.findByIdAndBusinessId(pkg.getServiceTypeId(), businessId)
+                                .map(ServiceType::getName).orElse(null),
+                        pkg.getDescription(),
+                        pkg.getPrice(),
+                        true,
+                        false,
+                        includedItemLabels(pkg.getId())
+                ))
+        );
+        return results;
+    }
+
+    private List<String> includedItemLabels(UUID packageId) {
+        return servicePackageItemRepository.findAllByPackageId(packageId).stream()
+                .map(item -> {
+                    String name = serviceCatalogItemRepository.findById(item.getServiceCatalogId())
+                            .map(ServiceCatalogItem::getName).orElse("Item");
+                    return item.getQuantity() > 1 ? item.getQuantity() + "x " + name : name;
+                })
                 .toList();
     }
 
@@ -162,13 +206,59 @@ public class BookingService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Booking isn't available for this business.");
         }
 
-        ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
-                .filter(ServiceCatalogItem::isActive)
-                .filter(ServiceCatalogItem::isBookableOnline)
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+        if ((req.serviceCatalogId() == null) == (req.packageId() == null)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Select a service.");
+        }
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
-        validateSchedulingRules(businessId, integrations, catalogItem, req.scheduledAt());
+        validateWorkingWindow(businessId, integrations, req.scheduledAt());
+
+        String serviceName;
+        UUID serviceTypeId;
+        UUID serviceCatalogId = null;
+        UUID servicePackageId = null;
+        BigDecimal price;
+        boolean requiresLocation;
+
+        if (req.packageId() != null) {
+            ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                    .filter(ServicePackage::isActive)
+                    .filter(ServicePackage::isBookableOnline)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
+
+            Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
+            Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
+            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                    businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+            validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+            serviceName = pkg.getName();
+            serviceTypeId = pkg.getServiceTypeId();
+            servicePackageId = pkg.getId();
+            price = pkg.getPrice();
+            requiresLocation = false; // packages don't carry the flag today — component items might, but the package itself is the bookable unit
+        } else {
+            ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                    .filter(ServiceCatalogItem::isActive)
+                    .filter(ServiceCatalogItem::isBookableOnline)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+
+            Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
+            Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
+            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                    businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+            validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+            serviceName = catalogItem.getName();
+            serviceTypeId = catalogItem.getServiceTypeId();
+            serviceCatalogId = catalogItem.getId();
+            price = catalogItem.getPrice();
+            requiresLocation = catalogItem.isRequiresLocation();
+        }
+
+        if (requiresLocation && (req.customerLocation() == null || req.customerLocation().isBlank())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Please provide your location for this service.");
+        }
 
         Customer customer = customerRepository.findFirstByBusinessIdAndPhone(businessId, req.customerWhatsapp())
                 .orElseGet(() -> customerRepository.save(Customer.builder()
@@ -180,12 +270,13 @@ public class BookingService {
 
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
-                .serviceTypeId(catalogItem.getServiceTypeId())
+                .serviceTypeId(serviceTypeId)
                 .status(ServiceOrderStatus.RECEIVED)
                 .customerId(customer.getId())
-                .serviceCatalogId(catalogItem.getId())
+                .serviceCatalogId(serviceCatalogId)
+                .servicePackageId(servicePackageId)
                 .notes(req.notes())
-                .price(catalogItem.getPrice())
+                .price(price)
                 .scheduledAt(req.scheduledAt())
                 .build();
         order = serviceOrderRepository.save(order);
@@ -196,6 +287,7 @@ public class BookingService {
                 .customerName(req.customerName())
                 .customerEmail(req.customerEmail())
                 .customerWhatsapp(req.customerWhatsapp())
+                .customerLocation(requiresLocation ? req.customerLocation() : null)
                 .manageToken(generateToken())
                 .test(isTestMode(businessId))
                 .build();
@@ -205,7 +297,7 @@ public class BookingService {
         String manageLink = frontendUrl + "/booking/manage/" + booking.getManageToken();
         emailService.sendBookingConfirmation(
                 req.customerEmail(), req.customerName(), business.getName(),
-                catalogItem.getName(), WHEN_FORMAT.format(req.scheduledAt()), manageLink
+                serviceName, WHEN_FORMAT.format(req.scheduledAt()), manageLink
         );
 
         // Owner-facing — nobody's watching the dashboard in real time, so this
@@ -213,15 +305,15 @@ public class BookingService {
         // message the customer straight away.
         if (business.getContactEmail() != null && !business.getContactEmail().isBlank()) {
             String customerWhatsappLink = whatsAppLinkService.buildLink(req.customerWhatsapp(),
-                    "Hi " + req.customerName() + ", thanks for booking " + catalogItem.getName() + " with us!");
+                    "Hi " + req.customerName() + ", thanks for booking " + serviceName + " with us!");
             emailService.sendNewBookingNotification(
-                    business.getContactEmail(), req.customerName(), catalogItem.getName(),
+                    business.getContactEmail(), req.customerName(), serviceName,
                     WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
             );
         }
 
         boolean paymentRequired = !"NONE".equals(effectivePolicy(integrations));
-        BigDecimal amountDue = paymentRequired ? depositAmount(catalogItem.getPrice(), integrations) : null;
+        BigDecimal amountDue = paymentRequired ? depositAmount(price, integrations) : null;
         String message = paymentRequired ? "Booking received — pay to confirm." : "Booking confirmed.";
 
         return new BookingCreatedResponse(booking.getManageToken(), booking.getBookingNumber(), message, paymentRequired, amountDue);
@@ -235,7 +327,7 @@ public class BookingService {
     private static final java.time.LocalTime DEFAULT_HOURS_START = java.time.LocalTime.of(9, 0);
     private static final java.time.LocalTime DEFAULT_HOURS_END = java.time.LocalTime.of(18, 0);
 
-    private void validateSchedulingRules(UUID businessId, BusinessIntegrations integrations, ServiceCatalogItem catalogItem, Instant scheduledAt) {
+    private void validateWorkingWindow(UUID businessId, BusinessIntegrations integrations, Instant scheduledAt) {
         List<Integer> workingDays = integrations != null ? integrations.getWorkingDays() : DEFAULT_WORKING_DAYS;
         java.time.LocalTime hoursStart = integrations != null ? integrations.getWorkingHoursStart() : DEFAULT_HOURS_START;
         java.time.LocalTime hoursEnd = integrations != null ? integrations.getWorkingHoursEnd() : DEFAULT_HOURS_END;
@@ -255,20 +347,20 @@ public class BookingService {
         if (businessBlackoutDateRepository.existsByBusinessIdAndDate(businessId, zdt.toLocalDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This business is closed on that date. Please choose another day.");
         }
+    }
 
-        int durationMinutes = catalogItem.getDurationMinutes();
+    // Shared by both the plain-service and package booking paths — the caller
+    // supplies the right overlap-candidate query (scoped to the catalog item
+    // or the package respectively), this just does the exact-overlap count.
+    private void validateCapacity(int durationMinutes, int maxConcurrentBookings, List<ServiceOrder> candidates, Instant scheduledAt) {
         Instant requestStart = scheduledAt;
         Instant requestEnd = scheduledAt.plusSeconds(durationMinutes * 60L);
-        Instant searchFrom = scheduledAt.minusSeconds(durationMinutes * 60L);
-
-        List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
-                businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
         long overlapping = candidates.stream()
                 .filter(o -> o.getScheduledAt() != null)
                 .filter(o -> o.getScheduledAt().isBefore(requestEnd)
                         && o.getScheduledAt().plusSeconds(durationMinutes * 60L).isAfter(requestStart))
                 .count();
-        if (overlapping >= catalogItem.getMaxConcurrentBookings()) {
+        if (overlapping >= maxConcurrentBookings) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "That time is fully booked — please choose another slot.");
         }
     }
@@ -330,21 +422,43 @@ public class BookingService {
         return new BookingVerifyPaymentResponse(true, "Payment confirmed.");
     }
 
+    // Alternative to startPayment()/verifyPayment() — customer explicitly opts
+    // to pay when they arrive instead of through Paystack. Only available when
+    // the business has turned this on; re-checked here regardless of whether
+    // the client only showed the button because it thought this was allowed.
+    @Transactional
+    public void payInPerson(String manageToken) {
+        Booking booking = getByToken(manageToken);
+        if ("PAID".equals(booking.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This booking is already paid.");
+        }
+        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(booking.getServiceOrderId(), booking.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
+        if (order.getStatus() == ServiceOrderStatus.CANCELLED || order.getStatus() == ServiceOrderStatus.PICKED_UP) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This booking can no longer be changed.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(booking.getBusinessId()).orElse(null);
+        if (integrations == null || !integrations.isAllowPayInPerson()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Pay in person isn't available for this booking.");
+        }
+
+        booking.setPaymentStatus("PAY_IN_PERSON");
+        bookingRepository.save(booking);
+    }
+
     public BookingDetailResponse getByManageToken(String manageToken) {
         Booking booking = getByToken(manageToken);
         ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(booking.getServiceOrderId(), booking.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
-        String serviceName = order.getServiceCatalogId() != null
-                ? serviceCatalogItemRepository.findByIdAndBusinessId(order.getServiceCatalogId(), booking.getBusinessId())
-                        .map(ServiceCatalogItem::getName).orElse(null)
-                : null;
+        String serviceName = resolveServiceName(order, booking.getBusinessId());
         String businessName = businessRepository.findById(booking.getBusinessId())
                 .map(Business::getName).orElse(null);
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(booking.getBusinessId()).orElse(null);
 
         BigDecimal amountDue = null;
-        if (!"PAID".equals(booking.getPaymentStatus()) && order.getStatus() != ServiceOrderStatus.CANCELLED) {
+        if (!"PAID".equals(booking.getPaymentStatus()) && !"PAY_IN_PERSON".equals(booking.getPaymentStatus()) && order.getStatus() != ServiceOrderStatus.CANCELLED) {
             if (integrations != null && integrations.getPaystackSecretKey() != null && !integrations.getPaystackSecretKey().isBlank()) {
                 amountDue = "NONE".equals(effectivePolicy(integrations)) ? order.getPrice() : depositAmount(order.getPrice(), integrations);
             }
@@ -359,8 +473,21 @@ public class BookingService {
         return new BookingDetailResponse(
                 booking.getBookingNumber(), businessName, serviceName, order.getStatus().name(),
                 order.getScheduledAt(), order.getPrice(), booking.getPaymentStatus(), booking.getCustomerName(), amountDue, currency,
-                businessWhatsappLink
+                businessWhatsappLink, booking.getCustomerLocation(),
+                integrations != null ? integrations.getCancellationCutoffHours() : 0
         );
+    }
+
+    private String resolveServiceName(ServiceOrder order, UUID businessId) {
+        if (order.getServicePackageId() != null) {
+            return servicePackageRepository.findByIdAndBusinessId(order.getServicePackageId(), businessId)
+                    .map(ServicePackage::getName).orElse(null);
+        }
+        if (order.getServiceCatalogId() != null) {
+            return serviceCatalogItemRepository.findByIdAndBusinessId(order.getServiceCatalogId(), businessId)
+                    .map(ServiceCatalogItem::getName).orElse(null);
+        }
+        return null;
     }
 
     @Transactional
@@ -373,17 +500,17 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This booking can no longer be rescheduled.");
         }
 
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(booking.getBusinessId()).orElse(null);
+        enforceCancellationCutoff(integrations, order);
+
         order.setScheduledAt(newScheduledAt);
         serviceOrderRepository.save(order);
 
         Business business = businessRepository.findById(booking.getBusinessId()).orElse(null);
-        String serviceName = order.getServiceCatalogId() != null
-                ? serviceCatalogItemRepository.findByIdAndBusinessId(order.getServiceCatalogId(), booking.getBusinessId())
-                        .map(ServiceCatalogItem::getName).orElse("your service")
-                : "your service";
+        String serviceName = resolveServiceName(order, booking.getBusinessId());
         if (business != null) {
             emailService.sendBookingRescheduled(booking.getCustomerEmail(), booking.getCustomerName(), business.getName(),
-                    serviceName, WHEN_FORMAT.format(newScheduledAt));
+                    serviceName != null ? serviceName : "your service", WHEN_FORMAT.format(newScheduledAt));
         }
     }
 
@@ -397,16 +524,32 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This booking is already complete.");
         }
 
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(booking.getBusinessId()).orElse(null);
+        enforceCancellationCutoff(integrations, order);
+
         order.setStatus(ServiceOrderStatus.CANCELLED);
         serviceOrderRepository.save(order);
 
         Business business = businessRepository.findById(booking.getBusinessId()).orElse(null);
-        String serviceName = order.getServiceCatalogId() != null
-                ? serviceCatalogItemRepository.findByIdAndBusinessId(order.getServiceCatalogId(), booking.getBusinessId())
-                        .map(ServiceCatalogItem::getName).orElse("your service")
-                : "your service";
+        String serviceName = resolveServiceName(order, booking.getBusinessId());
         if (business != null) {
-            emailService.sendBookingCancelled(booking.getCustomerEmail(), booking.getCustomerName(), business.getName(), serviceName);
+            emailService.sendBookingCancelled(booking.getCustomerEmail(), booking.getCustomerName(), business.getName(),
+                    serviceName != null ? serviceName : "your service");
+        }
+    }
+
+    // Owner sets a rule like "no cancellation/reschedule within 1-2 hours of
+    // the appointment" — cutoffHours <= 0 means no restriction (today's
+    // behavior). Applies to both cancel and reschedule alike, same underlying
+    // concern of protecting the calendar from last-minute changes.
+    private void enforceCancellationCutoff(BusinessIntegrations integrations, ServiceOrder order) {
+        int cutoffHours = integrations != null ? integrations.getCancellationCutoffHours() : 0;
+        if (cutoffHours <= 0 || order.getScheduledAt() == null) return;
+        Instant cutoff = order.getScheduledAt().minus(cutoffHours, ChronoUnit.HOURS);
+        if (Instant.now().isAfter(cutoff)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "This booking can no longer be changed — it's within " + cutoffHours + " hour" + (cutoffHours == 1 ? "" : "s")
+                            + " of the appointment. Please contact the business directly.");
         }
     }
 

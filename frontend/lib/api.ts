@@ -42,6 +42,7 @@ export interface BusinessSummary {
   enabledModules: string[];
   logoUrl: string | null;
   billingStatus: "TRIALING" | "ACTIVE" | "READ_ONLY";
+  planFeatures: PlanFeature[];
 }
 
 export interface UserSummary {
@@ -348,6 +349,7 @@ export interface ServiceCatalogItem {
   bookableOnline: boolean;
   durationMinutes: number;
   maxConcurrentBookings: number;
+  requiresLocation: boolean;
   createdAt: string;
 }
 
@@ -358,6 +360,44 @@ export interface ServiceCatalogItemPayload {
   bookableOnline?: boolean;
   durationMinutes?: number;
   maxConcurrentBookings?: number;
+  requiresLocation?: boolean;
+}
+
+export interface ServicePackageItem {
+  id: string;
+  serviceCatalogId: string;
+  serviceCatalogName: string | null;
+  quantity: number;
+}
+
+export interface ServicePackageItemPayload {
+  serviceCatalogId: string;
+  quantity?: number;
+}
+
+export interface ServicePackage {
+  id: string;
+  serviceTypeId: string;
+  serviceTypeName: string | null;
+  name: string;
+  description: string | null;
+  price: number;
+  active: boolean;
+  bookableOnline: boolean;
+  durationMinutes: number;
+  maxConcurrentBookings: number;
+  items: ServicePackageItem[];
+}
+
+export interface ServicePackagePayload {
+  serviceTypeId: string;
+  name: string;
+  description?: string;
+  price: number;
+  bookableOnline?: boolean;
+  durationMinutes?: number;
+  maxConcurrentBookings?: number;
+  items: ServicePackageItemPayload[];
 }
 
 export interface ServiceOrder {
@@ -525,6 +565,8 @@ export interface BusinessIntegrations {
   testMode: boolean;
   bookingPaymentPolicy: "NONE" | "DEPOSIT" | "FULL";
   bookingDepositPercent: number;
+  bookingAllowPayInPerson: boolean;
+  bookingCancellationCutoffHours: number;
   workingDays: number[];
   workingHoursStart: string;
   workingHoursEnd: string;
@@ -541,6 +583,8 @@ export interface BusinessIntegrationsPayload {
   testMode?: boolean;
   bookingPaymentPolicy?: "NONE" | "DEPOSIT" | "FULL";
   bookingDepositPercent?: number;
+  bookingAllowPayInPerson?: boolean;
+  bookingCancellationCutoffHours?: number;
   workingDays?: number[];
   workingHoursStart?: string;
   workingHoursEnd?: string;
@@ -569,6 +613,8 @@ export interface BookingDetail {
   amountDue: number | null;
   currency: string;
   businessWhatsappLink: string | null;
+  customerLocation: string | null;
+  cancellationCutoffHours: number;
 }
 
 export type EcommerceOrderStatus = "RECEIVED" | "PROCESSING" | "READY" | "COMPLETED" | "CANCELLED";
@@ -614,12 +660,17 @@ export interface CustomItemAttributeOption {
   label: string;
   priceModifier: number;
   sortOrder: number;
+  requiresManualQuote: boolean;
 }
+
+export type AttributeSelectionType = "SINGLE" | "MULTIPLE";
 
 export interface CustomItemAttribute {
   id: string;
   name: string;
   sortOrder: number;
+  selectionType: AttributeSelectionType;
+  stepGroup: string | null;
   options: CustomItemAttributeOption[];
 }
 
@@ -627,11 +678,14 @@ export interface CustomItemAttributeOptionPayload {
   label: string;
   priceModifier: number;
   sortOrder?: number;
+  requiresManualQuote?: boolean;
 }
 
 export interface CustomItemAttributePayload {
   name: string;
   sortOrder?: number;
+  selectionType?: AttributeSelectionType;
+  stepGroup?: string | null;
   options: CustomItemAttributeOptionPayload[];
 }
 
@@ -654,6 +708,42 @@ export interface CustomWigSelection {
   attributeName: string;
   optionLabel: string;
   priceModifier: number;
+  requiresManualQuote: boolean;
+}
+
+// Public/hosted-page side — submission input, distinct from the owner-facing
+// snapshot shape above (CustomWigSelection).
+export interface CustomWigSelectionInput {
+  attributeId: string;
+  optionId: string;
+}
+
+export interface CustomWigRequestCreated {
+  requestNumber: number;
+  message: string;
+  estimatedPrice: number;
+}
+
+// Hosted custom-order page (ratel.app/order/{slug}) config — mirrors
+// PublicCustomWigConfigResponse. Reuses the same CustomItemAttribute/
+// CustomItemAttributeOption shapes the owner-side attribute manager uses,
+// since the public DTO's fields are identical.
+export interface PublicCustomWigConfig {
+  businessId: string;
+  businessName: string;
+  enabled: boolean;
+  currency: string;
+  attributes: CustomItemAttribute[];
+  businessWhatsappLink: string | null;
+}
+
+// The single hosted hub link (ratel.app/start/{slug}) a business puts in its
+// WhatsApp bio — reports which entry points are actually usable today.
+export interface StartHubConfig {
+  businessName: string;
+  bookingEnabled: boolean;
+  customOrderEnabled: boolean;
+  businessWhatsappLink: string | null;
 }
 
 export interface CustomWigRequestDetail {
@@ -681,6 +771,7 @@ export interface BookingWidgetConfig {
   paystackPublicKey: string | null;
   paymentPolicy: "NONE" | "DEPOSIT" | "FULL";
   depositPercent: number;
+  allowPayInPerson: boolean;
   workingDays: number[];
   workingHoursStart: string;
   workingHoursEnd: string;
@@ -688,19 +779,26 @@ export interface BookingWidgetConfig {
 }
 
 export interface BookableService {
-  serviceCatalogId: string;
+  serviceCatalogId: string | null;
+  packageId: string | null;
   serviceName: string;
   serviceTypeName: string | null;
+  description: string | null;
   price: number;
+  isPackage: boolean;
+  requiresLocation: boolean;
+  includedItems: string[];
 }
 
 export interface CreateBookingPayload {
-  serviceCatalogId: string;
+  serviceCatalogId?: string;
+  packageId?: string;
   scheduledAt: string;
   customerName: string;
   customerEmail: string;
   customerWhatsapp: string;
   notes?: string;
+  customerLocation?: string;
 }
 
 export interface BookingCreated {
@@ -1334,6 +1432,21 @@ export const api = {
       body: JSON.stringify({ reference }),
     }),
 
+  payInPersonBooking: (manageToken: string) =>
+    request<void>(`/api/public/bookings/${manageToken}/pay-in-person`, { method: "POST" }),
+
+  // Owner-side package management (mirrors service-catalog CRUD shape).
+  listServicePackages: (token: string) => request<ServicePackage[]>("/api/service-packages", {}, token),
+
+  createServicePackage: (token: string, payload: ServicePackagePayload) =>
+    request<ServicePackage>("/api/service-packages", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  updateServicePackage: (token: string, id: string, payload: ServicePackagePayload) =>
+    request<ServicePackage>(`/api/service-packages/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  setServicePackageActive: (token: string, id: string, active: boolean) =>
+    request<ServicePackage>(`/api/service-packages/${id}/active`, { method: "PATCH", body: JSON.stringify({ active }) }, token),
+
   // Hosted booking page (ratel.app/book/{slug}) — for businesses with no
   // website of their own to embed the widget on.
   getBookingWidgetConfigBySlug: (slug: string) =>
@@ -1347,6 +1460,42 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // Hosted hub page (ratel.app/start/{slug}) — the one link a business puts
+  // in its WhatsApp bio.
+  getStartHubConfigBySlug: (slug: string) =>
+    request<StartHubConfig>(`/api/public/start/by-slug/${slug}`),
+
+  // Hosted custom-order page (ratel.app/order/{slug}) — for businesses with
+  // no website of their own to embed custom-wig.js on.
+  getCustomWigConfigBySlug: (slug: string) =>
+    request<PublicCustomWigConfig>(`/api/public/custom-wig/by-slug/${slug}/config`),
+
+  submitCustomWigRequest: async (
+    businessId: string,
+    payload: {
+      customerName: string;
+      customerEmail: string;
+      customerWhatsapp: string;
+      selections: CustomWigSelectionInput[];
+      notes?: string;
+    },
+    photo: File | null
+  ): Promise<CustomWigRequestCreated> => {
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify(payload));
+    if (photo) formData.append("photo", photo);
+    const res = await fetch(`/api/public/custom-wig/requests?businessId=${businessId}`, {
+      method: "POST",
+      credentials: "same-origin",
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Couldn't submit that request.");
+    }
+    return res.json();
+  },
 
   listEcommerceOrders: (token: string) =>
     request<EcommerceOrder[]>("/api/ecommerce-orders", {}, token),

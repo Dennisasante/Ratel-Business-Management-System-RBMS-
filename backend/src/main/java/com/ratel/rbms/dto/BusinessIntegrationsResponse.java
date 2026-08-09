@@ -15,6 +15,8 @@ public record BusinessIntegrationsResponse(
         boolean testMode,
         String bookingPaymentPolicy,
         int bookingDepositPercent,
+        boolean bookingAllowPayInPerson,
+        int bookingCancellationCutoffHours,
         List<Integer> workingDays,
         LocalTime workingHoursStart,
         LocalTime workingHoursEnd

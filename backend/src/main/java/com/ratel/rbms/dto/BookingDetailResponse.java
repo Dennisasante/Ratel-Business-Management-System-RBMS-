@@ -14,6 +14,8 @@ public record BookingDetailResponse(
         String customerName,
         BigDecimal amountDue,
         String currency,
-        String businessWhatsappLink
+        String businessWhatsappLink,
+        String customerLocation,
+        int cancellationCutoffHours
 ) {
 }

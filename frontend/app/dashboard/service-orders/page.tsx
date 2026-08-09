@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, Tags, CalendarDays, MessageCircle } from "lucide-react";
+import { Plus, Wrench, BarChart3, Mail, Tags, CalendarDays, MessageCircle, Package as PackageIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -15,6 +15,8 @@ import {
   ServiceOrderPayload,
   ServiceOrderStatus,
   ServiceOrderUpdatePayload,
+  ServicePackage,
+  ServicePackagePayload,
   ServiceType,
   ServiceTypePayload,
   UserSummary,
@@ -24,6 +26,7 @@ import ServiceOrderForm from "@/components/ServiceOrderForm";
 import ServiceOrderEditForm from "@/components/ServiceOrderEditForm";
 import ServiceCatalogManager from "@/components/ServiceCatalogManager";
 import ServiceTypeManager from "@/components/ServiceTypeManager";
+import ServicePackageManager from "@/components/ServicePackageManager";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -65,7 +68,8 @@ type ModalState =
   | { type: "add" }
   | { type: "edit"; order: ServiceOrder }
   | { type: "catalog" }
-  | { type: "types" };
+  | { type: "types" }
+  | { type: "packages" };
 
 export default function ServiceOrdersPage() {
   const { session, loading } = useAuth();
@@ -75,6 +79,7 @@ export default function ServiceOrdersPage() {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([]);
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [staff, setStaff] = useState<UserSummary[]>([]);
   const [fetching, setFetching] = useState(true);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -102,14 +107,16 @@ export default function ServiceOrdersPage() {
 
   const loadSupportingData = useCallback(async () => {
     if (!session) return;
-    const [c, cat, s] = await Promise.all([
+    const [c, cat, s, pkgs] = await Promise.all([
       api.listCustomers(session.token),
       api.listServiceCatalog(session.token),
       api.listUsers(session.token),
+      api.listServicePackages(session.token),
     ]);
     setCustomers(c);
     setCatalog(cat);
     setStaff(s);
+    setPackages(pkgs);
   }, [session]);
 
   useEffect(() => {
@@ -156,7 +163,7 @@ export default function ServiceOrdersPage() {
 
   async function handleUpdateCatalogBookingSettings(
     id: string,
-    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number }
+    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }
   ) {
     if (!session) return;
     const existing = catalog.find((c) => c.id === id);
@@ -168,6 +175,24 @@ export default function ServiceOrdersPage() {
       ...settings,
     });
     setCatalog((prev) => prev.map((c) => (c.id === id ? item : c)));
+  }
+
+  async function handleCreatePackage(payload: ServicePackagePayload) {
+    if (!session) return;
+    const pkg = await api.createServicePackage(session.token, payload);
+    setPackages((prev) => [...prev, pkg].sort((a, b) => a.name.localeCompare(b.name)));
+  }
+
+  async function handleUpdatePackage(id: string, payload: ServicePackagePayload) {
+    if (!session) return;
+    const pkg = await api.updateServicePackage(session.token, id, payload);
+    setPackages((prev) => prev.map((p) => (p.id === id ? pkg : p)));
+  }
+
+  async function handleTogglePackageActive(id: string, active: boolean) {
+    if (!session) return;
+    const pkg = await api.setServicePackageActive(session.token, id, active);
+    setPackages((prev) => prev.map((p) => (p.id === id ? pkg : p)));
   }
 
   async function handleCreateServiceType(payload: ServiceTypePayload) {
@@ -250,6 +275,9 @@ export default function ServiceOrdersPage() {
             </Button>
             <Button variant="secondary" onClick={() => setModal({ type: "catalog" })}>
               Manage catalog
+            </Button>
+            <Button variant="secondary" onClick={() => setModal({ type: "packages" })}>
+              <PackageIcon size={16} /> Packages
             </Button>
             <Link href="/dashboard/service-orders/calendar">
               <Button variant="secondary">
@@ -450,6 +478,19 @@ export default function ServiceOrdersPage() {
             onCreate={handleCreateServiceType}
             onRename={handleRenameServiceType}
             onDelete={handleDeleteServiceType}
+          />
+        </Modal>
+      )}
+
+      {modal.type === "packages" && (
+        <Modal title="Packages" onClose={() => setModal({ type: "none" })}>
+          <ServicePackageManager
+            packages={packages}
+            serviceTypes={serviceTypes}
+            catalogItems={catalog.filter((c) => c.active)}
+            onCreate={handleCreatePackage}
+            onUpdate={handleUpdatePackage}
+            onToggleActive={handleTogglePackageActive}
           />
         </Modal>
       )}

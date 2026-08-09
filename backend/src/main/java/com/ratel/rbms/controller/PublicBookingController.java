@@ -66,6 +66,12 @@ public class PublicBookingController {
         return bookingService.verifyPayment(request.reference());
     }
 
+    @PostMapping("/{token}/pay-in-person")
+    public ResponseEntity<Void> payInPerson(@PathVariable String token) {
+        bookingService.payInPerson(token);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{token}")
     public BookingDetailResponse get(@PathVariable String token) {
         return bookingService.getByManageToken(token);

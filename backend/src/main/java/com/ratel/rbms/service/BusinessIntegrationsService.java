@@ -118,6 +118,15 @@ public class BusinessIntegrationsService {
             }
             integrations.setBookingDepositPercent(req.bookingDepositPercent());
         }
+        if (req.bookingAllowPayInPerson() != null) {
+            integrations.setAllowPayInPerson(req.bookingAllowPayInPerson());
+        }
+        if (req.bookingCancellationCutoffHours() != null) {
+            if (req.bookingCancellationCutoffHours() < 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Cancellation cutoff can't be negative.");
+            }
+            integrations.setCancellationCutoffHours(req.bookingCancellationCutoffHours());
+        }
         if (req.workingDays() != null) {
             if (req.workingDays().stream().anyMatch(d -> d < 1 || d > 7)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Working days must be between 1 (Monday) and 7 (Sunday).");
@@ -259,6 +268,8 @@ public class BusinessIntegrationsService {
                 i.isTestMode(),
                 i.getBookingPaymentPolicy(),
                 i.getBookingDepositPercent(),
+                i.isAllowPayInPerson(),
+                i.getCancellationCutoffHours(),
                 i.getWorkingDays(),
                 i.getWorkingHoursStart(),
                 i.getWorkingHoursEnd()
