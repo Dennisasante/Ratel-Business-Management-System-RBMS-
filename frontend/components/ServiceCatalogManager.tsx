@@ -14,9 +14,22 @@ interface ServiceCatalogManagerProps {
   onToggleActive: (id: string, active: boolean) => Promise<void>;
   onUpdateBookingSettings: (
     id: string,
-    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }
+    settings: {
+      bookableOnline: boolean;
+      durationMinutes: number;
+      maxConcurrentBookings: number;
+      requiresLocation: boolean;
+      paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | "";
+    }
   ) => Promise<void>;
 }
+
+const PAYMENT_POLICY_OPTIONS: { value: "" | "NONE" | "DEPOSIT" | "FULL"; label: string }[] = [
+  { value: "", label: "Use business default" },
+  { value: "NONE", label: "No payment required" },
+  { value: "DEPOSIT", label: "Deposit required" },
+  { value: "FULL", label: "Full payment required" },
+];
 
 export default function ServiceCatalogManager({
   items,
@@ -32,6 +45,7 @@ export default function ServiceCatalogManager({
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [maxConcurrentBookings, setMaxConcurrentBookings] = useState("1");
   const [requiresLocation, setRequiresLocation] = useState(false);
+  const [paymentPolicyOverride, setPaymentPolicyOverride] = useState<"" | "NONE" | "DEPOSIT" | "FULL">("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -50,6 +64,7 @@ export default function ServiceCatalogManager({
         durationMinutes: Number(durationMinutes) || 30,
         maxConcurrentBookings: Number(maxConcurrentBookings) || 1,
         requiresLocation,
+        paymentPolicyOverride,
       });
       setName("");
       setPrice("0");
@@ -57,6 +72,7 @@ export default function ServiceCatalogManager({
       setDurationMinutes("30");
       setMaxConcurrentBookings("1");
       setRequiresLocation(false);
+      setPaymentPolicyOverride("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't add that catalog item.");
     } finally {
@@ -142,6 +158,20 @@ export default function ServiceCatalogManager({
                 Requires customer location (home service)
               </label>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-ink-700">Payment requirement</label>
+              <select
+                value={paymentPolicyOverride}
+                onChange={(e) => setPaymentPolicyOverride(e.target.value as "" | "NONE" | "DEPOSIT" | "FULL")}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                {PAYMENT_POLICY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -215,13 +245,22 @@ function BookingSettingsEditor({
   onCancel,
 }: {
   item: ServiceCatalogItem;
-  onSave: (settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }) => Promise<void>;
+  onSave: (settings: {
+    bookableOnline: boolean;
+    durationMinutes: number;
+    maxConcurrentBookings: number;
+    requiresLocation: boolean;
+    paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | "";
+  }) => Promise<void>;
   onCancel: () => void;
 }) {
   const [bookableOnline, setBookableOnline] = useState(item.bookableOnline);
   const [durationMinutes, setDurationMinutes] = useState(String(item.durationMinutes));
   const [maxConcurrentBookings, setMaxConcurrentBookings] = useState(String(item.maxConcurrentBookings));
   const [requiresLocation, setRequiresLocation] = useState(item.requiresLocation);
+  const [paymentPolicyOverride, setPaymentPolicyOverride] = useState<"" | "NONE" | "DEPOSIT" | "FULL">(
+    item.paymentPolicyOverride ?? ""
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -234,6 +273,7 @@ function BookingSettingsEditor({
         durationMinutes: Number(durationMinutes) || 30,
         maxConcurrentBookings: Number(maxConcurrentBookings) || 1,
         requiresLocation,
+        paymentPolicyOverride,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save.");
@@ -271,6 +311,20 @@ function BookingSettingsEditor({
         <label htmlFor={`requiresLocation-${item.id}`} className="text-sm text-ink-700">
           Requires customer location (home service)
         </label>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-ink-700">Payment requirement</label>
+        <select
+          value={paymentPolicyOverride}
+          onChange={(e) => setPaymentPolicyOverride(e.target.value as "" | "NONE" | "DEPOSIT" | "FULL")}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        >
+          {PAYMENT_POLICY_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">

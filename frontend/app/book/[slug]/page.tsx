@@ -54,8 +54,8 @@ function isWithinWorkingHours(config: BookingWidgetConfig, whenLocal: string) {
 }
 
 function policyNote(config: BookingWidgetConfig, service: BookableService | undefined) {
-  if (!service || config.paymentPolicy === "NONE") return null;
-  if (config.paymentPolicy === "FULL") {
+  if (!service || service.paymentPolicy === "NONE") return null;
+  if (service.paymentPolicy === "FULL") {
     return `Full payment (${formatMoney(service.price, config.currency)}) is required to confirm this booking.`;
   }
   const deposit = (Number(service.price) * config.depositPercent) / 100;
@@ -64,6 +64,73 @@ function policyNote(config: BookingWidgetConfig, service: BookableService | unde
 
 function serviceKey(s: BookableService) {
   return s.isPackage ? `pkg:${s.packageId}` : `svc:${s.serviceCatalogId}`;
+}
+
+function formatDateTimeLabel(whenLocal: string) {
+  if (!whenLocal) return null;
+  const d = new Date(whenLocal);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function BookingSummaryBody({
+  config,
+  service,
+  scheduledAt,
+  location,
+}: {
+  config: BookingWidgetConfig;
+  service: BookableService | undefined;
+  scheduledAt: string;
+  location: string;
+}) {
+  const whenLabel = formatDateTimeLabel(scheduledAt);
+  const note = policyNote(config, service);
+
+  if (!service) {
+    return <p className="text-xs text-[#9a8c7c]">Nothing selected yet.</p>;
+  }
+
+  return (
+    <>
+      <dl className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3 text-sm">
+          <dt className="shrink-0 text-[#7a6d5f]">Service</dt>
+          <dd className="text-right font-medium text-[#2a2018]">{service.serviceName}</dd>
+        </div>
+        {whenLabel && (
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <dt className="shrink-0 text-[#7a6d5f]">When</dt>
+            <dd className="text-right font-medium text-[#2a2018]">{whenLabel}</dd>
+          </div>
+        )}
+        {service.requiresLocation && location.trim() && (
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <dt className="shrink-0 text-[#7a6d5f]">Location</dt>
+            <dd className="text-right font-medium text-[#2a2018]">{location.trim()}</dd>
+          </div>
+        )}
+      </dl>
+      {service.includedItems.length > 0 && (
+        <ul className="mt-3 space-y-0.5 border-t border-[#f0e6d8] pt-3">
+          {service.includedItems.map((line) => (
+            <li key={line} className="text-xs text-[#7a6d5f]">
+              • {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-4 border-t border-[#f0e6d8] pt-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-[#4a3d2f]">Total</span>
+          <span className="text-lg font-bold" style={{ color: ACCENT }}>
+            {formatMoney(service.price, config.currency)}
+          </span>
+        </div>
+        {note && <p className="mt-2 text-[11px] leading-relaxed text-[#9a8c7c]">{note}</p>}
+      </div>
+    </>
+  );
 }
 
 export default function HostedBookingPage() {
@@ -113,6 +180,7 @@ export default function HostedBookingPage() {
   }, [load]);
 
   const selectedService = services.find((s) => serviceKey(s) === selectedKey);
+  const showSummary = !!config && config.enabled && services.length > 0 && !created;
 
   function handleContinue() {
     setStep1Error(null);
@@ -177,11 +245,18 @@ export default function HostedBookingPage() {
 
   return (
     <main
-      className="flex min-h-screen flex-col items-center justify-center px-4 py-12"
+      className={`min-h-screen px-4 py-12 ${showSummary ? "pb-28 lg:pb-12" : "flex flex-col items-center justify-center"}`}
       style={{ background: "radial-gradient(1200px circle at 50% -10%, rgba(167,101,69,0.14), transparent 55%), #fdfaf6" }}
     >
       <div
-        className="w-full max-w-md rounded-3xl p-8"
+        className={
+          showSummary
+            ? "mx-auto flex w-full max-w-3xl flex-col gap-6 lg:grid lg:grid-cols-[1fr_320px] lg:items-start"
+            : "mx-auto flex w-full max-w-md flex-col items-center"
+        }
+      >
+      <div
+        className="w-full rounded-3xl p-8"
         style={{ background: "#fff", border: "1px solid #f0e6d8", boxShadow: "0 1px 2px rgba(42,32,24,0.04), 0 24px 48px -16px rgba(42,32,24,0.18)" }}
       >
         {loading && <p className="text-sm text-[#9a8c7c]">Loading...</p>}
@@ -465,6 +540,39 @@ export default function HostedBookingPage() {
           </>
         )}
       </div>
+
+      {showSummary && config && (
+        <aside className="hidden lg:block">
+          <div
+            className="sticky top-8 rounded-3xl p-6"
+            style={{ background: "#fff", border: "1px solid #f0e6d8", boxShadow: "0 1px 2px rgba(42,32,24,0.04), 0 24px 48px -16px rgba(42,32,24,0.18)" }}
+          >
+            <div className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: ACCENT }}>
+              <Sparkles size={13} /> Your booking
+            </div>
+            <h2 className="text-base font-semibold text-[#1c140d]">{config.businessName}</h2>
+            <div className="mt-4">
+              <BookingSummaryBody config={config} service={selectedService} scheduledAt={scheduledAt} location={customerLocation} />
+            </div>
+          </div>
+        </aside>
+      )}
+      </div>
+
+      {showSummary && config && (
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#f0e6d8] bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-md items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-[#9a8c7c]">{selectedService ? selectedService.serviceName : "Total"}</p>
+              <p className="text-base font-bold" style={{ color: ACCENT }}>
+                {formatMoney(selectedService?.price ?? 0, config.currency)}
+              </p>
+            </div>
+            <p className="text-[11px] text-[#9a8c7c]">Step {step} of 3</p>
+          </div>
+        </div>
+      )}
+
       <PoweredByRatel className="mt-6 text-xs text-[#b3a690]" iconSize={16} />
     </main>
   );

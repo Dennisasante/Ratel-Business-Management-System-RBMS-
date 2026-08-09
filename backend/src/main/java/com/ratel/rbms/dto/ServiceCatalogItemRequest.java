@@ -27,6 +27,10 @@ public record ServiceCatalogItemRequest(
         Integer maxConcurrentBookings,
 
         // e.g. home-service or bridal work — customer must supply where to go.
-        Boolean requiresLocation
+        Boolean requiresLocation,
+
+        // "NONE"/"DEPOSIT"/"FULL" to override the business's default payment
+        // policy for just this service, or null/blank to use the default.
+        String paymentPolicyOverride
 ) {
 }

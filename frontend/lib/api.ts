@@ -350,6 +350,7 @@ export interface ServiceCatalogItem {
   durationMinutes: number;
   maxConcurrentBookings: number;
   requiresLocation: boolean;
+  paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | null;
   createdAt: string;
 }
 
@@ -361,6 +362,7 @@ export interface ServiceCatalogItemPayload {
   durationMinutes?: number;
   maxConcurrentBookings?: number;
   requiresLocation?: boolean;
+  paymentPolicyOverride?: "NONE" | "DEPOSIT" | "FULL" | "";
 }
 
 export interface ServicePackageItem {
@@ -386,6 +388,7 @@ export interface ServicePackage {
   bookableOnline: boolean;
   durationMinutes: number;
   maxConcurrentBookings: number;
+  paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | null;
   items: ServicePackageItem[];
 }
 
@@ -398,6 +401,7 @@ export interface ServicePackagePayload {
   durationMinutes?: number;
   maxConcurrentBookings?: number;
   items: ServicePackageItemPayload[];
+  paymentPolicyOverride?: "NONE" | "DEPOSIT" | "FULL" | "";
 }
 
 export interface ServiceOrder {
@@ -788,6 +792,7 @@ export interface BookableService {
   isPackage: boolean;
   requiresLocation: boolean;
   includedItems: string[];
+  paymentPolicy: "NONE" | "DEPOSIT" | "FULL";
 }
 
 export interface CreateBookingPayload {

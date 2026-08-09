@@ -66,6 +66,11 @@ public class ServiceCatalogItem {
     @Builder.Default
     private boolean requiresLocation = false;
 
+    // NONE/DEPOSIT/FULL, or null to fall back to the business's default
+    // booking_payment_policy — see BookingService.effectivePolicy().
+    @Column(name = "payment_policy_override", length = 20)
+    private String paymentPolicyOverride;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

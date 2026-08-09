@@ -163,7 +163,13 @@ export default function ServiceOrdersPage() {
 
   async function handleUpdateCatalogBookingSettings(
     id: string,
-    settings: { bookableOnline: boolean; durationMinutes: number; maxConcurrentBookings: number; requiresLocation: boolean }
+    settings: {
+      bookableOnline: boolean;
+      durationMinutes: number;
+      maxConcurrentBookings: number;
+      requiresLocation: boolean;
+      paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | "";
+    }
   ) {
     if (!session) return;
     const existing = catalog.find((c) => c.id === id);

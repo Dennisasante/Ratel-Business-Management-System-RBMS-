@@ -32,6 +32,10 @@ public record ServicePackageRequest(
         // Full replacement — saving a package rewrites its whole component list,
         // same pattern as CustomItemAttribute's options.
         @NotEmpty(message = "Add at least one item to the package")
-        List<@Valid ServicePackageItemRequest> items
+        List<@Valid ServicePackageItemRequest> items,
+
+        // "NONE"/"DEPOSIT"/"FULL" to override the business's default payment
+        // policy for just this package, or null/blank to use the default.
+        String paymentPolicyOverride
 ) {
 }

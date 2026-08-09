@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -28,6 +29,8 @@ import java.util.UUID;
  */
 @Service
 public class ServicePackageService {
+
+    private static final Set<String> VALID_POLICY_OVERRIDES = Set.of("NONE", "DEPOSIT", "FULL");
 
     private final ServicePackageRepository servicePackageRepository;
     private final ServicePackageItemRepository servicePackageItemRepository;
@@ -75,6 +78,7 @@ public class ServicePackageService {
                 .bookableOnline(req.bookableOnline() != null && req.bookableOnline())
                 .durationMinutes(req.durationMinutes() != null ? req.durationMinutes() : 60)
                 .maxConcurrentBookings(req.maxConcurrentBookings() != null ? req.maxConcurrentBookings() : 1)
+                .paymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()))
                 .build();
         pkg = servicePackageRepository.save(pkg);
         saveItems(pkg.getId(), req.items());
@@ -94,12 +98,24 @@ public class ServicePackageService {
         if (req.bookableOnline() != null) pkg.setBookableOnline(req.bookableOnline());
         if (req.durationMinutes() != null) pkg.setDurationMinutes(req.durationMinutes());
         if (req.maxConcurrentBookings() != null) pkg.setMaxConcurrentBookings(req.maxConcurrentBookings());
+        pkg.setPaymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()));
         pkg = servicePackageRepository.save(pkg);
 
         servicePackageItemRepository.deleteAllByPackageId(pkg.getId());
         saveItems(pkg.getId(), req.items());
 
         return toResponse(pkg);
+    }
+
+    // Blank/null means "use the business default" (stored as null); anything
+    // else must be one of the real policy values.
+    private String normalizePolicyOverride(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim().toUpperCase();
+        if (!VALID_POLICY_OVERRIDES.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Payment policy override must be NONE, DEPOSIT, or FULL.");
+        }
+        return normalized;
     }
 
     public ServicePackageResponse setActive(UUID id, boolean active) {

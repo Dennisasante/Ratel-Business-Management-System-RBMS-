@@ -139,7 +139,7 @@ public class BookingService {
                 : null;
         return new BookingWidgetConfigResponse(
                 business.getId(), business.getName(), enabled, business.getCurrency(), paystackPublicKey,
-                effectivePolicy(integrations), integrations != null ? integrations.getBookingDepositPercent() : 50,
+                effectivePolicy(integrations, null), integrations != null ? integrations.getBookingDepositPercent() : 50,
                 integrations != null && integrations.isAllowPayInPerson(),
                 integrations != null ? integrations.getWorkingDays() : DEFAULT_WORKING_DAYS,
                 integrations != null ? integrations.getWorkingHoursStart() : DEFAULT_HOURS_START,
@@ -152,6 +152,7 @@ public class BookingService {
         if (!planFeatureService.hasFeature(businessId, PlanFeature.BOOKING_WIDGET)) {
             return List.of();
         }
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
         List<BookableServiceResponse> results = new ArrayList<>();
         serviceCatalogItemRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).forEach(item ->
                 results.add(new BookableServiceResponse(
@@ -164,7 +165,8 @@ public class BookingService {
                         item.getPrice(),
                         false,
                         item.isRequiresLocation(),
-                        List.of()
+                        List.of(),
+                        effectivePolicy(integrations, item.getPaymentPolicyOverride())
                 ))
         );
         servicePackageRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).forEach(pkg ->
@@ -178,7 +180,8 @@ public class BookingService {
                         pkg.getPrice(),
                         true,
                         false,
-                        includedItemLabels(pkg.getId())
+                        includedItemLabels(pkg.getId()),
+                        effectivePolicy(integrations, pkg.getPaymentPolicyOverride())
                 ))
         );
         return results;
@@ -219,6 +222,7 @@ public class BookingService {
         UUID servicePackageId = null;
         BigDecimal price;
         boolean requiresLocation;
+        String itemPolicyOverride;
 
         if (req.packageId() != null) {
             ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
@@ -237,6 +241,7 @@ public class BookingService {
             servicePackageId = pkg.getId();
             price = pkg.getPrice();
             requiresLocation = false; // packages don't carry the flag today — component items might, but the package itself is the bookable unit
+            itemPolicyOverride = pkg.getPaymentPolicyOverride();
         } else {
             ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
                     .filter(ServiceCatalogItem::isActive)
@@ -254,6 +259,7 @@ public class BookingService {
             serviceCatalogId = catalogItem.getId();
             price = catalogItem.getPrice();
             requiresLocation = catalogItem.isRequiresLocation();
+            itemPolicyOverride = catalogItem.getPaymentPolicyOverride();
         }
 
         if (requiresLocation && (req.customerLocation() == null || req.customerLocation().isBlank())) {
@@ -312,8 +318,8 @@ public class BookingService {
             );
         }
 
-        boolean paymentRequired = !"NONE".equals(effectivePolicy(integrations));
-        BigDecimal amountDue = paymentRequired ? depositAmount(price, integrations) : null;
+        boolean paymentRequired = !"NONE".equals(effectivePolicy(integrations, itemPolicyOverride));
+        BigDecimal amountDue = paymentRequired ? depositAmount(price, integrations, itemPolicyOverride) : null;
         String message = paymentRequired ? "Booking received — pay to confirm." : "Booking confirmed.";
 
         return new BookingCreatedResponse(booking.getManageToken(), booking.getBookingNumber(), message, paymentRequired, amountDue);
@@ -379,7 +385,9 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
         }
 
-        BigDecimal amount = "NONE".equals(effectivePolicy(integrations)) ? order.getPrice() : depositAmount(order.getPrice(), integrations);
+        String itemPolicyOverride = resolveItemPolicyOverride(order);
+        BigDecimal amount = "NONE".equals(effectivePolicy(integrations, itemPolicyOverride))
+                ? order.getPrice() : depositAmount(order.getPrice(), integrations, itemPolicyOverride);
         long amountMinorUnits = amount.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
         String reference = "BOOKING-" + booking.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
 
@@ -460,7 +468,9 @@ public class BookingService {
         BigDecimal amountDue = null;
         if (!"PAID".equals(booking.getPaymentStatus()) && !"PAY_IN_PERSON".equals(booking.getPaymentStatus()) && order.getStatus() != ServiceOrderStatus.CANCELLED) {
             if (integrations != null && integrations.getPaystackSecretKey() != null && !integrations.getPaystackSecretKey().isBlank()) {
-                amountDue = "NONE".equals(effectivePolicy(integrations)) ? order.getPrice() : depositAmount(order.getPrice(), integrations);
+                String itemPolicyOverride = resolveItemPolicyOverride(order);
+                amountDue = "NONE".equals(effectivePolicy(integrations, itemPolicyOverride))
+                        ? order.getPrice() : depositAmount(order.getPrice(), integrations, itemPolicyOverride);
             }
         }
 
@@ -555,19 +565,37 @@ public class BookingService {
 
     // Falls back to NONE when Paystack isn't actually configured, so a business
     // that picked DEPOSIT/FULL before finishing setup doesn't lock customers
-    // out of booking entirely — they just aren't asked to pay yet.
-    private String effectivePolicy(BusinessIntegrations integrations) {
+    // out of booking entirely — they just aren't asked to pay yet. A non-blank
+    // itemPolicyOverride (from the specific service/package being booked) wins
+    // over the business-wide default; pass null when there's no specific item.
+    private String effectivePolicy(BusinessIntegrations integrations, String itemPolicyOverride) {
         if (integrations == null) return "NONE";
         if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) return "NONE";
+        if (itemPolicyOverride != null && !itemPolicyOverride.isBlank()) return itemPolicyOverride;
         return integrations.getBookingPaymentPolicy();
     }
 
-    private BigDecimal depositAmount(BigDecimal price, BusinessIntegrations integrations) {
-        if ("DEPOSIT".equals(effectivePolicy(integrations))) {
+    private BigDecimal depositAmount(BigDecimal price, BusinessIntegrations integrations, String itemPolicyOverride) {
+        if ("DEPOSIT".equals(effectivePolicy(integrations, itemPolicyOverride))) {
             return price.multiply(BigDecimal.valueOf(integrations.getBookingDepositPercent()))
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         }
         return price;
+    }
+
+    // Resolves the payment-policy override of whichever item a ServiceOrder
+    // was actually booked against, for the code paths (startPayment,
+    // getByManageToken) that only have the order, not the original request.
+    private String resolveItemPolicyOverride(ServiceOrder order) {
+        if (order.getServicePackageId() != null) {
+            return servicePackageRepository.findById(order.getServicePackageId())
+                    .map(ServicePackage::getPaymentPolicyOverride).orElse(null);
+        }
+        if (order.getServiceCatalogId() != null) {
+            return serviceCatalogItemRepository.findById(order.getServiceCatalogId())
+                    .map(ServiceCatalogItem::getPaymentPolicyOverride).orElse(null);
+        }
+        return null;
     }
 
     private Booking getByToken(String manageToken) {

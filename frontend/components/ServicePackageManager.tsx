@@ -21,6 +21,13 @@ interface ItemRow {
   quantity: string;
 }
 
+const PAYMENT_POLICY_OPTIONS: { value: "" | "NONE" | "DEPOSIT" | "FULL"; label: string }[] = [
+  { value: "", label: "Use business default" },
+  { value: "NONE", label: "No payment required" },
+  { value: "DEPOSIT", label: "Deposit required" },
+  { value: "FULL", label: "Full payment required" },
+];
+
 export default function ServicePackageManager({
   packages,
   serviceTypes,
@@ -133,6 +140,9 @@ function PackageForm({
   const [bookableOnline, setBookableOnline] = useState(initial?.bookableOnline ?? false);
   const [durationMinutes, setDurationMinutes] = useState(initial ? String(initial.durationMinutes) : "60");
   const [maxConcurrentBookings, setMaxConcurrentBookings] = useState(initial ? String(initial.maxConcurrentBookings) : "1");
+  const [paymentPolicyOverride, setPaymentPolicyOverride] = useState<"" | "NONE" | "DEPOSIT" | "FULL">(
+    initial?.paymentPolicyOverride ?? ""
+  );
   const [items, setItems] = useState<ItemRow[]>(
     initial?.items.length
       ? initial.items.map((i) => ({ serviceCatalogId: i.serviceCatalogId, quantity: String(i.quantity) }))
@@ -181,6 +191,7 @@ function PackageForm({
         durationMinutes: Number(durationMinutes) || 60,
         maxConcurrentBookings: Number(maxConcurrentBookings) || 1,
         items: cleanItems,
+        paymentPolicyOverride,
       });
       if (!initial) {
         setName("");
@@ -190,6 +201,7 @@ function PackageForm({
         setDurationMinutes("60");
         setMaxConcurrentBookings("1");
         setItems([{ serviceCatalogId: catalogItems[0]?.id ?? "", quantity: "1" }]);
+        setPaymentPolicyOverride("");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save that package.");
@@ -286,9 +298,25 @@ function PackageForm({
       </div>
 
       {bookableOnline && (
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Duration (minutes)" name="packageDuration" type="number" value={durationMinutes} onChange={setDurationMinutes} />
-          <FormField label="Max bookings at once" name="packageCapacity" type="number" value={maxConcurrentBookings} onChange={setMaxConcurrentBookings} />
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Duration (minutes)" name="packageDuration" type="number" value={durationMinutes} onChange={setDurationMinutes} />
+            <FormField label="Max bookings at once" name="packageCapacity" type="number" value={maxConcurrentBookings} onChange={setMaxConcurrentBookings} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Payment requirement</label>
+            <select
+              value={paymentPolicyOverride}
+              onChange={(e) => setPaymentPolicyOverride(e.target.value as "" | "NONE" | "DEPOSIT" | "FULL")}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              {PAYMENT_POLICY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

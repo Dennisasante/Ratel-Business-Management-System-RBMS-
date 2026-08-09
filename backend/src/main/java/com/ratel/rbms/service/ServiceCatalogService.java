@@ -11,10 +11,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class ServiceCatalogService {
+
+    private static final Set<String> VALID_POLICY_OVERRIDES = Set.of("NONE", "DEPOSIT", "FULL");
 
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServiceTypeService serviceTypeService;
@@ -58,6 +61,7 @@ public class ServiceCatalogService {
                 .durationMinutes(req.durationMinutes() != null ? req.durationMinutes() : 30)
                 .maxConcurrentBookings(req.maxConcurrentBookings() != null ? req.maxConcurrentBookings() : 1)
                 .requiresLocation(req.requiresLocation() != null && req.requiresLocation())
+                .paymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()))
                 .build();
         item = serviceCatalogItemRepository.save(item);
         activityLogService.log("Added service catalog item \"" + item.getName() + "\"", "SERVICE_CATALOG", item.getId());
@@ -75,8 +79,20 @@ public class ServiceCatalogService {
         if (req.durationMinutes() != null) item.setDurationMinutes(req.durationMinutes());
         if (req.maxConcurrentBookings() != null) item.setMaxConcurrentBookings(req.maxConcurrentBookings());
         if (req.requiresLocation() != null) item.setRequiresLocation(req.requiresLocation());
+        item.setPaymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()));
         item = serviceCatalogItemRepository.save(item);
         return ServiceCatalogItemResponse.from(item, type.getName());
+    }
+
+    // Blank/null means "use the business default" (stored as null); anything
+    // else must be one of the real policy values.
+    private String normalizePolicyOverride(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim().toUpperCase();
+        if (!VALID_POLICY_OVERRIDES.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Payment policy override must be NONE, DEPOSIT, or FULL.");
+        }
+        return normalized;
     }
 
     // Archive/restore instead of delete — an order's service_catalog_id would otherwise

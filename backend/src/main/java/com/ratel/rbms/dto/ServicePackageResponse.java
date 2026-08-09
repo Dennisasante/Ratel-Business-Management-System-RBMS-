@@ -17,6 +17,7 @@ public record ServicePackageResponse(
         boolean bookableOnline,
         int durationMinutes,
         int maxConcurrentBookings,
+        String paymentPolicyOverride,
         List<ServicePackageItemResponse> items
 ) {
     public static ServicePackageResponse from(ServicePackage pkg, String serviceTypeName, List<ServicePackageItemResponse> items) {
@@ -31,6 +32,7 @@ public record ServicePackageResponse(
                 pkg.isBookableOnline(),
                 pkg.getDurationMinutes(),
                 pkg.getMaxConcurrentBookings(),
+                pkg.getPaymentPolicyOverride(),
                 items
         );
     }

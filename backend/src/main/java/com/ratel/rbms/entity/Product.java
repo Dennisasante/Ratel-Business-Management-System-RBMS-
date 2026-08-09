@@ -34,7 +34,9 @@ public class Product {
     @Column(nullable = false, length = 150)
     private String name;
 
-    // Kept for one release as a safety net alongside category_id (see V8), then dropped in V9.
+    // Superseded by category_id (see V8, which backfills product_categories rows
+    // from this column) but never dropped — still written/read in a few places
+    // as a plain free-text fallback.
     @Column(length = 100)
     private String category;
 

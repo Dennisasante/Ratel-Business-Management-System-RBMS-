@@ -12,6 +12,9 @@ public record BookableServiceResponse(
         BigDecimal price,
         boolean isPackage,
         boolean requiresLocation,
-        java.util.List<String> includedItems
+        java.util.List<String> includedItems,
+        // Effective NONE/DEPOSIT/FULL for this specific service/package —
+        // already resolves any per-item override against the business default.
+        String paymentPolicy
 ) {
 }

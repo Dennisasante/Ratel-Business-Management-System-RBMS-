@@ -177,7 +177,7 @@
   }
 
   function policyNote(service) {
-    var policy = state.config.paymentPolicy;
+    var policy = service && service.paymentPolicy;
     if (!service || !policy || policy === "NONE") return "";
     if (policy === "FULL") {
       return '<p class="rbw-policy-note">Full payment (' + formatMoney(service.price, state.config.currency) +

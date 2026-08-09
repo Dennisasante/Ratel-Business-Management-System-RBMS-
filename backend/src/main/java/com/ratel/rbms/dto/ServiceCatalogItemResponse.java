@@ -17,6 +17,7 @@ public record ServiceCatalogItemResponse(
         int durationMinutes,
         int maxConcurrentBookings,
         boolean requiresLocation,
+        String paymentPolicyOverride,
         Instant createdAt
 ) {
     public static ServiceCatalogItemResponse from(ServiceCatalogItem item, String serviceTypeName) {
@@ -31,6 +32,7 @@ public record ServiceCatalogItemResponse(
                 item.getDurationMinutes(),
                 item.getMaxConcurrentBookings(),
                 item.isRequiresLocation(),
+                item.getPaymentPolicyOverride(),
                 item.getCreatedAt()
         );
     }
