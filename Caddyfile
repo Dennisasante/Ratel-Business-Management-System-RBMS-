@@ -1,0 +1,13 @@
+# Reverse proxy for the two public entrypoints. Caddy issues and renews
+# Let's Encrypt certs for both domains automatically — no certbot, no manual
+# cron job. Requires DOMAIN/API_DOMAIN's DNS A records already pointed at
+# this server before the container starts (see DEPLOY.md), since Let's
+# Encrypt's HTTP-01 challenge needs to actually reach this box.
+
+{$DOMAIN} {
+	reverse_proxy frontend:3000
+}
+
+{$API_DOMAIN} {
+	reverse_proxy backend:8090
+}

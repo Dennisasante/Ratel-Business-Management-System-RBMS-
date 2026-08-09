@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+
+# Production secrets for docker-compose.prod.yml — see .env.production.example
+.env

@@ -101,6 +101,12 @@ npm run dev                 # http://localhost:3000
 
 Then visit `http://localhost:3000/register` to create your first business.
 
+## Deploying to production
+
+See [`DEPLOY.md`](DEPLOY.md) — a single VPS running the whole stack
+(Postgres, backend, frontend, and Caddy for automatic HTTPS) via
+`docker-compose.prod.yml`.
+
 To set up the Super Admin account (recommended before inviting anyone else),
 see "Super Admin (platform-level access)" in `backend/README.md` — it's a
 one-time env var setup, then log in separately at `http://localhost:3000/platform/login`.
