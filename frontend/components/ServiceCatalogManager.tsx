@@ -12,6 +12,7 @@ interface ServiceCatalogManagerProps {
   serviceTypes: ServiceType[];
   onCreate: (payload: ServiceCatalogItemPayload) => Promise<void>;
   onToggleActive: (id: string, active: boolean) => Promise<void>;
+  onEdit: (id: string, fields: { serviceTypeId: string; name: string; price: number }) => Promise<void>;
   onUpdateBookingSettings: (
     id: string,
     settings: {
@@ -36,6 +37,7 @@ export default function ServiceCatalogManager({
   serviceTypes,
   onCreate,
   onToggleActive,
+  onEdit,
   onUpdateBookingSettings,
 }: ServiceCatalogManagerProps) {
   const [serviceTypeId, setServiceTypeId] = useState(serviceTypes[0]?.id ?? "");
@@ -49,7 +51,7 @@ export default function ServiceCatalogManager({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [openPanel, setOpenPanel] = useState<{ id: string; panel: "edit" | "booking" } | null>(null);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -206,10 +208,20 @@ export default function ServiceCatalogManager({
                     </Badge>
                   )}
                   <button
-                    onClick={() => setEditingId(editingId === item.id ? null : item.id)}
+                    onClick={() =>
+                      setOpenPanel(openPanel?.id === item.id && openPanel.panel === "edit" ? null : { id: item.id, panel: "edit" })
+                    }
                     className="text-sm font-medium text-accent-hover hover:underline"
                   >
-                    {editingId === item.id ? "Close" : "Booking settings"}
+                    {openPanel?.id === item.id && openPanel.panel === "edit" ? "Close" : "Edit"}
+                  </button>
+                  <button
+                    onClick={() =>
+                      setOpenPanel(openPanel?.id === item.id && openPanel.panel === "booking" ? null : { id: item.id, panel: "booking" })
+                    }
+                    className="text-sm font-medium text-accent-hover hover:underline"
+                  >
+                    {openPanel?.id === item.id && openPanel.panel === "booking" ? "Close" : "Booking settings"}
                   </button>
                   <button
                     onClick={() => handleToggle(item)}
@@ -221,20 +233,98 @@ export default function ServiceCatalogManager({
                 </div>
               </div>
 
-              {editingId === item.id && (
+              {openPanel?.id === item.id && openPanel.panel === "edit" && (
+                <EditItemForm
+                  item={item}
+                  serviceTypes={serviceTypes}
+                  onSave={async (fields) => {
+                    await onEdit(item.id, fields);
+                    setOpenPanel(null);
+                  }}
+                  onCancel={() => setOpenPanel(null)}
+                />
+              )}
+
+              {openPanel?.id === item.id && openPanel.panel === "booking" && (
                 <BookingSettingsEditor
                   item={item}
                   onSave={async (settings) => {
                     await onUpdateBookingSettings(item.id, settings);
-                    setEditingId(null);
+                    setOpenPanel(null);
                   }}
-                  onCancel={() => setEditingId(null)}
+                  onCancel={() => setOpenPanel(null)}
                 />
               )}
             </li>
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function EditItemForm({
+  item,
+  serviceTypes,
+  onSave,
+  onCancel,
+}: {
+  item: ServiceCatalogItem;
+  serviceTypes: ServiceType[];
+  onSave: (fields: { serviceTypeId: string; name: string; price: number }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [serviceTypeId, setServiceTypeId] = useState(item.serviceTypeId);
+  const [name, setName] = useState(item.name);
+  const [price, setPrice] = useState(String(item.price));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    if (!name.trim()) {
+      setError("Name is required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ serviceTypeId, name: name.trim(), price: Number(price) || 0 });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-ink-700">Type</label>
+          <select
+            value={serviceTypeId}
+            onChange={(e) => setServiceTypeId(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          >
+            {serviceTypes.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <FormField label="Price" name="editPrice" type="number" value={price} onChange={setPrice} />
+      </div>
+      <FormField label="Name" name="editName" required value={name} onChange={setName} />
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="button" onClick={handleSave} disabled={saving} className="flex-1">
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }
