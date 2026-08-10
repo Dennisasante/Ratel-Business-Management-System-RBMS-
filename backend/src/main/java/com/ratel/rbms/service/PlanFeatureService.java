@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.SubscriptionPlan;
+import com.ratel.rbms.entity.enums.BillingStatus;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
@@ -47,7 +48,15 @@ public class PlanFeatureService {
      */
     public boolean hasFeature(UUID businessId, String featureCode) {
         Business business = businessRepository.findById(businessId).orElse(null);
-        if (business == null || business.getSubscriptionPlanId() == null) {
+        if (business == null) {
+            return false;
+        }
+        // Trial gets full access to everything — the plan they eventually pick
+        // only starts restricting once they're actually paying (ACTIVE).
+        if (business.getBillingStatus() == BillingStatus.TRIALING) {
+            return true;
+        }
+        if (business.getSubscriptionPlanId() == null) {
             return false;
         }
         return subscriptionPlanRepository.findById(business.getSubscriptionPlanId())
@@ -58,7 +67,13 @@ public class PlanFeatureService {
     /** The current plan's full feature list — lets any business-scoped user (not just Owners) know what's available, e.g. to decide what to show on the dashboard. */
     public List<String> listFeatures(UUID businessId) {
         Business business = businessRepository.findById(businessId).orElse(null);
-        if (business == null || business.getSubscriptionPlanId() == null) {
+        if (business == null) {
+            return List.of();
+        }
+        if (business.getBillingStatus() == BillingStatus.TRIALING) {
+            return List.of(PlanFeature.BOOKING_WIDGET, PlanFeature.WOOCOMMERCE_SYNC, PlanFeature.CUSTOM_WIG_REQUESTS);
+        }
+        if (business.getSubscriptionPlanId() == null) {
             return List.of();
         }
         return subscriptionPlanRepository.findById(business.getSubscriptionPlanId())
