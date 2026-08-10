@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ActivityLogEntry, ServiceOrder, UserSummary } from "@/lib/api";
-import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import StatCard from "@/components/ui/StatCard";
 import CardSkeleton from "@/components/ui/CardSkeleton";
@@ -184,10 +183,20 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title={`${timeOfDayGreeting()}, ${session.fullName.split(" ")[0]}`}
-        subtitle={`${business?.name ?? session.businessName} · ${session.role}`}
-      />
+      <div className="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-accent to-[#00234f] px-6 py-7 shadow-panel sm:px-8 sm:py-8">
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+          <div className="animate-blob-drift absolute -right-12 -top-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+          <div className="animate-blob-drift absolute -bottom-20 left-1/4 h-48 w-48 rounded-full bg-info/30 blur-3xl [animation-delay:-6s]" />
+        </div>
+        <Sparkles size={72} strokeWidth={1} className="pointer-events-none absolute -right-2 -top-2 text-white/10 sm:h-24 sm:w-24" aria-hidden />
+        <p className="text-sm font-medium text-white/70">
+          {business?.name ?? session.businessName} · {session.role}
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+          {timeOfDayGreeting()}, {session.fullName.split(" ")[0]}!
+        </h1>
+        <p className="mt-2 text-sm text-white/80">Here&apos;s a quick look at how things are going today.</p>
+      </div>
 
       {fetching ? (
         <CardSkeleton count={4} />

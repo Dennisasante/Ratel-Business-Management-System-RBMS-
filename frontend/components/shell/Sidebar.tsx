@@ -17,6 +17,8 @@ import {
   ClipboardList,
   Wrench,
   CreditCard,
+  CalendarDays,
+  ArrowUpRight,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -95,6 +97,18 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-2">
+        {business?.slug && (
+          <a
+            href={`/book/${business.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-1 flex items-center gap-3 rounded-lg bg-accent/15 px-3 py-2.5 text-sm font-medium text-sidebar-text-active transition hover:bg-accent/25"
+          >
+            <CalendarDays size={18} strokeWidth={1.75} />
+            Booking page
+            <ArrowUpRight size={13} className="ml-auto text-sidebar-text" />
+          </a>
+        )}
         {NAV_ITEMS.filter(
           (item) =>
             (!item.ownerOnly || session?.role === "OWNER") &&
