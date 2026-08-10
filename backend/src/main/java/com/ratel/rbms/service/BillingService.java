@@ -17,7 +17,6 @@ import com.ratel.rbms.repository.SubscriptionPaymentRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +45,6 @@ public class BillingService {
     private final PaystackService paystackService;
     private final ActivityLogService activityLogService;
     private final PlatformBillingSettingsRepository platformBillingSettingsRepository;
-    private final String platformPaystackSecretKey;
 
     public BillingService(
             BusinessRepository businessRepository,
@@ -55,8 +53,7 @@ public class BillingService {
             SubscriptionPaymentRepository subscriptionPaymentRepository,
             PaystackService paystackService,
             ActivityLogService activityLogService,
-            PlatformBillingSettingsRepository platformBillingSettingsRepository,
-            @Value("${app.paystack.secret-key}") String platformPaystackSecretKey
+            PlatformBillingSettingsRepository platformBillingSettingsRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -65,7 +62,6 @@ public class BillingService {
         this.paystackService = paystackService;
         this.activityLogService = activityLogService;
         this.platformBillingSettingsRepository = platformBillingSettingsRepository;
-        this.platformPaystackSecretKey = platformPaystackSecretKey;
     }
 
     public BillingStatusResponse getStatus() {
@@ -101,7 +97,7 @@ public class BillingService {
         long amountMinorUnits = plan.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
 
         PaystackService.InitResult init = paystackService.initializeTransaction(
-                platformPaystackSecretKey,
+                paystackService.resolvePlatformSecretKey(),
                 owner.getEmail(),
                 amountMinorUnits,
                 reference,
@@ -140,7 +136,7 @@ public class BillingService {
             return new VerifyPaymentResponse(true, business.getBillingStatus().name(), business.getCurrentPeriodEndsAt(), "Already confirmed.");
         }
 
-        PaystackService.VerifyResult verify = paystackService.verifyTransaction(platformPaystackSecretKey, reference);
+        PaystackService.VerifyResult verify = paystackService.verifyTransaction(paystackService.resolvePlatformSecretKey(), reference);
 
         if (!verify.success()) {
             payment.setStatus("FAILED");

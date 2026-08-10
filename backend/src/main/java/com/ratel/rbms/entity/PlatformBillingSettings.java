@@ -1,5 +1,6 @@
 package com.ratel.rbms.entity;
 
+import com.ratel.rbms.security.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -37,6 +38,17 @@ public class PlatformBillingSettings {
     // Null hides the USD display toggle entirely on the Billing page.
     @Column(name = "usd_display_rate", precision = 10, scale = 4)
     private BigDecimal usdDisplayRate;
+
+    // RBMS's OWN Paystack keys — subscription billing charged to businesses,
+    // completely separate from each business's own Paystack keys (see
+    // BusinessIntegrations). Falls back to the PAYSTACK_SECRET_KEY/
+    // PAYSTACK_PUBLIC_KEY env vars when blank, see PaystackService/BillingService.
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "paystack_secret_key")
+    private String paystackSecretKey;
+
+    @Column(name = "paystack_public_key")
+    private String paystackPublicKey;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

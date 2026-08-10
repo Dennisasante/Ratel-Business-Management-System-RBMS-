@@ -529,11 +529,15 @@ export interface SubscriptionPlanPayload {
 export interface PlatformBillingSettings {
   trialDays: number;
   usdDisplayRate: number | null;
+  paystackPublicKey: string | null;
+  paystackSecretConfigured: boolean;
 }
 
 export interface PlatformBillingSettingsPayload {
   trialDays: number;
   usdDisplayRate: number | null;
+  paystackPublicKey?: string;
+  paystackSecretKey?: string;
 }
 
 export interface BillingStatus {

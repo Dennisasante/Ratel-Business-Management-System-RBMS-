@@ -3,6 +3,7 @@ package com.ratel.rbms.service;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.PlatformBillingSettingsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,10 +41,26 @@ public class PaystackService {
     private static final Logger log = LoggerFactory.getLogger(PaystackService.class);
     private static final String BASE_URL = "https://api.paystack.co";
 
-    private final String platformSecretKey;
+    private final PlatformBillingSettingsRepository platformBillingSettingsRepository;
+    private final String envPlatformSecretKey;
 
-    public PaystackService(@Value("${app.paystack.secret-key}") String platformSecretKey) {
-        this.platformSecretKey = platformSecretKey;
+    public PaystackService(
+            PlatformBillingSettingsRepository platformBillingSettingsRepository,
+            @Value("${app.paystack.secret-key}") String envPlatformSecretKey
+    ) {
+        this.platformBillingSettingsRepository = platformBillingSettingsRepository;
+        this.envPlatformSecretKey = envPlatformSecretKey;
+    }
+
+    /**
+     * RBMS's own Paystack secret key (subscription billing) — the Super Admin's
+     * billing-settings UI takes priority so it can be changed without a
+     * redeploy; the PAYSTACK_SECRET_KEY env var is only a fallback for local
+     * dev before anyone's clicked through that page yet.
+     */
+    public String resolvePlatformSecretKey() {
+        String dbKey = platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc().getPaystackSecretKey();
+        return dbKey != null && !dbKey.isBlank() ? dbKey : envPlatformSecretKey;
     }
 
     /**
@@ -128,12 +145,13 @@ public class PaystackService {
      * before any JSON parsing.
      */
     public boolean verifyWebhookSignature(String rawBody, String signatureHeader) {
-        if (signatureHeader == null || signatureHeader.isBlank() || platformSecretKey == null || platformSecretKey.isBlank()) {
+        String secretKey = resolvePlatformSecretKey();
+        if (signatureHeader == null || signatureHeader.isBlank() || secretKey == null || secretKey.isBlank()) {
             return false;
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA512");
-            mac.init(new SecretKeySpec(platformSecretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA512"));
+            mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA512"));
             byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
             String computed = HexFormat.of().formatHex(hash);
             return computed.equalsIgnoreCase(signatureHeader.trim());

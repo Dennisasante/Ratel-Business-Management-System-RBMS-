@@ -23,6 +23,16 @@ public class PlatformBillingSettingsService {
         PlatformBillingSettings settings = platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc();
         settings.setTrialDays(req.trialDays());
         settings.setUsdDisplayRate(req.usdDisplayRate());
+        if (req.paystackPublicKey() != null) {
+            settings.setPaystackPublicKey(blankToNull(req.paystackPublicKey()));
+        }
+        if (req.paystackSecretKey() != null) {
+            settings.setPaystackSecretKey(blankToNull(req.paystackSecretKey()));
+        }
         return PlatformBillingSettingsResponse.from(platformBillingSettingsRepository.save(settings));
+    }
+
+    private String blankToNull(String value) {
+        return value.isBlank() ? null : value.trim();
     }
 }

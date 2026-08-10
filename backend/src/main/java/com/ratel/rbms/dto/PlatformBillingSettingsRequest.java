@@ -12,6 +12,11 @@ public record PlatformBillingSettingsRequest(
         // Null hides the GHS/USD display toggle entirely — that's a valid,
         // intentional state, not a validation failure.
         @DecimalMin(value = "0", inclusive = false, message = "Exchange rate must be positive")
-        BigDecimal usdDisplayRate
+        BigDecimal usdDisplayRate,
+
+        // Both null = leave unchanged (same convention as BusinessIntegrationsRequest).
+        // Secret is write-only — see PlatformBillingSettingsResponse.paystackSecretConfigured.
+        String paystackPublicKey,
+        String paystackSecretKey
 ) {
 }
