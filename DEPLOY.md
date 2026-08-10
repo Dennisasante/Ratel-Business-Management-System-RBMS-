@@ -17,26 +17,42 @@ better. Postgres, a JVM, and a Node server on one box comfortably fit in
 pilot with a handful of businesses but leaves little margin.
 
 When creating the VPS:
-- **OS image:** Ubuntu 22.04 LTS (or 24.04 — either is fine; these steps
-  assume Ubuntu/Debian's `apt` package manager).
+- **OS image:** plain Ubuntu 22.04 LTS (or 24.04 — either is fine; these
+  steps assume Ubuntu/Debian's `apt` package manager). If a pre-built
+  "Ubuntu with Docker" template is offered, that's a fine shortcut — it just
+  means step 3 below is already done.
+- **Control panel: none.** Skip cPanel/Plesk/CyberPanel/Webmin and any
+  "LAMP"/"WordPress" template — they install their own Apache/Nginx/MySQL
+  and will fight Caddy for ports 80/443. Everything here is managed by
+  Docker Compose directly, so a panel is pure overhead and a real source of
+  port conflicts, not a convenience.
 - **Auth:** add your SSH public key during setup rather than a password —
   simpler and safer than password auth over SSH.
+- **Firewall:** make sure ports 22 (SSH), 80, and 443 are open — check
+  Hostinger's own VPS firewall panel and `ufw status` once you're in. Caddy
+  can't complete its Let's Encrypt certificate challenge if 80/443 are
+  blocked, and that failure mode isn't obvious from its logs at a glance.
 
 Note the server's public IPv4 address once it's up — you'll need it for DNS.
 
 ## 2. Point DNS at it
 
-In your domain's DNS settings (at whichever registrar holds it), add two
+Use a **subdomain**, not the bare root domain, if that domain already has a
+live site on it (e.g. WordPress) — a subdomain is a completely independent
+DNS record, so this doesn't touch or disrupt anything already pointed at
+the root. In your domain's DNS zone (hPanel's DNS editor if the domain's
+nameservers are on Hostinger, otherwise wherever it's registered), add two
 **A records** pointing at the VPS's IP:
 
 | Type | Name | Value |
 |------|------|-------|
-| A | `@` (or your bare domain) | `<VPS IP>` |
-| A | `api` | `<VPS IP>` |
+| A | `app` (or any subdomain you like) | `<VPS IP>` |
+| A | `api` (or `api.app`, matching whatever you picked above) | `<VPS IP>` |
 
-This gives you `yourdomain.com` (the app) and `api.yourdomain.com` (the
+This gives you `app.yourdomain.com` (the app) and `api.yourdomain.com` (the
 backend — needed as a direct public endpoint for WooCommerce/Paystack
-webhooks, which call it directly rather than through the frontend).
+webhooks, which call it directly rather than through the frontend). Swap in
+whatever subdomain names you actually chose everywhere below.
 
 DNS propagation can take anywhere from a few minutes to a few hours.
 Caddy won't be able to get a certificate until it's resolved — no rush
