@@ -554,6 +554,10 @@ export interface BillingStatus {
   // Only meaningful (non-null) while billingStatus === "GRACE".
   gracePeriodEndsAt: string | null;
   daysRemaining: number;
+  // Null when no card is saved.
+  cardLast4: string | null;
+  cardBrand: string | null;
+  autoRenewEnabled: boolean;
   usdDisplayRate: number | null;
 }
 
@@ -1337,11 +1341,17 @@ export const api = {
 
   getBillingHistory: (token: string) => request<SubscriptionPaymentSummary[]>("/api/billing/history", {}, token),
 
-  startBillingCheckout: (token: string, planId: string) =>
-    request<CheckoutResponse>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ planId }) }, token),
+  startBillingCheckout: (token: string, planId: string, saveCard: boolean) =>
+    request<CheckoutResponse>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ planId, saveCard }) }, token),
 
   verifyBillingPayment: (token: string, reference: string) =>
     request<VerifyPaymentResponse>("/api/billing/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  setBillingAutoRenew: (token: string, enabled: boolean) =>
+    request<void>("/api/billing/auto-renew", { method: "PATCH", body: JSON.stringify({ enabled }) }, token),
+
+  removeSavedCard: (token: string) =>
+    request<void>("/api/billing/saved-card", { method: "DELETE" }, token),
 
   // --- Business Integrations (Owner only — client's own Paystack/WooCommerce keys) ---
 

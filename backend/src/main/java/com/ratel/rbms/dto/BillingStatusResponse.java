@@ -11,6 +11,10 @@ public record BillingStatusResponse(
         // Only meaningful (non-null) while billingStatus == GRACE.
         Instant gracePeriodEndsAt,
         long daysRemaining,
+        // Null when no card is saved.
+        String cardLast4,
+        String cardBrand,
+        boolean autoRenewEnabled,
         // Super-admin-set, GHS-per-USD — null hides the display toggle on the
         // Billing page entirely. Riding along on /billing/status rather than a
         // dedicated endpoint since it's the one business-facing read businesses

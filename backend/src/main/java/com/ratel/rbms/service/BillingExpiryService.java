@@ -29,17 +29,20 @@ public class BillingExpiryService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final ActivityLogService activityLogService;
+    private final BillingService billingService;
 
     public BillingExpiryService(
             BusinessRepository businessRepository,
             UserRepository userRepository,
             EmailService emailService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            BillingService billingService
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
         this.emailService = emailService;
         this.activityLogService = activityLogService;
+        this.billingService = billingService;
     }
 
     @Transactional
@@ -47,6 +50,7 @@ public class BillingExpiryService {
         Instant now = Instant.now();
 
         flipExpiredTrials(now);
+        attemptAutoRenewals(now);
         flipExpiredSubscriptionsToGrace(now);
         flipExpiredGraceToReadOnly(now);
 
@@ -54,6 +58,18 @@ public class BillingExpiryService {
         sendTrialReminders(now, reminderWindowEnd);
         sendSubscriptionReminders(now, reminderWindowEnd);
         sendGraceReminders();
+    }
+
+    // Runs before flipExpiredSubscriptionsToGrace() below — a successful
+    // charge here extends current_period_ends_at into the future first, so
+    // that query's own "still-ACTIVE businesses whose period has lapsed"
+    // check no longer matches this business and it never visibly flickers
+    // into GRACE for a card that renewed fine.
+    private void attemptAutoRenewals(Instant now) {
+        List<Business> due = businessRepository.findAllByBillingStatusAndAutoRenewEnabledTrueAndCurrentPeriodEndsAtBefore(BillingStatus.ACTIVE, now);
+        for (Business business : due) {
+            billingService.attemptAutoCharge(business);
+        }
     }
 
     private void flipExpiredTrials(Instant now) {

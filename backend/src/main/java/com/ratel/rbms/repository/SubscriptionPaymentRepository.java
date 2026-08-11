@@ -33,4 +33,14 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
             @Param("periodStart") Instant periodStart,
             @Param("periodEnd") Instant periodEnd
     );
+
+    // A direct targeted update rather than fetch-mutate-save — the `payment`
+    // entity BillingService.verifyPayment() holds in memory is stale by this
+    // point (markSuccessIfNotAlready() above is a bulk update that bypasses
+    // the persistence context), so saving that object here would silently
+    // overwrite the bulk update's status/paidAt/period columns with their
+    // pre-update values.
+    @Modifying
+    @Query("UPDATE SubscriptionPayment p SET p.authorizationCode = :authorizationCode WHERE p.paystackReference = :reference")
+    void updateAuthorizationCode(@Param("reference") String reference, @Param("authorizationCode") String authorizationCode);
 }

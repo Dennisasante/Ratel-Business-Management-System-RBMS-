@@ -1,5 +1,6 @@
 package com.ratel.rbms.controller;
 
+import com.ratel.rbms.dto.AutoRenewRequest;
 import com.ratel.rbms.dto.BillingStatusResponse;
 import com.ratel.rbms.dto.CheckoutRequest;
 import com.ratel.rbms.dto.CheckoutResponse;
@@ -9,6 +10,7 @@ import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.dto.VerifyPaymentResponse;
 import com.ratel.rbms.service.BillingService;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -45,11 +47,23 @@ public class BillingController {
 
     @PostMapping("/checkout")
     public CheckoutResponse checkout(@Valid @RequestBody CheckoutRequest request) {
-        return billingService.startCheckout(request.planId());
+        return billingService.startCheckout(request.planId(), Boolean.TRUE.equals(request.saveCard()));
     }
 
     @PostMapping("/verify")
     public VerifyPaymentResponse verify(@Valid @RequestBody VerifyPaymentRequest request) {
         return billingService.verifyPayment(request.reference());
+    }
+
+    @PatchMapping("/auto-renew")
+    public ResponseEntity<Void> setAutoRenew(@Valid @RequestBody AutoRenewRequest request) {
+        billingService.setAutoRenew(request.enabled());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/saved-card")
+    public ResponseEntity<Void> removeSavedCard() {
+        billingService.removeSavedCard();
+        return ResponseEntity.noContent().build();
     }
 }

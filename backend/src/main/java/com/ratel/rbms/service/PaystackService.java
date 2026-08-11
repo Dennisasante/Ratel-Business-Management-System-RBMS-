@@ -135,7 +135,59 @@ public class PaystackService {
 
         VerifyData data = response.data();
         boolean success = response.status() && "success".equalsIgnoreCase(data.status());
-        return new VerifyResult(success, data.status(), data.reference(), data.amount(), data.currency(), data.paidAt());
+
+        // Not every payment method returns a reusable authorization (e.g. USSD,
+        // mobile money) — null-safe throughout, callers just get nulls back.
+        AuthorizationData auth = data.authorization();
+        boolean reusable = auth != null && auth.reusable();
+        String authorizationCode = reusable ? auth.authorizationCode() : null;
+        String cardLast4 = reusable ? auth.last4() : null;
+        String cardBrand = reusable ? auth.brand() : null;
+
+        return new VerifyResult(success, data.status(), data.reference(), data.amount(), data.currency(), data.paidAt(),
+                authorizationCode, cardLast4, cardBrand);
+    }
+
+    /**
+     * Charges a previously-saved reusable authorization directly — no popup,
+     * no customer interaction. Used for subscription auto-renewal only; the
+     * caller is responsible for funneling the result through the same
+     * verifyPayment()-style idempotency guard a manual checkout uses, this
+     * method itself is just the Paystack call.
+     */
+    public ChargeResult chargeAuthorization(String secretKey, String authorizationCode, String email, long amountMinorUnits, String reference) {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Paystack isn't configured.");
+        }
+
+        Map<String, Object> body = Map.of(
+                "authorization_code", authorizationCode,
+                "email", email,
+                "amount", amountMinorUnits,
+                "reference", reference,
+                "currency", "GHS"
+        );
+
+        ChargeAuthorizationResponse response;
+        try {
+            response = client(secretKey)
+                    .post()
+                    .uri("/transaction/charge_authorization")
+                    .body(body)
+                    .retrieve()
+                    .body(ChargeAuthorizationResponse.class);
+        } catch (RestClientException e) {
+            log.error("Paystack chargeAuthorization call failed", e);
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to charge the saved card.");
+        }
+
+        if (response == null || response.data() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to charge the saved card.");
+        }
+
+        ChargeAuthorizationData data = response.data();
+        boolean success = response.status() && "success".equalsIgnoreCase(data.status());
+        return new ChargeResult(success, data.status(), data.reference());
     }
 
     /**
@@ -170,7 +222,15 @@ public class PaystackService {
     public record InitResult(String accessCode, String reference, String authorizationUrl) {
     }
 
-    public record VerifyResult(boolean success, String status, String reference, long amountMinorUnits, String currency, String paidAt) {
+    // authorizationCode/cardLast4/cardBrand are null unless Paystack returned
+    // a reusable authorization on this transaction.
+    public record VerifyResult(
+            boolean success, String status, String reference, long amountMinorUnits, String currency, String paidAt,
+            String authorizationCode, String cardLast4, String cardBrand
+    ) {
+    }
+
+    public record ChargeResult(boolean success, String status, String reference) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -195,7 +255,25 @@ public class PaystackService {
             String reference,
             long amount,
             String currency,
-            @JsonProperty("paid_at") String paidAt
+            @JsonProperty("paid_at") String paidAt,
+            AuthorizationData authorization
     ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record AuthorizationData(
+            @JsonProperty("authorization_code") String authorizationCode,
+            String last4,
+            String brand,
+            boolean reusable
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record ChargeAuthorizationResponse(boolean status, String message, ChargeAuthorizationData data) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record ChargeAuthorizationData(String status, String reference) {
     }
 }

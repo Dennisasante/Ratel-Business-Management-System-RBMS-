@@ -55,6 +55,19 @@ public class SubscriptionPayment {
     @Column(name = "paid_at")
     private Instant paidAt;
 
+    // Captured from a successful verify response when Paystack returns a
+    // reusable authorization — kept per-payment (not just on Business) so
+    // there's a record of which specific transaction the saved card came from.
+    @Column(name = "authorization_code", length = 100)
+    private String authorizationCode;
+
+    // Set at checkout time from the Owner's "save this card" checkbox — read
+    // back in BillingService.verifyPayment() once the payment succeeds, since
+    // checkout and verify are separate requests.
+    @Column(name = "save_card_requested", nullable = false)
+    @Builder.Default
+    private boolean saveCardRequested = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

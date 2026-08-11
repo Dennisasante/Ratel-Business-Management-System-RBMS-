@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, CreditCard, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, BillingStatus, SubscriptionPlan, SubscriptionPaymentSummary } from "@/lib/api";
 import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
@@ -37,6 +37,8 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showUsd, setShowUsd] = useState(false);
+  const [saveCard, setSaveCard] = useState(false);
+  const [savingCardPref, setSavingCardPref] = useState(false);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -81,6 +83,34 @@ export default function BillingPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't confirm this payment. If you were charged, contact support.");
       return false;
+    }
+  }
+
+  async function handleToggleAutoRenew(enabled: boolean) {
+    if (!session) return;
+    setError(null);
+    setSavingCardPref(true);
+    try {
+      await api.setBillingAutoRenew(session.token, enabled);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't update that setting.");
+    } finally {
+      setSavingCardPref(false);
+    }
+  }
+
+  async function handleRemoveCard() {
+    if (!session) return;
+    setError(null);
+    setSavingCardPref(true);
+    try {
+      await api.removeSavedCard(session.token);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't remove that card.");
+    } finally {
+      setSavingCardPref(false);
     }
   }
 
@@ -150,6 +180,16 @@ export default function BillingPage() {
               No plans are available to subscribe to yet — check back soon, or reach out if you&apos;d like to upgrade now.
             </p>
           ) : (
+          <>
+          <label className="flex items-center gap-2 text-sm text-ink-700">
+            <input
+              type="checkbox"
+              checked={saveCard}
+              onChange={(e) => setSaveCard(e.target.checked)}
+              className="rounded border-border text-accent focus:ring-accent/20"
+            />
+            Save this card for automatic renewal
+          </label>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activePlans.map((plan) => {
               const isCurrent = status.plan?.id === plan.id && status.billingStatus === "ACTIVE";
@@ -183,7 +223,7 @@ export default function BillingPage() {
                     planId={plan.id}
                     buttonLabel="Pay with Paystack"
                     className="mt-1 w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    onStartCheckout={(planId) => api.startBillingCheckout(session.token, planId)}
+                    onStartCheckout={(planId) => api.startBillingCheckout(session.token, planId, saveCard)}
                     onVerify={handleVerify}
                     onError={setError}
                   />
@@ -191,6 +231,42 @@ export default function BillingPage() {
               );
             })}
           </div>
+          </>
+          )}
+
+          {status.cardLast4 && (
+            <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <CreditCard size={20} className="text-ink-500" />
+                <div>
+                  <p className="text-sm font-medium text-ink-900">
+                    {status.cardBrand ? `${status.cardBrand} · ` : ""}•••• {status.cardLast4}
+                  </p>
+                  <p className="text-xs text-ink-500">
+                    {status.autoRenewEnabled ? "Auto-renewal is on." : "Saved, but auto-renewal is off."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={status.autoRenewEnabled}
+                    disabled={savingCardPref}
+                    onChange={(e) => handleToggleAutoRenew(e.target.checked)}
+                    className="rounded border-border text-accent focus:ring-accent/20"
+                  />
+                  Auto-renew
+                </label>
+                <button
+                  onClick={handleRemoveCard}
+                  disabled={savingCardPref}
+                  className="flex items-center gap-1 text-sm font-medium text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X size={14} /> Remove card
+                </button>
+              </div>
+            </Card>
           )}
 
           <Card>

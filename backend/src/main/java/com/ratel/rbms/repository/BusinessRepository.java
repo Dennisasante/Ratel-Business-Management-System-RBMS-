@@ -88,4 +88,10 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
     // are, reset to null by flipExpiredSubscriptions() when it moves a
     // business into GRACE so this picks it up fresh.
     List<Business> findAllByBillingStatusAndExpiryReminderSentAtIsNull(BillingStatus status);
+
+    // Auto-renewal sweep: still-ACTIVE businesses with auto-renew on whose
+    // paid period has lapsed. Runs before flipExpiredSubscriptionsToGrace()
+    // in the same daily job, so a successful charge extends the period
+    // before that query would otherwise catch this business and flip it.
+    List<Business> findAllByBillingStatusAndAutoRenewEnabledTrueAndCurrentPeriodEndsAtBefore(BillingStatus status, Instant cutoff);
 }

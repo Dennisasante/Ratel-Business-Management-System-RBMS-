@@ -57,6 +57,20 @@ public class EmailService {
         send(toEmail, subject, body);
     }
 
+    // A failed auto-charge doesn't do anything drastic on its own — the
+    // regular grace-period sweep picks up the still-expired period on its
+    // own next run, same as any business with no saved card — but the Owner
+    // should still hear about it so they can fix the card before that happens.
+    public void sendAutoChargeFailed(String toEmail, String businessName) {
+        String subject = businessName + ": we couldn't renew your subscription automatically";
+        String body = "Hi,\n\n"
+                + "We tried to renew " + businessName + "'s subscription on Ratel using your saved card, but the charge "
+                + "didn't go through.\n\n"
+                + "Your account is still fully usable for now, but please renew manually or update your card from the "
+                + "Billing page soon to avoid interruption.";
+        send(toEmail, subject, body);
+    }
+
     // Sent once, the moment a lapsed subscription enters its 7-day grace
     // window — the account stays fully usable during grace, so this is a
     // heads-up, not a lockout notice like READ_ONLY effectively is.

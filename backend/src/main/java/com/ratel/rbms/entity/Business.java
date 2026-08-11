@@ -83,6 +83,23 @@ public class Business {
     @Column(name = "grace_period_ends_at")
     private Instant gracePeriodEndsAt;
 
+    // Captured from a successful checkout's verify response when Paystack
+    // returns a reusable authorization — set independently of autoRenewEnabled,
+    // which is a separate explicit opt-in (paying by card doesn't imply
+    // wanting auto-renewal).
+    @Column(name = "paystack_authorization_code", length = 100)
+    private String paystackAuthorizationCode;
+
+    @Column(name = "card_last4", length = 4)
+    private String cardLast4;
+
+    @Column(name = "card_brand", length = 30)
+    private String cardBrand;
+
+    @Column(name = "auto_renew_enabled", nullable = false)
+    @Builder.Default
+    private boolean autoRenewEnabled = false;
+
     // Null = charge the plan's list price. Set = charge this business exactly
     // this amount instead — a negotiated rate, not a separate plan.
     @Column(name = "price_override", precision = 12, scale = 2)
