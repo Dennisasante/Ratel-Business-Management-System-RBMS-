@@ -9,11 +9,14 @@ import {
   api,
   ApiError,
   Customer,
+  CustomerPayload,
   PaymentMethod,
   Product,
   ProductCategory,
   Sale,
 } from "@/lib/api";
+import Modal from "@/components/Modal";
+import CustomerForm from "@/components/CustomerForm";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -54,6 +57,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!session) return;
@@ -155,6 +159,14 @@ export default function SalesPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleAddCustomer(payload: CustomerPayload) {
+    if (!session) return;
+    const customer = await api.createCustomer(session.token, payload);
+    setCustomers((prev) => [...prev, customer].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+    setCustomerId(customer.id);
+    setShowAddCustomer(false);
   }
 
   async function handleDownloadReceipt(saleId: string, saleNumber: number) {
@@ -306,7 +318,16 @@ export default function SalesPage() {
             )}
 
             <div className="mt-4 flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomer(true)}
+                  className="text-xs font-medium text-accent-hover hover:underline"
+                >
+                  + New customer
+                </button>
+              </div>
               <select
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
@@ -432,6 +453,12 @@ export default function SalesPage() {
           </div>
         )}
       </Card>
+
+      {showAddCustomer && (
+        <Modal title="Add customer" onClose={() => setShowAddCustomer(false)}>
+          <CustomerForm onSubmit={handleAddCustomer} />
+        </Modal>
+      )}
     </div>
   );
 }
