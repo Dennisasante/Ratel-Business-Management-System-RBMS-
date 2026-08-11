@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle } from "lucide-react";
+import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
-import { api, ApiError, PlatformBusinessDetail } from "@/lib/api";
+import { api, ApiError, PlatformBusinessDetail, SubscriptionPlan } from "@/lib/api";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
@@ -54,6 +54,14 @@ export default function PlatformBusinessDetailPage() {
   const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
 
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [editingBilling, setEditingBilling] = useState(false);
+  const [planId, setPlanId] = useState<string>("");
+  const [trialEndsAt, setTrialEndsAt] = useState<string>("");
+  const [priceOverride, setPriceOverride] = useState<string>("");
+  const [savingBilling, setSavingBilling] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!session || !params.id) return;
     setBusiness(await api.getPlatformBusiness(session.token, params.id));
@@ -62,6 +70,41 @@ export default function PlatformBusinessDetailPage() {
   useEffect(() => {
     load().finally(() => setFetching(false));
   }, [load]);
+
+  useEffect(() => {
+    if (!session) return;
+    api.listPlatformSubscriptionPlans(session.token).then(setPlans);
+  }, [session]);
+
+  function startEditingBilling() {
+    if (!business) return;
+    setPlanId(business.subscriptionPlanId ?? "");
+    setTrialEndsAt(business.trialEndsAt ? business.trialEndsAt.slice(0, 10) : "");
+    setPriceOverride(business.priceOverride != null ? String(business.priceOverride) : "");
+    setBillingError(null);
+    setEditingBilling(true);
+  }
+
+  async function saveBilling() {
+    if (!session || !business) return;
+    setSavingBilling(true);
+    setBillingError(null);
+    try {
+      await api.updatePlatformBusinessBilling(session.token, business.id, {
+        subscriptionPlanId: planId || undefined,
+        clearPlan: !planId,
+        trialEndsAt: trialEndsAt ? new Date(trialEndsAt + "T00:00:00Z").toISOString() : undefined,
+        priceOverride: priceOverride !== "" ? Number(priceOverride) : undefined,
+        clearPriceOverride: priceOverride === "",
+      });
+      await load();
+      setEditingBilling(false);
+    } catch (err) {
+      setBillingError(err instanceof ApiError ? err.message : "Couldn't save billing changes.");
+    } finally {
+      setSavingBilling(false);
+    }
+  }
 
   async function handleToggleStatus() {
     if (!session || !business) return;
@@ -171,25 +214,100 @@ export default function PlatformBusinessDetailPage() {
                     <dt className="text-ink-500">Currency</dt>
                     <dd className="font-medium text-ink-900">{business.currency}</dd>
                   </div>
-                  <div className="flex justify-between border-b border-border pb-3">
-                    <dt className="text-ink-500">Plan</dt>
-                    <dd className="font-medium text-ink-900">{business.planName}</dd>
-                  </div>
-                  <div className="flex justify-between border-b border-border pb-3">
-                    <dt className="text-ink-500">Billing status</dt>
-                    <dd>
-                      <Badge tone={BILLING_STATUS_TONE[business.billingStatus] ?? "info"}>
-                        {BILLING_STATUS_LABEL[business.billingStatus] ?? business.billingStatus}
-                      </Badge>
-                    </dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-ink-500">{business.billingStatus === "TRIALING" ? "Trial ends" : "Renews"}</dt>
-                    <dd className="font-medium text-ink-900">
-                      {formatDate(business.billingStatus === "TRIALING" ? business.trialEndsAt : business.currentPeriodEndsAt)}
-                    </dd>
-                  </div>
                 </dl>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-ink-900">Billing</h3>
+                  {!editingBilling && (
+                    <button
+                      onClick={startEditingBilling}
+                      className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
+                  )}
+                </div>
+
+                {editingBilling ? (
+                  <div className="mt-3 flex flex-col gap-3 rounded-lg bg-canvas p-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-ink-700">Plan</label>
+                      <select
+                        value={planId}
+                        onChange={(e) => setPlanId(e.target.value)}
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      >
+                        <option value="">No plan</option>
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} — GH₵{p.price.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-ink-700">Trial ends</label>
+                      <input
+                        type="date"
+                        value={trialEndsAt}
+                        onChange={(e) => setTrialEndsAt(e.target.value)}
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-ink-700">Price override (GH₵)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={priceOverride}
+                        onChange={(e) => setPriceOverride(e.target.value)}
+                        placeholder="Plan default"
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      />
+                      <p className="text-xs text-ink-500">Leave blank to charge this business the plan&apos;s normal price.</p>
+                    </div>
+
+                    {billingError && <p className="text-sm text-danger">{billingError}</p>}
+
+                    <div className="flex gap-2">
+                      <Button onClick={saveBilling} disabled={savingBilling}>
+                        {savingBilling ? "Saving..." : "Save"}
+                      </Button>
+                      <Button variant="secondary" onClick={() => setEditingBilling(false)} disabled={savingBilling}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <dl className="mt-3 space-y-3 text-sm">
+                    <div className="flex justify-between border-b border-border pb-3">
+                      <dt className="text-ink-500">Plan</dt>
+                      <dd className="font-medium text-ink-900">{business.planName}</dd>
+                    </div>
+                    <div className="flex justify-between border-b border-border pb-3">
+                      <dt className="text-ink-500">Billing status</dt>
+                      <dd>
+                        <Badge tone={BILLING_STATUS_TONE[business.billingStatus] ?? "info"}>
+                          {BILLING_STATUS_LABEL[business.billingStatus] ?? business.billingStatus}
+                        </Badge>
+                      </dd>
+                    </div>
+                    <div className="flex justify-between border-b border-border pb-3">
+                      <dt className="text-ink-500">{business.billingStatus === "TRIALING" ? "Trial ends" : "Renews"}</dt>
+                      <dd className="font-medium text-ink-900">
+                        {formatDate(business.billingStatus === "TRIALING" ? business.trialEndsAt : business.currentPeriodEndsAt)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-ink-500">Price override</dt>
+                      <dd className="font-medium text-ink-900">
+                        {business.priceOverride != null ? `GH₵${business.priceOverride.toFixed(2)}` : "Plan default"}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+
                 <div className="mt-4">
                   <p className="text-sm text-ink-500">Enabled modules</p>
                   <div className="mt-2 flex flex-wrap gap-2">
