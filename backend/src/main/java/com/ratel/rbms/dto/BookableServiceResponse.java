@@ -7,6 +7,7 @@ public record BookableServiceResponse(
         UUID serviceCatalogId,
         UUID packageId,
         String serviceName,
+        UUID serviceTypeId,
         String serviceTypeName,
         String description,
         BigDecimal price,

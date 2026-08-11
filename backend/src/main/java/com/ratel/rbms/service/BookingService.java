@@ -166,6 +166,7 @@ public class BookingService {
                         item.getId(),
                         null,
                         item.getName(),
+                        item.getServiceTypeId(),
                         serviceTypeRepository.findByIdAndBusinessId(item.getServiceTypeId(), businessId)
                                 .map(ServiceType::getName).orElse(null),
                         null,
@@ -181,6 +182,7 @@ public class BookingService {
                         null,
                         pkg.getId(),
                         pkg.getName(),
+                        pkg.getServiceTypeId(),
                         serviceTypeRepository.findByIdAndBusinessId(pkg.getServiceTypeId(), businessId)
                                 .map(ServiceType::getName).orElse(null),
                         pkg.getDescription(),
