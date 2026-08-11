@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Users, TrendingUp, Wallet, CalendarDays, ShoppingBag, Sparkles, Wrench } from "lucide-react";
+import { Building2, Users, TrendingUp, Wallet, CalendarDays, ShoppingBag, Sparkles, Wrench, ShieldCheck } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 import { api, PlatformBusinessSummary, PlatformStats } from "@/lib/api";
 import PlatformShell from "@/components/platform/PlatformShell";
-import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/StatCard";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -45,7 +44,20 @@ export default function PlatformOverviewPage() {
   return (
     <PlatformShell>
       <div className="flex flex-col gap-6">
-        <PageHeader title="Platform Overview" subtitle="Every business running on Ratel, at a glance." />
+        <div className="relative isolate overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar px-6 py-7 shadow-panel sm:px-8 sm:py-8">
+          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+            <div className="animate-blob-drift absolute -right-12 -top-16 h-56 w-56 rounded-full bg-accent/25 blur-3xl" />
+            <div className="animate-blob-drift absolute -bottom-20 left-1/4 h-48 w-48 rounded-full bg-info/20 blur-3xl [animation-delay:-6s]" />
+          </div>
+          <ShieldCheck size={72} strokeWidth={1} className="pointer-events-none absolute -right-2 -top-2 text-white/10 sm:h-24 sm:w-24" aria-hidden />
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#7fa5e8" }}>
+            <ShieldCheck size={12} /> Restricted access
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-sidebar-text-active sm:text-3xl">Platform Overview</h1>
+          <p className="mt-2 text-sm text-sidebar-text">
+            {stats ? `${stats.totalBusinesses} businesses, ${stats.totalUsers} users, GH₵${stats.totalPlatformRevenue.toFixed(2)} in lifetime revenue.` : "Every business running on Ratel, at a glance."}
+          </p>
+        </div>
 
         {fetching || !stats ? (
           <CardSkeleton count={4} />
