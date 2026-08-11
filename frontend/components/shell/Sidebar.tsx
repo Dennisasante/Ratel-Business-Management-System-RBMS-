@@ -17,7 +17,6 @@ import {
   ClipboardList,
   Wrench,
   CreditCard,
-  CalendarDays,
   CalendarCheck2,
   ArrowUpRight,
   X,
@@ -39,22 +38,51 @@ const ROLE_LABELS: Partial<Record<StaffRole, string>> = {
   MANAGER: "Administrator",
 };
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/inventory", label: "Inventory", icon: Package, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/bookings", label: "Bookings", icon: CalendarCheck2 },
-  { href: "/dashboard/customers", label: "Customers", icon: Users },
-  { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/service-orders", label: "Service Orders", icon: Wrench },
-  { href: "/dashboard/ecommerce-orders", label: "E-commerce Orders", icon: ShoppingBag, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/custom-wig-requests", label: "Custom Wig Requests", icon: Sparkles, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/team", label: "Team", icon: UserCog, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/activity", label: "Activity Log", icon: History, hiddenFrom: STAFF_HIDDEN },
-  { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  hiddenFrom?: StaffRole[];
+  ownerOnly?: boolean;
+  external?: boolean;
+};
+
+// Grouped so related items sit together instead of one long flat list —
+// "Bookings" (the internal list/settings) and the public "Booking page"
+// link live in the same group since they're two views of the same thing,
+// not unrelated features.
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: null,
+    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Bookings",
+    items: [{ href: "/dashboard/bookings", label: "Bookings", icon: CalendarCheck2 }],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/dashboard/inventory", label: "Inventory", icon: Package, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/service-orders", label: "Service Orders", icon: Wrench },
+      { href: "/dashboard/ecommerce-orders", label: "E-commerce Orders", icon: ShoppingBag, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/custom-wig-requests", label: "Custom Wig Requests", icon: Sparkles, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList, hiddenFrom: STAFF_HIDDEN },
+    ],
+  },
+  {
+    label: "Business",
+    items: [
+      { href: "/dashboard/customers", label: "Customers", icon: Users },
+      { href: "/dashboard/expenses", label: "Expenses", icon: Receipt, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/reports", label: "Reports", icon: BarChart3, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/team", label: "Team", icon: UserCog, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/activity", label: "Activity Log", icon: History, hiddenFrom: STAFF_HIDDEN },
+      { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
+    ],
+  },
 ];
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -98,43 +126,58 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 py-2">
-        {business?.slug && (
-          <a
-            href={`/book/${business.slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-1 flex items-center gap-3 rounded-lg bg-accent/15 px-3 py-2.5 text-sm font-medium text-sidebar-text-active transition hover:bg-accent/25"
-          >
-            <CalendarDays size={18} strokeWidth={1.75} />
-            Booking page
-            <ArrowUpRight size={13} className="ml-auto text-sidebar-text" />
-          </a>
-        )}
-        {NAV_ITEMS.filter(
-          (item) =>
-            (!item.ownerOnly || session?.role === "OWNER") &&
-            !item.hiddenFrom?.includes(session?.role as StaffRole)
-        ).map((item) => {
-          const active = pathname === item.href;
-          const Icon = item.icon;
+      <nav className="flex-1 space-y-4 px-3 py-2 overflow-y-auto">
+        {NAV_GROUPS.map((group, groupIndex) => {
+          const items = group.items.filter(
+            (item) =>
+              (!item.ownerOnly || session?.role === "OWNER") &&
+              !item.hiddenFrom?.includes(session?.role as StaffRole)
+          );
+          if (items.length === 0) return null;
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                active
-                  ? "bg-sidebar-hover text-sidebar-text-active"
-                  : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active"
-              }`}
-            >
-              {active && (
-                <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
+            <div key={group.label ?? `group-${groupIndex}`}>
+              {group.label && (
+                <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-text/60">
+                  {group.label}
+                </p>
               )}
-              <Icon size={18} strokeWidth={1.75} />
-              {item.label}
-            </Link>
+              <div className="space-y-0.5">
+                {items.map((item) => {
+                  const active = pathname === item.href;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onNavigate}
+                      className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                        active
+                          ? "bg-sidebar-hover text-sidebar-text-active"
+                          : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active"
+                      }`}
+                    >
+                      {active && (
+                        <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
+                      )}
+                      <Icon size={18} strokeWidth={1.75} />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+                {group.label === "Bookings" && business?.slug && (
+                  <a
+                    href={`/book/${business.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text transition hover:bg-sidebar-hover hover:text-sidebar-text-active"
+                  >
+                    <ArrowUpRight size={18} strokeWidth={1.75} />
+                    Booking page
+                  </a>
+                )}
+              </div>
+            </div>
           );
         })}
       </nav>
