@@ -33,7 +33,7 @@ export default function ServiceTypeManager({ types, onCreate, onRename, onDelete
       await onCreate({ name });
       setName("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't add that service type.");
+      setError(err instanceof ApiError ? err.message : "Couldn't add that category.");
     } finally {
       setSubmitting(false);
     }
@@ -52,7 +52,7 @@ export default function ServiceTypeManager({ types, onCreate, onRename, onDelete
       await onRename(id, { name: editValue });
       setEditingId(null);
     } catch (err) {
-      setRowError({ id, message: err instanceof ApiError ? err.message : "Couldn't rename this service type." });
+      setRowError({ id, message: err instanceof ApiError ? err.message : "Couldn't rename this category." });
     } finally {
       setRowBusy(null);
     }
@@ -64,7 +64,7 @@ export default function ServiceTypeManager({ types, onCreate, onRename, onDelete
     try {
       await onDelete(type.id);
     } catch (err) {
-      setRowError({ id: type.id, message: err instanceof ApiError ? err.message : "Couldn't remove this service type." });
+      setRowError({ id: type.id, message: err instanceof ApiError ? err.message : "Couldn't remove this category." });
     } finally {
       setRowBusy(null);
     }
@@ -74,7 +74,7 @@ export default function ServiceTypeManager({ types, onCreate, onRename, onDelete
     <div className="flex flex-col gap-4">
       <form onSubmit={handleAdd} className="flex items-end gap-2">
         <div className="flex-1">
-          <FormField label="New service type" name="serviceTypeName" value={name} onChange={setName} placeholder="e.g. Braiding" />
+          <FormField label="New category" name="serviceTypeName" value={name} onChange={setName} placeholder="e.g. Braiding" />
         </div>
         <Button type="submit" disabled={submitting || !name.trim()}>
           {submitting ? "Adding..." : <Plus size={16} />}
@@ -83,7 +83,7 @@ export default function ServiceTypeManager({ types, onCreate, onRename, onDelete
       {error && <p className="text-sm text-danger">{error}</p>}
 
       {types.length === 0 ? (
-        <p className="text-sm text-ink-500">No service types yet — add one above.</p>
+        <p className="text-sm text-ink-500">No categories yet — add one above.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {types.map((t) => (

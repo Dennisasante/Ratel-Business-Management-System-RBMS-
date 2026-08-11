@@ -92,7 +92,7 @@ export default function ServiceCatalogManager({
   }
 
   if (serviceTypes.length === 0) {
-    return <p className="text-sm text-ink-500">Add a service type first (under &ldquo;Types&rdquo;) before building a price catalog.</p>;
+    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before building a price catalog.</p>;
   }
 
   return (
@@ -100,7 +100,7 @@ export default function ServiceCatalogManager({
       <form onSubmit={handleAdd} className="flex flex-col gap-3 rounded-lg border border-border p-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-ink-700">Type</label>
+            <label className="text-sm font-medium text-ink-700">Category</label>
             <select
               value={serviceTypeId}
               onChange={(e) => setServiceTypeId(e.target.value)}
@@ -300,7 +300,7 @@ function EditItemForm({
     <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Type</label>
+          <label className="text-sm font-medium text-ink-700">Category</label>
           <select
             value={serviceTypeId}
             onChange={(e) => setServiceTypeId(e.target.value)}

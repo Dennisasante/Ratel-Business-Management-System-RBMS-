@@ -155,7 +155,7 @@ export default function ServiceCatalogPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Service Catalog"
-        subtitle="Types, prices, and packages — plus a live preview of what customers see."
+        subtitle="Categories, prices, and packages — plus a live preview of what customers see."
         actions={
           <Link href="/dashboard/service-orders">
             <Button variant="secondary">
@@ -200,8 +200,8 @@ export default function ServiceCatalogPage() {
       ) : (
         <>
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-ink-900">Service Types</h2>
-            <p className="mt-1 text-sm text-ink-500">Categories your catalog items and packages belong to.</p>
+            <h2 className="text-base font-semibold text-ink-900">Categories</h2>
+            <p className="mt-1 text-sm text-ink-500">The groups your catalog items and packages belong to.</p>
             <div className="mt-4">
               <ServiceTypeManager
                 types={serviceTypes}

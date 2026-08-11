@@ -134,10 +134,10 @@ export default function ServiceOrdersReportPage() {
           </div>
 
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-ink-900">Revenue by type</h2>
+            <h2 className="text-base font-semibold text-ink-900">Revenue by category</h2>
             <p className="text-xs text-ink-500">Orders picked up in this range.</p>
             {report.revenueByType.length === 0 ? (
-              <p className="mt-3 text-sm text-ink-500">No service types set up yet.</p>
+              <p className="mt-3 text-sm text-ink-500">No categories set up yet.</p>
             ) : (
               <ul className="mt-4 flex flex-col gap-2">
                 {report.revenueByType.map((r) => (

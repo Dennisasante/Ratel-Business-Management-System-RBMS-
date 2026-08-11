@@ -98,7 +98,7 @@ export default function ServiceOrderForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-ink-700">Order type</label>
+        <label className="text-sm font-medium text-ink-700">Category</label>
         <select
           value={form.serviceTypeId}
           onChange={(e) => set("serviceTypeId", e.target.value)}

@@ -40,7 +40,7 @@ export default function ServicePackageManager({
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   if (serviceTypes.length === 0) {
-    return <p className="text-sm text-ink-500">Add a service type first (under &ldquo;Types&rdquo;) before building a package.</p>;
+    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before building a package.</p>;
   }
   if (catalogItems.length === 0) {
     return <p className="text-sm text-ink-500">Add some catalog items first (under &ldquo;Catalog&rdquo;) — a package bundles existing services together.</p>;
@@ -214,7 +214,7 @@ function PackageForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-border p-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Type</label>
+          <label className="text-sm font-medium text-ink-700">Category</label>
           <select
             value={serviceTypeId}
             onChange={(e) => setServiceTypeId(e.target.value)}

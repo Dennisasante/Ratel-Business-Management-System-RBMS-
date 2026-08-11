@@ -214,7 +214,7 @@ export default function ServiceOrdersPage() {
 
       {serviceTypes.length === 0 && !fetching && (
         <p className="text-sm text-ink-500">
-          Add your first service type under &ldquo;Service Catalog&rdquo; above before creating an order.
+          Add your first category under &ldquo;Service Catalog&rdquo; above before creating an order.
         </p>
       )}
 
