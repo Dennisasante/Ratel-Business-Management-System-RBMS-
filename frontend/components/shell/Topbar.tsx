@@ -41,7 +41,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
       <div className="hidden lg:block" />
 
       <div className="flex items-center gap-3">
-        <InstallAppButton className="hidden items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-canvas sm:flex" />
+        <InstallAppButton className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-canvas" />
         <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}

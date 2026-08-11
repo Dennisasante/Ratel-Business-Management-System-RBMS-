@@ -9,6 +9,7 @@ import {
   api,
   ApiError,
   Customer,
+  CustomerPayload,
   ServiceCatalogItem,
   ServiceOrder,
   ServiceOrderPayload,
@@ -54,6 +55,22 @@ const NEXT_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
   RECEIVED: "Mark in progress",
   IN_PROGRESS: "Mark completed",
   COMPLETED: "Mark picked up",
+};
+
+// Mirrors ServiceOrderService.ALLOWED_TRANSITIONS' one-step-back edges — lets
+// a mistaken status change be corrected without allowing an arbitrary jump.
+const PREVIOUS_STATUS: Partial<Record<ServiceOrderStatus, ServiceOrderStatus>> = {
+  IN_PROGRESS: "RECEIVED",
+  COMPLETED: "IN_PROGRESS",
+  PICKED_UP: "COMPLETED",
+  CANCELLED: "RECEIVED",
+};
+
+const PREVIOUS_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
+  IN_PROGRESS: "Move back to received",
+  COMPLETED: "Move back to in progress",
+  PICKED_UP: "Move back to completed",
+  CANCELLED: "Reopen",
 };
 
 type ModalState = { type: "none" } | { type: "add" } | { type: "edit"; order: ServiceOrder };
@@ -126,6 +143,13 @@ export default function ServiceOrdersPage() {
     setModal({ type: "none" });
   }
 
+  async function handleCreateCustomer(payload: CustomerPayload): Promise<Customer> {
+    if (!session) throw new Error("Not signed in.");
+    const customer = await api.createCustomer(session.token, payload);
+    setCustomers((prev) => [...prev, customer].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+    return customer;
+  }
+
   async function handleUpdate(orderId: string, payload: ServiceOrderUpdatePayload) {
     if (!session) return;
     await api.updateServiceOrder(session.token, orderId, payload);
@@ -136,11 +160,22 @@ export default function ServiceOrdersPage() {
   async function handleAdvanceStatus(order: ServiceOrder) {
     const next = NEXT_STATUS[order.status];
     if (!session || !next) return;
+    await handleSetStatus(order, next);
+  }
+
+  async function handleMoveBack(order: ServiceOrder) {
+    const previous = PREVIOUS_STATUS[order.status];
+    if (!session || !previous) return;
+    await handleSetStatus(order, previous);
+  }
+
+  async function handleSetStatus(order: ServiceOrder, status: ServiceOrderStatus) {
+    if (!session) return;
     const key = `${order.id}:status`;
     setActionError(null);
     setPendingAction(key);
     try {
-      await api.updateServiceOrderStatus(session.token, order.id, next);
+      await api.updateServiceOrderStatus(session.token, order.id, status);
       await loadOrders();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't update this order's status.");
@@ -264,12 +299,20 @@ export default function ServiceOrdersPage() {
             <TBody>
               {orders.map((o) => {
                 const nextStatus = NEXT_STATUS[o.status];
+                const previousStatus = PREVIOUS_STATUS[o.status];
                 const canCancel = o.status !== "PICKED_UP" && o.status !== "CANCELLED";
                 const canResend = o.status === "COMPLETED" || o.status === "PICKED_UP";
                 return (
                   <Tr key={o.id}>
-                    <Td className="tabular font-medium">#{o.orderNumber}</Td>
-                    <Td className="text-ink-500">{o.serviceTypeName ?? "—"}</Td>
+                    <Td className="tabular font-medium">
+                      <Link href={`/receipt/service-order/${o.id}`} target="_blank" className="text-accent-hover hover:underline">
+                        #{o.orderNumber}
+                      </Link>
+                    </Td>
+                    <Td className="text-ink-500">
+                      <span className="block">{o.serviceTypeName ?? "—"}</span>
+                      {o.serviceCatalogName && <span className="block text-xs text-ink-400">{o.serviceCatalogName}</span>}
+                    </Td>
                     <Td className="text-ink-500">{o.customerName ?? "Walk-in"}</Td>
                     <Td>
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -288,9 +331,9 @@ export default function ServiceOrdersPage() {
                     </Td>
                     <Td>
                       <div className="flex flex-wrap justify-end gap-3 whitespace-nowrap text-right">
-                        {o.bookingWhatsappLink && (
+                        {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
                           <a
-                            href={o.bookingWhatsappLink}
+                            href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-sm font-medium text-success hover:underline"
@@ -308,15 +351,22 @@ export default function ServiceOrdersPage() {
                             {pendingAction === `${o.id}:status` ? "Updating..." : NEXT_STATUS_LABEL[o.status]}
                           </button>
                         )}
-                        {o.status === "PICKED_UP" && (
-                          <Link
-                            href={`/receipt/service-order/${o.id}`}
-                            target="_blank"
-                            className="text-sm font-medium text-accent-hover hover:underline"
+                        {previousStatus && (
+                          <button
+                            onClick={() => handleMoveBack(o)}
+                            disabled={pendingAction === `${o.id}:status`}
+                            className="text-sm font-medium text-ink-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            Print Receipt
-                          </Link>
+                            {pendingAction === `${o.id}:status` ? "Updating..." : PREVIOUS_STATUS_LABEL[o.status]}
+                          </button>
                         )}
+                        <Link
+                          href={`/receipt/service-order/${o.id}`}
+                          target="_blank"
+                          className="text-sm font-medium text-accent-hover hover:underline"
+                        >
+                          View / Print
+                        </Link>
                         {canResend && (
                           <button
                             onClick={() => handleResendEmail(o)}
@@ -361,6 +411,7 @@ export default function ServiceOrdersPage() {
             staff={staff}
             submitLabel="Create order"
             onSubmit={handleCreate}
+            onCreateCustomer={handleCreateCustomer}
           />
         </Modal>
       )}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ApiError,
   Customer,
+  CustomerPayload,
   ServiceCatalogItem,
   ServiceOrder,
   ServiceOrderPayload,
@@ -12,6 +13,8 @@ import {
 } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/Modal";
+import CustomerForm from "@/components/CustomerForm";
 
 interface ServiceOrderFormProps {
   initial?: ServiceOrder;
@@ -21,6 +24,7 @@ interface ServiceOrderFormProps {
   staff: UserSummary[];
   submitLabel: string;
   onSubmit: (payload: ServiceOrderPayload) => Promise<void>;
+  onCreateCustomer: (payload: CustomerPayload) => Promise<Customer>;
 }
 
 export default function ServiceOrderForm({
@@ -31,6 +35,7 @@ export default function ServiceOrderForm({
   staff,
   submitLabel,
   onSubmit,
+  onCreateCustomer,
 }: ServiceOrderFormProps) {
   const [form, setForm] = useState({
     serviceTypeId: initial?.serviceTypeId ?? serviceTypes[0]?.id ?? "",
@@ -47,9 +52,16 @@ export default function ServiceOrderForm({
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleAddCustomer(payload: CustomerPayload) {
+    const customer = await onCreateCustomer(payload);
+    set("customerId", customer.id);
+    setShowAddCustomer(false);
   }
 
   function pickCatalogItem(id: string) {
@@ -59,6 +71,14 @@ export default function ServiceOrderForm({
       return { ...f, serviceCatalogId: id, basePrice: String(base), price: String(base), discount: "0" };
     });
   }
+
+  function setServiceType(id: string) {
+    // Changing category invalidates any catalog pick from the old category —
+    // reset to "Custom price" rather than leaving a stale, now-hidden selection.
+    setForm((f) => ({ ...f, serviceTypeId: id, serviceCatalogId: "" }));
+  }
+
+  const catalogForCategory = catalog.filter((c) => c.serviceTypeId === form.serviceTypeId);
 
   function setDiscount(value: string) {
     setForm((f) => {
@@ -96,12 +116,13 @@ export default function ServiceOrderForm({
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-ink-700">Category</label>
         <select
           value={form.serviceTypeId}
-          onChange={(e) => set("serviceTypeId", e.target.value)}
+          onChange={(e) => setServiceType(e.target.value)}
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         >
           {serviceTypes.map((t) => (
@@ -113,7 +134,16 @@ export default function ServiceOrderForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
+          <button
+            type="button"
+            onClick={() => setShowAddCustomer(true)}
+            className="text-xs font-medium text-accent-hover hover:underline"
+          >
+            + New customer
+          </button>
+        </div>
         <select
           value={form.customerId}
           onChange={(e) => set("customerId", e.target.value)}
@@ -129,14 +159,14 @@ export default function ServiceOrderForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-ink-700">Catalog price (optional)</label>
+        <label className="text-sm font-medium text-ink-700">Service (optional)</label>
         <select
           value={form.serviceCatalogId}
           onChange={(e) => pickCatalogItem(e.target.value)}
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         >
           <option value="">Custom price</option>
-          {catalog.map((c) => (
+          {catalogForCategory.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} — GH₵{c.price.toFixed(2)}
             </option>
@@ -200,5 +230,12 @@ export default function ServiceOrderForm({
         {submitting ? "Saving..." : submitLabel}
       </Button>
     </form>
+
+    {showAddCustomer && (
+      <Modal title="Add customer" onClose={() => setShowAddCustomer(false)}>
+        <CustomerForm onSubmit={handleAddCustomer} />
+      </Modal>
+    )}
+    </>
   );
 }

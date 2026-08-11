@@ -434,6 +434,7 @@ export interface ServiceOrder {
   updatedAt: string;
   bookingPaymentStatus: string | null;
   bookingWhatsappLink: string | null;
+  customerWhatsappLink: string | null;
 }
 
 export interface ServiceOrderPayload {

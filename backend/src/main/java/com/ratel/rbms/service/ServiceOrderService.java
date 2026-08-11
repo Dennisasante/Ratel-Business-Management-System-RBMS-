@@ -36,15 +36,19 @@ public class ServiceOrderService {
 
     private static final int PAGE_SIZE = 50;
 
-    // The fixed line is RECEIVED -> IN_PROGRESS -> COMPLETED -> PICKED_UP; CANCELLED is the
-    // one branch off it, reachable from any non-terminal status. PICKED_UP and CANCELLED
-    // are terminal — no further transition is allowed once an order lands there.
+    // The fixed line is RECEIVED -> IN_PROGRESS -> COMPLETED -> PICKED_UP; CANCELLED is a
+    // branch off any non-terminal status. Each forward edge also has its one-step-back
+    // reverse (IN_PROGRESS->RECEIVED, COMPLETED->IN_PROGRESS, PICKED_UP->COMPLETED) plus
+    // CANCELLED->RECEIVED as a "reopen" — so a mistaken status change is always correctable
+    // without allowing an arbitrary jump (e.g. RECEIVED straight to PICKED_UP), which would
+    // make the pipeline meaningless. Every change here (forward or back) is already logged
+    // unconditionally below, so a correction is automatically an audit trail entry.
     private static final Map<ServiceOrderStatus, Set<ServiceOrderStatus>> ALLOWED_TRANSITIONS = Map.of(
             ServiceOrderStatus.RECEIVED, EnumSet.of(ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.CANCELLED),
-            ServiceOrderStatus.IN_PROGRESS, EnumSet.of(ServiceOrderStatus.COMPLETED, ServiceOrderStatus.CANCELLED),
-            ServiceOrderStatus.COMPLETED, EnumSet.of(ServiceOrderStatus.PICKED_UP, ServiceOrderStatus.CANCELLED),
-            ServiceOrderStatus.PICKED_UP, EnumSet.noneOf(ServiceOrderStatus.class),
-            ServiceOrderStatus.CANCELLED, EnumSet.noneOf(ServiceOrderStatus.class)
+            ServiceOrderStatus.IN_PROGRESS, EnumSet.of(ServiceOrderStatus.RECEIVED, ServiceOrderStatus.COMPLETED, ServiceOrderStatus.CANCELLED),
+            ServiceOrderStatus.COMPLETED, EnumSet.of(ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.PICKED_UP, ServiceOrderStatus.CANCELLED),
+            ServiceOrderStatus.PICKED_UP, EnumSet.of(ServiceOrderStatus.COMPLETED),
+            ServiceOrderStatus.CANCELLED, EnumSet.of(ServiceOrderStatus.RECEIVED)
     );
 
     private final ServiceOrderRepository serviceOrderRepository;
@@ -182,11 +186,16 @@ public class ServiceOrderService {
         order.setStatus(newStatus);
         if (newStatus == ServiceOrderStatus.PICKED_UP) {
             order.setPickedUpAt(Instant.now());
+        } else if (current == ServiceOrderStatus.PICKED_UP) {
+            // Moving back off PICKED_UP (a correction) — the old timestamp no
+            // longer describes this order's actual state, so clear it rather
+            // than leave a stale "picked up at" on an order that isn't anymore.
+            order.setPickedUpAt(null);
         }
         order = serviceOrderRepository.save(order);
 
         activityLogService.log(
-                "Marked service order #" + order.getOrderNumber() + " as " + newStatus.name(),
+                "Moved service order #" + order.getOrderNumber() + " from " + current.name() + " to " + newStatus.name(),
                 "SERVICE_ORDER", order.getId()
         );
 
@@ -289,6 +298,17 @@ public class ServiceOrderService {
                         "Hi " + booking.getCustomerName() + ", this is regarding your booking #" + booking.getBookingNumber() + ".")
                 : null;
 
+        // Independent of bookingWhatsappLink above (booking-originated orders only) —
+        // this works for every order that has a customer with a phone on file, which
+        // is the fallback that was missing: sendReadyEmailIfPossible() silently no-ops
+        // with no email, and until now there was nothing else to notify the customer with.
+        String customerWhatsappLink = customer != null && customer.getPhone() != null && !customer.getPhone().isBlank()
+                ? whatsAppLinkService.buildLink(customer.getPhone(),
+                        order.getStatus() == ServiceOrderStatus.COMPLETED || order.getStatus() == ServiceOrderStatus.PICKED_UP
+                                ? "Hi " + customer.getFullName() + ", your order #" + order.getOrderNumber() + " is ready for pickup!"
+                                : "Hi " + customer.getFullName() + ", this is regarding your order #" + order.getOrderNumber() + ".")
+                : null;
+
         return ServiceOrderResponse.from(
                 order,
                 type != null ? type.getName() : null,
@@ -297,7 +317,8 @@ public class ServiceOrderService {
                 assignedStaffName,
                 createdByName,
                 bookingPaymentStatus,
-                bookingWhatsappLink
+                bookingWhatsappLink,
+                customerWhatsappLink
         );
     }
 }

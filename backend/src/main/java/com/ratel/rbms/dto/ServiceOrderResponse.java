@@ -29,7 +29,11 @@ public record ServiceOrderResponse(
         Instant createdAt,
         Instant updatedAt,
         String bookingPaymentStatus,
-        String bookingWhatsappLink
+        String bookingWhatsappLink,
+        // Built from the order's own Customer.phone — unlike bookingWhatsappLink
+        // above (booking-originated orders only), this is populated for any order
+        // with a customer that has a phone on file.
+        String customerWhatsappLink
 ) {
     public static ServiceOrderResponse from(
             ServiceOrder o,
@@ -39,7 +43,8 @@ public record ServiceOrderResponse(
             String assignedStaffName,
             String createdByName,
             String bookingPaymentStatus,
-            String bookingWhatsappLink
+            String bookingWhatsappLink,
+            String customerWhatsappLink
     ) {
         return new ServiceOrderResponse(
                 o.getId(),
@@ -64,7 +69,8 @@ public record ServiceOrderResponse(
                 o.getCreatedAt(),
                 o.getUpdatedAt(),
                 bookingPaymentStatus,
-                bookingWhatsappLink
+                bookingWhatsappLink,
+                customerWhatsappLink
         );
     }
 }
