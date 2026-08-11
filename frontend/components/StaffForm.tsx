@@ -7,9 +7,13 @@ import Button from "@/components/ui/Button";
 
 interface StaffFormProps {
   onSubmit: (payload: CreateStaffPayload) => Promise<void>;
+  // A Manager can create Sales/Accountant/Staff accounts but never another
+  // Owner or Manager — mirrors the backend's assertCanManage, which rejects
+  // those with a 403 regardless of what this form offers.
+  viewerRole?: StaffRole;
 }
 
-const ROLES: { value: StaffRole; label: string }[] = [
+const ALL_ROLES: { value: StaffRole; label: string }[] = [
   { value: "MANAGER", label: "Manager (Administrator)" },
   { value: "STAFF", label: "Staff (sees only their own bookings)" },
   { value: "SALES_PERSON", label: "Sales Person" },
@@ -27,7 +31,8 @@ function generatePassword(): string {
   return out;
 }
 
-export default function StaffForm({ onSubmit }: StaffFormProps) {
+export default function StaffForm({ onSubmit, viewerRole }: StaffFormProps) {
+  const ROLES = viewerRole === "MANAGER" ? ALL_ROLES.filter((r) => r.value !== "OWNER" && r.value !== "MANAGER") : ALL_ROLES;
   const [form, setForm] = useState({
     fullName: "",
     email: "",

@@ -112,6 +112,14 @@ export default function TeamPage() {
   const canManage = session.role === "OWNER" || session.role === "MANAGER";
   const isOwner = session.role === "OWNER";
 
+  // Mirrors the backend's UserManagementService.assertCanManage — a Manager
+  // can act on Sales/Accountant/Staff accounts but never on an Owner or
+  // another Manager. Backend already rejects it with a 403 either way; this
+  // just stops the UI from offering a control that will fail.
+  function canManageTarget(targetRole: StaffRole) {
+    return isOwner || (session!.role === "MANAGER" && targetRole !== "OWNER" && targetRole !== "MANAGER");
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -196,13 +204,17 @@ export default function TeamPage() {
                   )}
                   {canManage && (
                     <Td className="text-right">
-                      <button
-                        onClick={() => handleToggleStatus(u)}
-                        disabled={pendingAction === `${u.id}:status`}
-                        className="text-sm font-medium text-accent-hover hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {pendingAction === `${u.id}:status` ? "Saving..." : u.active ? "Deactivate" : "Reactivate"}
-                      </button>
+                      {canManageTarget(u.role as StaffRole) ? (
+                        <button
+                          onClick={() => handleToggleStatus(u)}
+                          disabled={pendingAction === `${u.id}:status`}
+                          className="text-sm font-medium text-accent-hover hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {pendingAction === `${u.id}:status` ? "Saving..." : u.active ? "Deactivate" : "Reactivate"}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-ink-400">—</span>
+                      )}
                     </Td>
                   )}
                 </Tr>
@@ -221,7 +233,7 @@ export default function TeamPage() {
 
       {showAdd && (
         <Modal title="Add staff member" onClose={() => setShowAdd(false)}>
-          <StaffForm onSubmit={handleCreate} />
+          <StaffForm onSubmit={handleCreate} viewerRole={session.role as StaffRole} />
         </Modal>
       )}
     </div>
