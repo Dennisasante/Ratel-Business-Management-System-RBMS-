@@ -8,8 +8,12 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record SaleItemRequest(
-        @NotNull(message = "Product is required")
+        // Exactly one of productId/serviceCatalogId must be set — not
+        // expressible via bean validation alone, checked in SaleService the
+        // same way CreateBookingRequest's serviceCatalogId/packageId pair is.
         UUID productId,
+
+        UUID serviceCatalogId,
 
         @NotNull(message = "Quantity is required")
         @Min(value = 1, message = "Quantity must be at least 1")

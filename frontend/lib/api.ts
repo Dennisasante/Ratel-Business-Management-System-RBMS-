@@ -178,8 +178,12 @@ export interface CustomerPayload {
 
 export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "CARD" | "BANK_TRANSFER";
 
+export type SaleItemType = "PRODUCT" | "SERVICE";
+
 export interface SaleItemPayload {
-  productId: string;
+  // Exactly one of these two must be set.
+  productId?: string;
+  serviceCatalogId?: string;
   quantity: number;
   discountAmount?: number;
 }
@@ -191,7 +195,9 @@ export interface SalePayload {
 }
 
 export interface SaleItem {
-  productId: string;
+  itemType: SaleItemType;
+  productId: string | null;
+  serviceCatalogId: string | null;
   productName: string;
   unitPrice: number;
   quantity: number;
