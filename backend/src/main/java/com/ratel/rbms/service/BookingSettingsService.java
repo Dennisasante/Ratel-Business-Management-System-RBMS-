@@ -52,7 +52,7 @@ public class BookingSettingsService {
     public BookingSettingsResponse get() {
         UUID businessId = TenantContext.getBusinessId();
         BusinessIntegrations integrations = getOrCreate(businessId);
-        return toResponse(integrations, businessWorkingHoursRepository.findAllByBusinessIdOrderByDayOfWeek(businessId));
+        return toResponse(integrations, resolveWorkingHours(businessId));
     }
 
     @Transactional
@@ -106,7 +106,15 @@ public class BookingSettingsService {
             }
         }
 
-        return toResponse(integrations, businessWorkingHoursRepository.findAllByBusinessIdOrderByDayOfWeek(businessId));
+        return toResponse(integrations, resolveWorkingHours(businessId));
+    }
+
+    // Mirrors BookingService's own fallback — a business that's never saved
+    // hours shouldn't look "closed every day" here while the booking widget
+    // silently accepts bookings Mon-Sat 9-6 by default; the two must agree.
+    private List<BusinessWorkingHours> resolveWorkingHours(UUID businessId) {
+        List<BusinessWorkingHours> hours = businessWorkingHoursRepository.findAllByBusinessIdOrderByDayOfWeek(businessId);
+        return hours.isEmpty() ? BusinessWorkingHours.defaultHours() : hours;
     }
 
     public List<BlackoutDateResponse> listBlackoutDates() {

@@ -333,21 +333,9 @@ public class BookingService {
     }
 
     // Mon-Sat 9am-6pm when a business has never configured any working-hours
-    // rows at all — a business shouldn't lose its scheduling guardrails just
-    // because nobody's opened the Bookings settings page yet. Once a business
-    // has ANY row, absence of a row for a given day means that day is closed
-    // — there's no per-day fallback beyond this all-or-nothing default.
-    private static final List<BusinessWorkingHours> DEFAULT_WORKING_HOURS = List.of(1, 2, 3, 4, 5, 6).stream()
-            .map(day -> BusinessWorkingHours.builder()
-                    .dayOfWeek(day)
-                    .startTime(java.time.LocalTime.of(9, 0))
-                    .endTime(java.time.LocalTime.of(18, 0))
-                    .build())
-            .toList();
-
     private List<BusinessWorkingHours> resolveWorkingHours(UUID businessId) {
         List<BusinessWorkingHours> hours = businessWorkingHoursRepository.findAllByBusinessIdOrderByDayOfWeek(businessId);
-        return hours.isEmpty() ? DEFAULT_WORKING_HOURS : hours;
+        return hours.isEmpty() ? BusinessWorkingHours.defaultHours() : hours;
     }
 
     private void validateWorkingWindow(UUID businessId, BusinessIntegrations integrations, Instant scheduledAt) {
