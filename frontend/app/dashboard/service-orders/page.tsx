@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle } from "lucide-react";
+import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, CheckCircle2, Ban, ArrowLeftCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -367,18 +367,7 @@ export default function ServiceOrdersPage() {
                       {o.pickedUpAt ? new Date(o.pickedUpAt).toLocaleDateString() : "—"}
                     </Td>
                     <Td>
-                      <div className="flex flex-wrap justify-end gap-3 whitespace-nowrap text-right">
-                        {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
-                          <a
-                            href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-sm font-medium text-success hover:underline"
-                          >
-                            <MessageCircle size={13} />
-                            WhatsApp
-                          </a>
-                        )}
+                      <div className="flex flex-nowrap items-center justify-end gap-3 whitespace-nowrap text-right">
                         {nextStatus && (
                           <button
                             onClick={() => handleAdvanceStatus(o)}
@@ -388,56 +377,72 @@ export default function ServiceOrdersPage() {
                             {pendingAction === `${o.id}:status` ? "Updating..." : NEXT_STATUS_LABEL[o.status]}
                           </button>
                         )}
-                        {previousStatus && (
-                          <button
-                            onClick={() => handleMoveBack(o)}
-                            disabled={pendingAction === `${o.id}:status`}
-                            className="text-sm font-medium text-ink-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {pendingAction === `${o.id}:status` ? "Updating..." : PREVIOUS_STATUS_LABEL[o.status]}
-                          </button>
-                        )}
                         <Link
                           href={`/receipt/service-order/${o.id}`}
                           target="_blank"
                           className="text-sm font-medium text-accent-hover hover:underline"
                         >
-                          View / Print
+                          View
                         </Link>
-                        {canResend && (
-                          <button
-                            onClick={() => handleResendEmail(o)}
-                            disabled={pendingAction === `${o.id}:resend`}
-                            className="flex items-center gap-1 text-sm font-medium text-ink-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Mail size={13} />
-                            {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
-                          </button>
-                        )}
-                        {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
-                          <button
-                            onClick={() => handleMarkPaid(o)}
-                            disabled={pendingAction === `${o.id}:markPaid`}
-                            className="text-sm font-medium text-success hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
-                          </button>
-                        )}
                         <button
                           onClick={() => setModal({ type: "edit", order: o })}
                           className="text-sm font-medium text-ink-700 hover:underline"
                         >
                           Edit
                         </button>
-                        {canCancel && (
-                          <button
-                            onClick={() => handleCancel(o)}
-                            disabled={pendingAction === `${o.id}:cancel`}
-                            className="text-sm font-medium text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {pendingAction === `${o.id}:cancel` ? "Cancelling..." : "Cancel"}
-                          </button>
-                        )}
+                        <ActionsMenu>
+                          {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
+                            <a
+                              href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-success hover:bg-canvas"
+                            >
+                              <MessageCircle size={14} />
+                              Message on WhatsApp
+                            </a>
+                          )}
+                          {previousStatus && (
+                            <button
+                              onClick={() => handleMoveBack(o)}
+                              disabled={pendingAction === `${o.id}:status`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <ArrowLeftCircle size={14} />
+                              {pendingAction === `${o.id}:status` ? "Updating..." : PREVIOUS_STATUS_LABEL[o.status]}
+                            </button>
+                          )}
+                          {canResend && (
+                            <button
+                              onClick={() => handleResendEmail(o)}
+                              disabled={pendingAction === `${o.id}:resend`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Mail size={14} />
+                              {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
+                            </button>
+                          )}
+                          {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
+                            <button
+                              onClick={() => handleMarkPaid(o)}
+                              disabled={pendingAction === `${o.id}:markPaid`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-success hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <CheckCircle2 size={14} />
+                              {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
+                            </button>
+                          )}
+                          {canCancel && (
+                            <button
+                              onClick={() => handleCancel(o)}
+                              disabled={pendingAction === `${o.id}:cancel`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-danger hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Ban size={14} />
+                              {pendingAction === `${o.id}:cancel` ? "Cancelling..." : "Cancel"}
+                            </button>
+                          )}
+                        </ActionsMenu>
                       </div>
                     </Td>
                   </Tr>
@@ -472,6 +477,41 @@ export default function ServiceOrdersPage() {
         </Modal>
       )}
 
+    </div>
+  );
+}
+
+function ActionsMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="More actions"
+        className="rounded-lg p-1.5 text-ink-500 hover:bg-canvas hover:text-ink-900"
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-border bg-surface py-1 text-left shadow-card"
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
