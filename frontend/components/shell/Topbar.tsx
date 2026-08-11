@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Menu, ChevronDown, LogOut, KeyRound, Building2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import InstallAppButton from "@/components/InstallAppButton";
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const { session, logout } = useAuth();
@@ -39,7 +40,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
       <div className="hidden lg:block" />
 
-      <div className="relative" ref={menuRef}>
+      <div className="flex items-center gap-3">
+        <InstallAppButton className="hidden items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-canvas sm:flex" />
+        <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-canvas"
@@ -81,6 +84,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             </button>
           </div>
         )}
+        </div>
       </div>
     </header>
   );

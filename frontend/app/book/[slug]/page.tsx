@@ -22,6 +22,7 @@ import {
 import { api, ApiError, BookableService, BookingCreated, BookingWidgetConfig } from "@/lib/api";
 import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
 import PoweredByRatel from "@/components/PoweredByRatel";
+import InstallAppButton from "@/components/InstallAppButton";
 
 const ACCENT = "#a76545";
 
@@ -648,7 +649,8 @@ export default function HostedBookingPage() {
         </div>
       )}
 
-      <PoweredByRatel className="mt-6 text-xs text-[#b3a690]" iconSize={16} />
+      <InstallAppButton className="mt-6 flex items-center gap-1.5 text-xs font-medium text-[#9a8c7c] hover:text-[#4a3d2f]" />
+      <PoweredByRatel className="mt-2 text-xs text-[#b3a690]" iconSize={16} />
     </main>
   );
 }
