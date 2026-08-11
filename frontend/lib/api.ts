@@ -571,13 +571,6 @@ export interface BusinessIntegrations {
   woocommerceWebhookRegistered: boolean;
   whatsappNotifyNumber: string | null;
   testMode: boolean;
-  bookingPaymentPolicy: "NONE" | "DEPOSIT" | "FULL";
-  bookingDepositPercent: number;
-  bookingAllowPayInPerson: boolean;
-  bookingCancellationCutoffHours: number;
-  workingDays: number[];
-  workingHoursStart: string;
-  workingHoursEnd: string;
 }
 
 // Every field: undefined/omitted = leave unchanged, "" = clear, else = set.
@@ -589,19 +582,52 @@ export interface BusinessIntegrationsPayload {
   woocommerceConsumerSecret?: string;
   whatsappNotifyNumber?: string;
   testMode?: boolean;
-  bookingPaymentPolicy?: "NONE" | "DEPOSIT" | "FULL";
-  bookingDepositPercent?: number;
-  bookingAllowPayInPerson?: boolean;
-  bookingCancellationCutoffHours?: number;
-  workingDays?: number[];
-  workingHoursStart?: string;
-  workingHoursEnd?: string;
 }
 
 export interface BlackoutDate {
   id: string;
   date: string;
   label: string | null;
+}
+
+export interface WorkingHoursEntry {
+  dayOfWeek: number; // ISO weekday, 1=Mon..7=Sun
+  startTime: string;
+  endTime: string;
+}
+
+export interface BookingSettings {
+  paymentPolicy: "NONE" | "DEPOSIT" | "FULL";
+  depositPercent: number;
+  allowPayInPerson: boolean;
+  cancellationCutoffHours: number;
+  workingHours: WorkingHoursEntry[];
+}
+
+// Same "leave unchanged unless told otherwise" convention as
+// BusinessIntegrationsPayload — except workingHours, which always fully
+// replaces the current set when present (omit it to leave hours untouched).
+export interface BookingSettingsPayload {
+  paymentPolicy?: "NONE" | "DEPOSIT" | "FULL";
+  depositPercent?: number;
+  allowPayInPerson?: boolean;
+  cancellationCutoffHours?: number;
+  workingHours?: WorkingHoursEntry[];
+}
+
+export interface BookingListItem {
+  bookingNumber: number;
+  customerName: string;
+  customerEmail: string;
+  customerWhatsapp: string;
+  customerLocation: string | null;
+  serviceName: string | null;
+  orderStatus: string | null;
+  scheduledAt: string | null;
+  price: number | null;
+  paymentStatus: string;
+  assignedStaffName: string | null;
+  createdAt: string;
 }
 
 export interface TestConnectionResult {
@@ -780,9 +806,7 @@ export interface BookingWidgetConfig {
   paymentPolicy: "NONE" | "DEPOSIT" | "FULL";
   depositPercent: number;
   allowPayInPerson: boolean;
-  workingDays: number[];
-  workingHoursStart: string;
-  workingHoursEnd: string;
+  workingHours: WorkingHoursEntry[];
   businessWhatsappLink: string | null;
 }
 
@@ -867,7 +891,9 @@ export interface PlatformBusinessDetail {
   billingStatus: PlatformBillingStatus;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  subscriptionPlanId: string | null;
   planName: string;
+  priceOverride: number | null;
   bookingCount: number;
   ecommerceOrderCount: number;
   customWigRequestCount: number;
@@ -876,6 +902,17 @@ export interface PlatformBusinessDetail {
   woocommerceConfigured: boolean;
   whatsappConfigured: boolean;
   staffByRole: Record<string, number>;
+}
+
+// Same "null = leave unchanged" convention as elsewhere — clearPlan/
+// clearPriceOverride are the explicit escape hatch for setting a field back
+// to "none", since a plain null can't distinguish "unchanged" from "cleared".
+export interface PlatformBusinessBillingUpdatePayload {
+  subscriptionPlanId?: string;
+  clearPlan?: boolean;
+  trialEndsAt?: string;
+  priceOverride?: number;
+  clearPriceOverride?: boolean;
 }
 
 class ApiError extends Error {
@@ -1293,13 +1330,23 @@ export const api = {
   testWooCommerceIntegration: (token: string) =>
     request<TestConnectionResult>("/api/integrations/test-woocommerce", { method: "POST" }, token),
 
-  listBlackoutDates: (token: string) => request<BlackoutDate[]>("/api/integrations/blackout-dates", {}, token),
+  // --- Bookings (Owner sees/edits settings; STAFF sees their own assigned bookings) ---
+
+  listBookings: (token: string, status?: string) =>
+    request<BookingListItem[]>(`/api/bookings${status ? `?status=${status}` : ""}`, {}, token),
+
+  getBookingSettings: (token: string) => request<BookingSettings>("/api/bookings/settings", {}, token),
+
+  updateBookingSettings: (token: string, payload: BookingSettingsPayload) =>
+    request<BookingSettings>("/api/bookings/settings", { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  listBlackoutDates: (token: string) => request<BlackoutDate[]>("/api/bookings/blackout-dates", {}, token),
 
   addBlackoutDate: (token: string, payload: { date: string; label?: string }) =>
-    request<BlackoutDate>("/api/integrations/blackout-dates", { method: "POST", body: JSON.stringify(payload) }, token),
+    request<BlackoutDate>("/api/bookings/blackout-dates", { method: "POST", body: JSON.stringify(payload) }, token),
 
   removeBlackoutDate: (token: string, id: string) =>
-    request<void>(`/api/integrations/blackout-dates/${id}`, { method: "DELETE" }, token),
+    request<void>(`/api/bookings/blackout-dates/${id}`, { method: "DELETE" }, token),
 
   // --- Platform (Super Admin) ---
 
@@ -1354,6 +1401,13 @@ export const api = {
     request<PlatformBusinessSummary>(
       `/api/platform/businesses/${id}/status`,
       { method: "PATCH", body: JSON.stringify({ active }) },
+      token
+    ),
+
+  updatePlatformBusinessBilling: (token: string, id: string, payload: PlatformBusinessBillingUpdatePayload) =>
+    request<PlatformBusinessDetail>(
+      `/api/platform/businesses/${id}/billing`,
+      { method: "PATCH", body: JSON.stringify(payload) },
       token
     ),
 

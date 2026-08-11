@@ -18,6 +18,7 @@ import {
   Wrench,
   CreditCard,
   CalendarDays,
+  CalendarCheck2,
   ArrowUpRight,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/inventory", label: "Inventory", icon: Package, hiddenFrom: STAFF_HIDDEN },
   { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart, hiddenFrom: STAFF_HIDDEN },
+  { href: "/dashboard/bookings", label: "Bookings", icon: CalendarCheck2 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
   { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, hiddenFrom: STAFF_HIDDEN },
   { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList, hiddenFrom: STAFF_HIDDEN },

@@ -38,18 +38,32 @@ function formatTimeLabel(hhmmss: string) {
 const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function workingHoursHint(config: BookingWidgetConfig) {
-  const days = [...config.workingDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(", ");
-  return `Open ${days} · ${formatTimeLabel(config.workingHoursStart)} – ${formatTimeLabel(config.workingHoursEnd)}`;
+  const sorted = [...config.workingHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  const groups: { days: number[]; startTime: string; endTime: string }[] = [];
+  for (const h of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.startTime === h.startTime && last.endTime === h.endTime && last.days[last.days.length - 1] === h.dayOfWeek - 1) {
+      last.days.push(h.dayOfWeek);
+    } else {
+      groups.push({ days: [h.dayOfWeek], startTime: h.startTime, endTime: h.endTime });
+    }
+  }
+  const parts = groups.map((g) => {
+    const label = g.days.length > 1 ? `${DAY_LABELS[g.days[0]]}–${DAY_LABELS[g.days[g.days.length - 1]]}` : DAY_LABELS[g.days[0]];
+    return `${label} ${formatTimeLabel(g.startTime)} – ${formatTimeLabel(g.endTime)}`;
+  });
+  return `Open ${parts.join(", ")}`;
 }
 
 function isWithinWorkingHours(config: BookingWidgetConfig, whenLocal: string) {
   if (!whenLocal) return true;
   const d = new Date(whenLocal);
   const isoWeekday = d.getDay() === 0 ? 7 : d.getDay();
-  if (!config.workingDays.includes(isoWeekday)) return false;
+  const today = config.workingHours.find((h) => h.dayOfWeek === isoWeekday);
+  if (!today) return false;
   const minutes = d.getHours() * 60 + d.getMinutes();
-  const [startH, startM] = config.workingHoursStart.split(":").map(Number);
-  const [endH, endM] = config.workingHoursEnd.split(":").map(Number);
+  const [startH, startM] = today.startTime.split(":").map(Number);
+  const [endH, endM] = today.endTime.split(":").map(Number);
   return minutes >= startH * 60 + startM && minutes < endH * 60 + endM;
 }
 
