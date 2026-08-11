@@ -410,6 +410,16 @@ export interface ServicePackagePayload {
   paymentPolicyOverride?: "NONE" | "DEPOSIT" | "FULL" | "";
 }
 
+export interface ServiceOrderItemResponse {
+  id: string;
+  serviceTypeId: string;
+  serviceTypeName: string | null;
+  serviceCatalogId: string | null;
+  serviceName: string;
+  price: number;
+  discountAmount: number;
+}
+
 export interface ServiceOrder {
   id: string;
   orderNumber: number;
@@ -423,6 +433,11 @@ export interface ServiceOrder {
   notes: string | null;
   price: number;
   discountAmount: number;
+  // Every service on this order, individually — serviceTypeId/serviceCatalogId/
+  // price/discountAmount above stay as the "primary type" (first item's) and
+  // running totals for backward compatibility; this is the source of truth
+  // once an order has more than one.
+  items: ServiceOrderItemResponse[];
   assignedStaffId: string | null;
   assignedStaffName: string | null;
   receivedAt: string;
@@ -435,22 +450,27 @@ export interface ServiceOrder {
   bookingPaymentStatus: string | null;
   bookingWhatsappLink: string | null;
   customerWhatsappLink: string | null;
+  paymentStatus: string;
+}
+
+export interface ServiceOrderItemPayload {
+  serviceTypeId: string;
+  serviceCatalogId?: string;
+  price: number;
+  discountAmount?: number;
 }
 
 export interface ServiceOrderPayload {
-  serviceTypeId: string;
   customerId?: string;
-  serviceCatalogId?: string;
   notes?: string;
-  price?: number;
-  discountAmount?: number;
+  items: ServiceOrderItemPayload[];
   assignedStaffId?: string;
   scheduledAt?: string;
 }
 
 export interface ServiceOrderUpdatePayload {
   notes?: string;
-  price: number;
+  price?: number;
   discountAmount?: number;
   assignedStaffId?: string;
   scheduledAt?: string;

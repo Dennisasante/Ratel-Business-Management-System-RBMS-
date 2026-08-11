@@ -1,5 +1,7 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.ServiceOrderItemRequest;
+import com.ratel.rbms.dto.ServiceOrderItemResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
 import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.ServiceOrderUpdateRequest;
@@ -8,6 +10,7 @@ import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
+import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.Role;
@@ -15,6 +18,7 @@ import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.ServiceOrderItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
@@ -25,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +58,7 @@ public class ServiceOrderService {
     );
 
     private final ServiceOrderRepository serviceOrderRepository;
+    private final ServiceOrderItemRepository serviceOrderItemRepository;
     private final UserRepository userRepository;
     private final BusinessRepository businessRepository;
     private final CustomerService customerService;
@@ -64,6 +71,7 @@ public class ServiceOrderService {
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
+            ServiceOrderItemRepository serviceOrderItemRepository,
             UserRepository userRepository,
             BusinessRepository businessRepository,
             CustomerService customerService,
@@ -75,6 +83,7 @@ public class ServiceOrderService {
             WhatsAppLinkService whatsAppLinkService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
+        this.serviceOrderItemRepository = serviceOrderItemRepository;
         this.userRepository = userRepository;
         this.businessRepository = businessRepository;
         this.customerService = customerService;
@@ -86,25 +95,36 @@ public class ServiceOrderService {
         this.whatsAppLinkService = whatsAppLinkService;
     }
 
+    // Every service on the order, resolved and validated up front — same
+    // per-item checks a single-service order always got (type/catalog item
+    // must belong to this business), just once per line now.
+    private record ResolvedItem(ServiceType type, ServiceCatalogItem catalogItem, String name, BigDecimal price, BigDecimal discountAmount) {
+    }
+
     @Transactional
     public ServiceOrderResponse create(ServiceOrderRequest req) {
         UUID businessId = TenantContext.getBusinessId();
 
-        ServiceType type = serviceTypeService.getOwned(req.serviceTypeId());
-
-        Customer customer = null;
         if (req.customerId() != null) {
-            customer = customerService.getOwned(req.customerId());
+            customerService.getOwned(req.customerId()); // validates ownership; response reloads it via toResponse()
         }
 
-        ServiceCatalogItem catalogItem = null;
-        BigDecimal price = req.price();
-        if (req.serviceCatalogId() != null) {
-            catalogItem = serviceCatalogService.getOwned(req.serviceCatalogId());
-            if (price == null) price = catalogItem.getPrice();
+        List<ResolvedItem> resolvedItems = new ArrayList<>();
+        for (ServiceOrderItemRequest itemReq : req.items()) {
+            ServiceType itemType = serviceTypeService.getOwned(itemReq.serviceTypeId());
+            ServiceCatalogItem catalogItem = null;
+            String name = itemType.getName();
+            if (itemReq.serviceCatalogId() != null) {
+                catalogItem = serviceCatalogService.getOwned(itemReq.serviceCatalogId());
+                name = catalogItem.getName();
+            }
+            BigDecimal itemDiscount = itemReq.discountAmount() != null ? itemReq.discountAmount() : BigDecimal.ZERO;
+            resolvedItems.add(new ResolvedItem(itemType, catalogItem, name, itemReq.price(), itemDiscount));
         }
-        if (price == null) price = BigDecimal.ZERO;
-        BigDecimal discountAmount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
+
+        BigDecimal totalPrice = resolvedItems.stream().map(ResolvedItem::price).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalDiscount = resolvedItems.stream().map(ResolvedItem::discountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        ResolvedItem first = resolvedItems.get(0);
 
         // A STAFF user can't hand work to someone else — every order they create
         // lands on themselves, regardless of what the form submitted. Also keeps
@@ -115,13 +135,16 @@ public class ServiceOrderService {
 
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
-                .serviceTypeId(type.getId())
+                .serviceTypeId(first.type().getId())
+                // Keeps a single-service order's response byte-for-byte identical
+                // to before (serviceCatalogId only meaningful when there's exactly
+                // one item — otherwise the items list below is the source of truth).
+                .serviceCatalogId(resolvedItems.size() == 1 && first.catalogItem() != null ? first.catalogItem().getId() : null)
                 .status(ServiceOrderStatus.RECEIVED)
                 .customerId(req.customerId())
-                .serviceCatalogId(req.serviceCatalogId())
                 .notes(req.notes())
-                .price(price)
-                .discountAmount(discountAmount)
+                .price(totalPrice)
+                .discountAmount(totalDiscount)
                 .assignedStaffId(assignedStaffId)
                 .receivedAt(Instant.now())
                 .scheduledAt(req.scheduledAt())
@@ -130,12 +153,25 @@ public class ServiceOrderService {
         order = serviceOrderRepository.save(order);
         serviceOrderRepository.flush(); // so order_number is readable below
 
+        for (ResolvedItem ri : resolvedItems) {
+            serviceOrderItemRepository.save(ServiceOrderItem.builder()
+                    .businessId(businessId)
+                    .serviceOrderId(order.getId())
+                    .serviceTypeId(ri.type().getId())
+                    .serviceCatalogId(ri.catalogItem() != null ? ri.catalogItem().getId() : null)
+                    .serviceName(ri.name())
+                    .price(ri.price())
+                    .discountAmount(ri.discountAmount())
+                    .build());
+        }
+
+        String serviceSummary = resolvedItems.size() == 1 ? first.name() : resolvedItems.size() + " services";
         activityLogService.log(
-                "Created service order #" + order.getOrderNumber() + " (" + type.getName() + ") for GH₵" + price,
+                "Created service order #" + order.getOrderNumber() + " (" + serviceSummary + ") for GH₵" + totalPrice,
                 "SERVICE_ORDER", order.getId()
         );
 
-        return toResponse(order, type, customer, catalogItem);
+        return toResponse(order);
     }
 
     public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page) {
@@ -158,9 +194,27 @@ public class ServiceOrderService {
         // it off to someone else, and never orphan it (which would make it
         // invisible to everyone once it has no owner in their own scoped view).
         UUID assignedStaffId = currentUser.getRole() == Role.STAFF ? currentUser.getId() : req.assignedStaffId();
+
+        if (req.price() != null) {
+            List<ServiceOrderItem> items = serviceOrderItemRepository.findAllByServiceOrderId(order.getId());
+            if (items.size() > 1) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "This order has more than one service — editing individual services isn't supported yet.");
+            }
+            BigDecimal discountAmount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
+            order.setPrice(req.price());
+            order.setDiscountAmount(discountAmount);
+            if (items.size() == 1) {
+                // Keep the single line item in sync with the order-level total —
+                // they're the same number while there's only one service.
+                ServiceOrderItem item = items.get(0);
+                item.setPrice(req.price());
+                item.setDiscountAmount(discountAmount);
+                serviceOrderItemRepository.save(item);
+            }
+        }
+
         order.setNotes(req.notes());
-        order.setPrice(req.price());
-        order.setDiscountAmount(req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO);
         order.setAssignedStaffId(assignedStaffId);
         order.setScheduledAt(req.scheduledAt());
         order = serviceOrderRepository.save(order);
@@ -265,26 +319,16 @@ public class ServiceOrderService {
         ServiceCatalogItem catalogItem = order.getServiceCatalogId() != null
                 ? findCatalogItemOrNull(order.getServiceCatalogId())
                 : null;
-        return toResponse(order, type, customer, catalogItem);
-    }
+        List<ServiceOrderItem> items = serviceOrderItemRepository.findAllByServiceOrderId(order.getId());
 
-    private ServiceType findTypeOrNull(UUID id) {
-        try {
-            return serviceTypeService.getOwned(id);
-        } catch (ApiException e) {
-            return null; // service type may have been removed since the order was created
-        }
-    }
+        // Cache type-name lookups across items — a multi-item order commonly
+        // repeats the same one or two categories, no need to re-query per line.
+        Map<UUID, String> typeNameCache = new HashMap<>();
+        if (type != null) typeNameCache.put(type.getId(), type.getName());
+        List<ServiceOrderItemResponse> itemResponses = items.stream()
+                .map(item -> ServiceOrderItemResponse.from(item, typeNameCache.computeIfAbsent(item.getServiceTypeId(), this::typeNameOrNull)))
+                .toList();
 
-    private ServiceCatalogItem findCatalogItemOrNull(UUID id) {
-        try {
-            return serviceCatalogService.getOwned(id);
-        } catch (ApiException e) {
-            return null; // catalog item may have been removed since the order was created
-        }
-    }
-
-    private ServiceOrderResponse toResponse(ServiceOrder order, ServiceType type, Customer customer, ServiceCatalogItem catalogItem) {
         String assignedStaffName = order.getAssignedStaffId() != null
                 ? userRepository.findById(order.getAssignedStaffId()).map(User::getFullName).orElse(null)
                 : null;
@@ -314,11 +358,33 @@ public class ServiceOrderService {
                 type != null ? type.getName() : null,
                 customer != null ? customer.getFullName() : null,
                 catalogItem != null ? catalogItem.getName() : null,
+                itemResponses,
                 assignedStaffName,
                 createdByName,
                 bookingPaymentStatus,
                 bookingWhatsappLink,
                 customerWhatsappLink
         );
+    }
+
+    private ServiceType findTypeOrNull(UUID id) {
+        try {
+            return serviceTypeService.getOwned(id);
+        } catch (ApiException e) {
+            return null; // service type may have been removed since the order was created
+        }
+    }
+
+    private String typeNameOrNull(UUID id) {
+        ServiceType type = findTypeOrNull(id);
+        return type != null ? type.getName() : null;
+    }
+
+    private ServiceCatalogItem findCatalogItemOrNull(UUID id) {
+        try {
+            return serviceCatalogService.getOwned(id);
+        } catch (ApiException e) {
+            return null; // catalog item may have been removed since the order was created
+        }
     }
 }

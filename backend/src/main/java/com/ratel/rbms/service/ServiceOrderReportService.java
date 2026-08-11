@@ -2,8 +2,10 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.ServiceOrderReportResponse;
 import com.ratel.rbms.entity.ServiceOrder;
+import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
+import com.ratel.rbms.repository.ServiceOrderItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
 import com.ratel.rbms.tenant.TenantContext;
@@ -26,10 +28,12 @@ import java.util.UUID;
 public class ServiceOrderReportService {
 
     private final ServiceOrderRepository serviceOrderRepository;
+    private final ServiceOrderItemRepository serviceOrderItemRepository;
     private final ServiceTypeRepository serviceTypeRepository;
 
-    public ServiceOrderReportService(ServiceOrderRepository serviceOrderRepository, ServiceTypeRepository serviceTypeRepository) {
+    public ServiceOrderReportService(ServiceOrderRepository serviceOrderRepository, ServiceOrderItemRepository serviceOrderItemRepository, ServiceTypeRepository serviceTypeRepository) {
         this.serviceOrderRepository = serviceOrderRepository;
+        this.serviceOrderItemRepository = serviceOrderItemRepository;
         this.serviceTypeRepository = serviceTypeRepository;
     }
 
@@ -56,8 +60,13 @@ public class ServiceOrderReportService {
         List<ServiceType> types = serviceTypeRepository.findAllByBusinessIdOrderByNameAsc(businessId);
         Map<UUID, BigDecimal> revenueByTypeId = new LinkedHashMap<>();
         for (ServiceType type : types) revenueByTypeId.put(type.getId(), BigDecimal.ZERO);
-        for (ServiceOrder order : pickedUp) {
-            revenueByTypeId.merge(order.getServiceTypeId(), order.getPrice(), BigDecimal::add);
+        // Attribute each item's own price to its own category, so a single order
+        // spanning multiple service types splits correctly instead of dumping its
+        // whole total under the order's "primary" type.
+        List<UUID> pickedUpIds = pickedUp.stream().map(ServiceOrder::getId).toList();
+        List<ServiceOrderItem> pickedUpItems = serviceOrderItemRepository.findAllByServiceOrderIdIn(pickedUpIds);
+        for (ServiceOrderItem item : pickedUpItems) {
+            revenueByTypeId.merge(item.getServiceTypeId(), item.getPrice(), BigDecimal::add);
         }
 
         var avgMinutes = pickedUp.stream()

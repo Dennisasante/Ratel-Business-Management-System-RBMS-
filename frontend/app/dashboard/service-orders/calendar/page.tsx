@@ -145,7 +145,8 @@ export default function ServiceOrdersCalendarPage() {
                           o.status === "CANCELLED" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-hover"
                         }`}
                       >
-                        #{o.orderNumber} {o.serviceTypeName ?? ""}
+                        #{o.orderNumber} {o.items[0]?.serviceName ?? o.serviceTypeName ?? ""}
+                        {o.items.length > 1 ? ` +${o.items.length - 1}` : ""}
                       </span>
                     ))}
                     {dayOrders.length > 3 && (
@@ -174,7 +175,8 @@ export default function ServiceOrdersCalendarPage() {
               <li key={o.id} className="flex items-center justify-between border-b border-border pb-3 text-sm last:border-0 last:pb-0">
                 <div>
                   <p className="font-medium text-ink-900">
-                    #{o.orderNumber} · {o.serviceTypeName ?? "—"}
+                    #{o.orderNumber} · {o.items[0]?.serviceName ?? o.serviceTypeName ?? "—"}
+                    {o.items.length > 1 ? ` +${o.items.length - 1} more` : ""}
                   </p>
                   <p className="text-xs text-ink-500">
                     {o.customerName ?? "Walk-in"} ·{" "}

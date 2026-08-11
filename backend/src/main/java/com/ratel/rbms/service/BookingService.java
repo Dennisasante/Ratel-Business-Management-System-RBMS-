@@ -16,6 +16,7 @@ import com.ratel.rbms.entity.BusinessWorkingHours;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
+import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.ServicePackage;
 import com.ratel.rbms.entity.ServicePackageItem;
 import com.ratel.rbms.entity.ServiceType;
@@ -28,6 +29,7 @@ import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.BusinessWorkingHoursRepository;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
+import com.ratel.rbms.repository.ServiceOrderItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServicePackageItemRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
@@ -74,6 +76,7 @@ public class BookingService {
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServiceTypeRepository serviceTypeRepository;
     private final ServiceOrderRepository serviceOrderRepository;
+    private final ServiceOrderItemRepository serviceOrderItemRepository;
     private final ServicePackageRepository servicePackageRepository;
     private final ServicePackageItemRepository servicePackageItemRepository;
     private final CustomerRepository customerRepository;
@@ -93,6 +96,7 @@ public class BookingService {
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServiceTypeRepository serviceTypeRepository,
             ServiceOrderRepository serviceOrderRepository,
+            ServiceOrderItemRepository serviceOrderItemRepository,
             ServicePackageRepository servicePackageRepository,
             ServicePackageItemRepository servicePackageItemRepository,
             CustomerRepository customerRepository,
@@ -111,6 +115,7 @@ public class BookingService {
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.serviceTypeRepository = serviceTypeRepository;
         this.serviceOrderRepository = serviceOrderRepository;
+        this.serviceOrderItemRepository = serviceOrderItemRepository;
         this.servicePackageRepository = servicePackageRepository;
         this.servicePackageItemRepository = servicePackageItemRepository;
         this.customerRepository = customerRepository;
@@ -297,6 +302,7 @@ public class BookingService {
                 .scheduledAt(req.scheduledAt())
                 .build();
         order = serviceOrderRepository.save(order);
+        createServiceOrderItem(businessId, order.getId(), serviceTypeId, serviceCatalogId, serviceName, price);
 
         Booking booking = Booking.builder()
                 .businessId(businessId)
@@ -441,6 +447,7 @@ public class BookingService {
                 .scheduledAt(req.scheduledAt())
                 .build();
         order = serviceOrderRepository.save(order);
+        createServiceOrderItem(businessId, order.getId(), serviceTypeId, serviceCatalogId, serviceName, price);
 
         Booking booking = Booking.builder()
                 .businessId(businessId)
@@ -739,6 +746,21 @@ public class BookingService {
     private Booking getByToken(String manageToken) {
         return bookingRepository.findByManageToken(manageToken)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
+    }
+
+    // A booking always books exactly one service or package — mirrored here as
+    // a single ServiceOrderItem so every order's items list is populated
+    // uniformly, whether it came from a walk-in (ServiceOrderService.create(),
+    // which can have several) or a booking (always exactly one).
+    private void createServiceOrderItem(UUID businessId, UUID serviceOrderId, UUID serviceTypeId, UUID serviceCatalogId, String serviceName, BigDecimal price) {
+        serviceOrderItemRepository.save(ServiceOrderItem.builder()
+                .businessId(businessId)
+                .serviceOrderId(serviceOrderId)
+                .serviceTypeId(serviceTypeId)
+                .serviceCatalogId(serviceCatalogId)
+                .serviceName(serviceName)
+                .price(price)
+                .build());
     }
 
     private boolean isTestMode(UUID businessId) {

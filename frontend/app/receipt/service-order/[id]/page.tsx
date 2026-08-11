@@ -50,7 +50,24 @@ export default function ServiceOrderReceiptPage() {
     return <p className="p-6 text-sm text-ink-500">Loading receipt...</p>;
   }
 
-  const itemName = order.serviceCatalogName ?? order.serviceTypeName ?? "Service";
+  const items =
+    order.items.length > 0
+      ? order.items.map((item) => ({
+          name: item.serviceTypeName ? `${item.serviceName} (${item.serviceTypeName})` : item.serviceName,
+          quantity: 1,
+          unitPrice: item.price + item.discountAmount,
+          discountAmount: item.discountAmount,
+          subtotal: item.price,
+        }))
+      : [
+          {
+            name: order.serviceCatalogName ?? order.serviceTypeName ?? "Service",
+            quantity: 1,
+            unitPrice: order.price + order.discountAmount,
+            discountAmount: order.discountAmount,
+            subtotal: order.price,
+          },
+        ];
 
   return (
     <ReceiptView
@@ -60,19 +77,8 @@ export default function ServiceOrderReceiptPage() {
       businessContactPhone={business.contactPhone}
       documentLabel={`Service Order #${order.orderNumber}`}
       timestamp={order.pickedUpAt ?? order.receivedAt}
-      metaLines={[
-        `Customer: ${order.customerName ?? "Walk-in"}`,
-        `Type: ${order.serviceTypeName ?? "—"}`,
-      ]}
-      items={[
-        {
-          name: itemName,
-          quantity: 1,
-          unitPrice: order.price + order.discountAmount,
-          discountAmount: order.discountAmount,
-          subtotal: order.price,
-        },
-      ]}
+      metaLines={[`Customer: ${order.customerName ?? "Walk-in"}`]}
+      items={items}
       total={order.price}
       footerLines={order.status !== "PICKED_UP" ? ["Not yet picked up"] : []}
     />

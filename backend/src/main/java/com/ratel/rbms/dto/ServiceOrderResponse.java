@@ -4,6 +4,7 @@ import com.ratel.rbms.entity.ServiceOrder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ServiceOrderResponse(
@@ -19,6 +20,11 @@ public record ServiceOrderResponse(
         String notes,
         BigDecimal price,
         BigDecimal discountAmount,
+        // Every service on this order, individually — service_type_id/
+        // service_catalog_id/price/discountAmount above stay as the "primary
+        // type" (first item's) and running totals for backward compatibility;
+        // this is the real source of truth once an order has more than one.
+        List<ServiceOrderItemResponse> items,
         UUID assignedStaffId,
         String assignedStaffName,
         Instant receivedAt,
@@ -33,13 +39,17 @@ public record ServiceOrderResponse(
         // Built from the order's own Customer.phone — unlike bookingWhatsappLink
         // above (booking-originated orders only), this is populated for any order
         // with a customer that has a phone on file.
-        String customerWhatsappLink
+        String customerWhatsappLink,
+        // UNPAID/PAID/FAILED — independent of bookingPaymentStatus above, which
+        // only ever applies to booking-originated orders.
+        String paymentStatus
 ) {
     public static ServiceOrderResponse from(
             ServiceOrder o,
             String serviceTypeName,
             String customerName,
             String serviceCatalogName,
+            List<ServiceOrderItemResponse> items,
             String assignedStaffName,
             String createdByName,
             String bookingPaymentStatus,
@@ -59,6 +69,7 @@ public record ServiceOrderResponse(
                 o.getNotes(),
                 o.getPrice(),
                 o.getDiscountAmount(),
+                items,
                 o.getAssignedStaffId(),
                 assignedStaffName,
                 o.getReceivedAt(),
@@ -70,7 +81,8 @@ public record ServiceOrderResponse(
                 o.getUpdatedAt(),
                 bookingPaymentStatus,
                 bookingWhatsappLink,
-                customerWhatsappLink
+                customerWhatsappLink,
+                o.getPaymentStatus()
         );
     }
 }

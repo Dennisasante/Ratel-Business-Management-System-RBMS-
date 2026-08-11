@@ -15,6 +15,12 @@ interface ServiceOrderEditFormProps {
 // Edits notes/price/discount/assignee/scheduling only — type, customer and status
 // change through their own flows.
 export default function ServiceOrderEditForm({ order, staff, onSubmit }: ServiceOrderEditFormProps) {
+  // Editing price/discount only makes sense for a single-item order — for a
+  // multi-service order the backend rejects a price change outright (no
+  // support yet for editing one line among several), so hide the fields
+  // instead of letting the user hit that error.
+  const singleItem = order.items.length <= 1;
+
   const [notes, setNotes] = useState(order.notes ?? "");
   const [basePrice, setBasePrice] = useState(String(order.price + order.discountAmount));
   const [price, setPrice] = useState(String(order.price));
@@ -44,8 +50,8 @@ export default function ServiceOrderEditForm({ order, staff, onSubmit }: Service
     try {
       await onSubmit({
         notes: notes || undefined,
-        price: Number(price) || 0,
-        discountAmount: Number(discount) || 0,
+        price: singleItem ? Number(price) || 0 : undefined,
+        discountAmount: singleItem ? Number(discount) || 0 : undefined,
         assignedStaffId: assignedStaffId || undefined,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       });
@@ -58,10 +64,17 @@ export default function ServiceOrderEditForm({ order, staff, onSubmit }: Service
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Price" name="price" type="number" value={price} onChange={setPriceManually} />
-        <FormField label="Discount (optional)" name="discount" type="number" value={discount} onChange={setDiscount} />
-      </div>
+      {singleItem ? (
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Price" name="price" type="number" value={price} onChange={setPriceManually} />
+          <FormField label="Discount (optional)" name="discount" type="number" value={discount} onChange={setDiscount} />
+        </div>
+      ) : (
+        <p className="rounded-lg border border-border bg-canvas px-3 py-2 text-xs text-ink-500">
+          This order has {order.items.length} services — price/discount can&rsquo;t be edited per line yet. Total: GH₵
+          {order.price.toFixed(2)}.
+        </p>
+      )}
 
       <FormField
         label="Schedule for (optional)"

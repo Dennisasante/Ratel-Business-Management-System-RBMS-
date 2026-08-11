@@ -311,7 +311,12 @@ export default function ServiceOrdersPage() {
                     </Td>
                     <Td className="text-ink-500">
                       <span className="block">{o.serviceTypeName ?? "—"}</span>
-                      {o.serviceCatalogName && <span className="block text-xs text-ink-400">{o.serviceCatalogName}</span>}
+                      {o.items.length > 0 && (
+                        <span className="block text-xs text-ink-400">
+                          {o.items[0].serviceName}
+                          {o.items.length > 1 && ` +${o.items.length - 1} more`}
+                        </span>
+                      )}
                     </Td>
                     <Td className="text-ink-500">{o.customerName ?? "Walk-in"}</Td>
                     <Td>

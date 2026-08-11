@@ -91,6 +91,15 @@ public class ServiceOrder {
     @Column(name = "created_by")
     private UUID createdBy;
 
+    // UNPAID/PAID/FAILED — a staff-created walk-in order has no Booking row to
+    // carry payment status on, unlike the public booking-widget flow.
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private String paymentStatus = "UNPAID";
+
+    @Column(name = "paystack_reference", unique = true, length = 100)
+    private String paystackReference;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
