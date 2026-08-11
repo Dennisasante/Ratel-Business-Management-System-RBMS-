@@ -93,8 +93,10 @@ public class BillingService {
         User owner = userRepository.findById(TenantContext.getUserId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
 
+        BigDecimal effectivePrice = business.getPriceOverride() != null ? business.getPriceOverride() : plan.getPrice();
+
         String reference = "RATEL-" + business.getId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
-        long amountMinorUnits = plan.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        long amountMinorUnits = effectivePrice.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
 
         PaystackService.InitResult init = paystackService.initializeTransaction(
                 paystackService.resolvePlatformSecretKey(),
@@ -107,7 +109,7 @@ public class BillingService {
         SubscriptionPayment payment = SubscriptionPayment.builder()
                 .businessId(business.getId())
                 .subscriptionPlanId(plan.getId())
-                .amount(plan.getPrice())
+                .amount(effectivePrice)
                 .currency(plan.getCurrency())
                 .paystackReference(init.reference())
                 .status("PENDING")

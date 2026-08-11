@@ -1,6 +1,7 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.AdminResetPasswordResponse;
+import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.UserResponse;
@@ -162,7 +163,9 @@ public class PlatformBusinessService {
                 business.getBillingStatus().name(),
                 business.getTrialEndsAt(),
                 business.getCurrentPeriodEndsAt(),
+                business.getSubscriptionPlanId(),
                 planName,
+                business.getPriceOverride(),
                 bookingCount,
                 ecommerceOrderCount,
                 customWigRequestCount,
@@ -172,6 +175,36 @@ public class PlatformBusinessService {
                 whatsappConfigured,
                 staffByRole
         );
+    }
+
+    public PlatformBusinessDetailResponse updateBilling(UUID adminId, UUID businessId, PlatformBusinessBillingUpdateRequest req) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+
+        if (req.clearPlan()) {
+            business.setSubscriptionPlanId(null);
+        } else if (req.subscriptionPlanId() != null) {
+            SubscriptionPlan plan = subscriptionPlanRepository.findById(req.subscriptionPlanId())
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Plan not found."));
+            business.setSubscriptionPlanId(plan.getId());
+        }
+
+        if (req.trialEndsAt() != null) {
+            business.setTrialEndsAt(req.trialEndsAt());
+        }
+
+        if (req.clearPriceOverride()) {
+            business.setPriceOverride(null);
+        } else if (req.priceOverride() != null) {
+            business.setPriceOverride(req.priceOverride());
+        }
+
+        business = businessRepository.save(business);
+
+        auditLogService.log(adminId, "Updated billing for \"" + business.getName() + "\"",
+                business.getId(), business.getName(), null);
+
+        return getDetail(business.getId());
     }
 
     public PlatformBusinessSummaryResponse setActive(UUID adminId, UUID businessId, boolean active) {

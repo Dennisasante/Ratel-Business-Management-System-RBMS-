@@ -1,6 +1,7 @@
 package com.ratel.rbms.controller;
 
 import com.ratel.rbms.dto.AdminResetPasswordResponse;
+import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.UpdateUserStatusRequest;
@@ -38,6 +39,11 @@ public class PlatformBusinessController {
     @PatchMapping("/{id}/status")
     public PlatformBusinessSummaryResponse setStatus(@PathVariable UUID id, @RequestBody UpdateUserStatusRequest request) {
         return platformBusinessService.setActive(currentAdminId(), id, request.active());
+    }
+
+    @PatchMapping("/{id}/billing")
+    public PlatformBusinessDetailResponse updateBilling(@PathVariable UUID id, @RequestBody PlatformBusinessBillingUpdateRequest request) {
+        return platformBusinessService.updateBilling(currentAdminId(), id, request);
     }
 
     @DeleteMapping("/{id}")

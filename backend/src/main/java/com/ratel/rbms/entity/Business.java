@@ -13,6 +13,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -76,6 +77,11 @@ public class Business {
 
     @Column(name = "current_period_ends_at")
     private Instant currentPeriodEndsAt;
+
+    // Null = charge the plan's list price. Set = charge this business exactly
+    // this amount instead — a negotiated rate, not a separate plan.
+    @Column(name = "price_override", precision = 12, scale = 2)
+    private BigDecimal priceOverride;
 
     // Last time the "renew soon" reminder email went out, so the scheduled job
     // doesn't re-send it every day during the 3-day warning window.
