@@ -41,7 +41,7 @@ export interface BusinessSummary {
   subscriptionPlan: string;
   enabledModules: string[];
   logoUrl: string | null;
-  billingStatus: "TRIALING" | "ACTIVE" | "READ_ONLY";
+  billingStatus: "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
   planFeatures: PlanFeature[];
 }
 
@@ -547,10 +547,12 @@ export interface PlatformBillingSettingsPayload {
 }
 
 export interface BillingStatus {
-  billingStatus: "TRIALING" | "ACTIVE" | "READ_ONLY";
+  billingStatus: "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
   plan: SubscriptionPlan | null;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  // Only meaningful (non-null) while billingStatus === "GRACE".
+  gracePeriodEndsAt: string | null;
   daysRemaining: number;
   usdDisplayRate: number | null;
 }
@@ -878,7 +880,7 @@ export interface SubscriptionPaymentSummary {
   createdAt: string;
 }
 
-export type PlatformBillingStatus = "TRIALING" | "ACTIVE" | "READ_ONLY";
+export type PlatformBillingStatus = "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
 
 export interface PlatformBusinessSummary {
   id: string;

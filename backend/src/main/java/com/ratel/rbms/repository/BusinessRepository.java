@@ -79,4 +79,13 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
 
     List<Business> findAllByBillingStatusAndCurrentPeriodEndsAtBetweenAndExpiryReminderSentAtIsNull(
             BillingStatus status, Instant from, Instant to);
+
+    // Scheduled expiry job: businesses whose grace period has itself lapsed.
+    List<Business> findAllByBillingStatusAndGracePeriodEndsAtBefore(BillingStatus status, Instant cutoff);
+
+    // Grace-entry notice: sent once per business per grace period — guarded
+    // by expiryReminderSentAt the same way the trial/subscription reminders
+    // are, reset to null by flipExpiredSubscriptions() when it moves a
+    // business into GRACE so this picks it up fresh.
+    List<Business> findAllByBillingStatusAndExpiryReminderSentAtIsNull(BillingStatus status);
 }

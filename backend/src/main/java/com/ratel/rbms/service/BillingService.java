@@ -172,6 +172,9 @@ public class BillingService {
         business.setCurrentPeriodEndsAt(periodEnd);
         business.setSubscriptionPlanId(plan.getId());
         business.setBillingStatus(BillingStatus.ACTIVE);
+        // Clears whatever grace window this business may have been in — a
+        // renewal always supersedes it, whether or not it was actually GRACE.
+        business.setGracePeriodEndsAt(null);
         // Reset so BillingExpiryService's reminder guard applies to *this* new
         // deadline, not the last one this business was ever reminded about.
         business.setExpiryReminderSentAt(null);
@@ -202,6 +205,8 @@ public class BillingService {
 
         Instant deadline = business.getBillingStatus() == BillingStatus.TRIALING
                 ? business.getTrialEndsAt()
+                : business.getBillingStatus() == BillingStatus.GRACE
+                ? business.getGracePeriodEndsAt()
                 : business.getCurrentPeriodEndsAt();
         long daysRemaining = deadline != null ? ChronoUnit.DAYS.between(Instant.now(), deadline) : 0;
 
@@ -210,6 +215,7 @@ public class BillingService {
                 plan,
                 business.getTrialEndsAt(),
                 business.getCurrentPeriodEndsAt(),
+                business.getGracePeriodEndsAt(),
                 daysRemaining,
                 platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc().getUsdDisplayRate()
         );

@@ -57,6 +57,20 @@ public class EmailService {
         send(toEmail, subject, body);
     }
 
+    // Sent once, the moment a lapsed subscription enters its 7-day grace
+    // window — the account stays fully usable during grace, so this is a
+    // heads-up, not a lockout notice like READ_ONLY effectively is.
+    public void sendGracePeriodNotice(String toEmail, String businessName, long graceDaysRemaining) {
+        String daysLabel = graceDaysRemaining + " day" + (graceDaysRemaining == 1 ? "" : "s");
+        String subject = businessName + ": renew within " + daysLabel + " to avoid interruption";
+        String body = "Hi,\n\n"
+                + "Your subscription for " + businessName + " on Ratel has ended, but you're still fully set up — "
+                + "you have " + daysLabel + " left to renew before your account goes read-only.\n\n"
+                + "Renew anytime from your Billing page to keep creating and editing without interruption.\n\n"
+                + "Already renewed? You can ignore this email.";
+        send(toEmail, subject, body);
+    }
+
     public void sendBookingConfirmation(
             String toEmail, String customerName, String businessName, String serviceName,
             String whenLabel, String manageLink

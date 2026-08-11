@@ -15,12 +15,14 @@ import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 const STATUS_TONES: Record<string, "info" | "success" | "danger"> = {
   TRIALING: "info",
   ACTIVE: "success",
+  GRACE: "danger",
   READ_ONLY: "danger",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   TRIALING: "Free trial",
   ACTIVE: "Active",
+  GRACE: "Renew soon",
   READ_ONLY: "Read-only",
 };
 
@@ -106,6 +108,8 @@ export default function BillingPage() {
                 <p className="text-xs text-ink-500">
                   {status.billingStatus === "READ_ONLY"
                     ? "Renew below to keep creating and editing."
+                    : status.billingStatus === "GRACE"
+                    ? `Your subscription lapsed — ${status.daysRemaining} day${status.daysRemaining === 1 ? "" : "s"} left to renew before you lose access.`
                     : status.daysRemaining >= 0
                     ? `${status.daysRemaining} day${status.daysRemaining === 1 ? "" : "s"} remaining`
                     : "Expired"}

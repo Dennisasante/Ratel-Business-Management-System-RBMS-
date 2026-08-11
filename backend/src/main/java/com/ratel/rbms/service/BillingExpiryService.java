@@ -23,6 +23,7 @@ import java.util.List;
 public class BillingExpiryService {
 
     private static final int REMINDER_WINDOW_DAYS = 3;
+    private static final int GRACE_PERIOD_DAYS = 7;
 
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
@@ -46,11 +47,13 @@ public class BillingExpiryService {
         Instant now = Instant.now();
 
         flipExpiredTrials(now);
-        flipExpiredSubscriptions(now);
+        flipExpiredSubscriptionsToGrace(now);
+        flipExpiredGraceToReadOnly(now);
 
         Instant reminderWindowEnd = now.plus(REMINDER_WINDOW_DAYS, ChronoUnit.DAYS);
         sendTrialReminders(now, reminderWindowEnd);
         sendSubscriptionReminders(now, reminderWindowEnd);
+        sendGraceReminders();
     }
 
     private void flipExpiredTrials(Instant now) {
@@ -63,13 +66,31 @@ public class BillingExpiryService {
         }
     }
 
-    private void flipExpiredSubscriptions(Instant now) {
+    // A lapsed paid subscription gets a 7-day grace window (still fully
+    // usable — see ReadOnlyEnforcementFilter, which only blocks READ_ONLY)
+    // before flipExpiredGraceToReadOnly() below catches it on a later run.
+    private void flipExpiredSubscriptionsToGrace(Instant now) {
         List<Business> expired = businessRepository.findAllByBillingStatusAndCurrentPeriodEndsAtBefore(BillingStatus.ACTIVE, now);
+        for (Business business : expired) {
+            business.setBillingStatus(BillingStatus.GRACE);
+            business.setGracePeriodEndsAt(now.plus(GRACE_PERIOD_DAYS, ChronoUnit.DAYS));
+            // Reset so sendGraceReminders() below sends a fresh notice for this
+            // grace period, same reset-on-transition pattern the subscription
+            // reminder itself relies on.
+            business.setExpiryReminderSentAt(null);
+            businessRepository.save(business);
+            activityLogService.log(business.getId(), null,
+                    "Subscription period ended — " + GRACE_PERIOD_DAYS + "-day grace period started", "BUSINESS", business.getId());
+        }
+    }
+
+    private void flipExpiredGraceToReadOnly(Instant now) {
+        List<Business> expired = businessRepository.findAllByBillingStatusAndGracePeriodEndsAtBefore(BillingStatus.GRACE, now);
         for (Business business : expired) {
             business.setBillingStatus(BillingStatus.READ_ONLY);
             businessRepository.save(business);
             activityLogService.log(business.getId(), null,
-                    "Subscription period ended — account moved to read-only until renewed", "BUSINESS", business.getId());
+                    "Grace period ended — account moved to read-only until renewed", "BUSINESS", business.getId());
         }
     }
 
@@ -86,6 +107,32 @@ public class BillingExpiryService {
                 BillingStatus.ACTIVE, now, windowEnd);
         for (Business business : dueSoon) {
             sendReminder(business, business.getCurrentPeriodEndsAt(), "subscription");
+        }
+    }
+
+    // Unlike the trial/subscription reminders (a window before a future
+    // deadline), this fires once for every business currently sitting in
+    // GRACE with no notice sent yet — there's no "coming soon" window here,
+    // the grace period has already started.
+    private void sendGraceReminders() {
+        List<Business> inGrace = businessRepository.findAllByBillingStatusAndExpiryReminderSentAtIsNull(BillingStatus.GRACE);
+        for (Business business : inGrace) {
+            List<User> owners = userRepository.findAllByBusinessIdAndRole(business.getId(), Role.OWNER).stream()
+                    .filter(User::isActive)
+                    .toList();
+            if (owners.isEmpty()) {
+                continue;
+            }
+
+            long graceDaysRemaining = business.getGracePeriodEndsAt() != null
+                    ? Math.max(0, ChronoUnit.DAYS.between(Instant.now(), business.getGracePeriodEndsAt()))
+                    : 0;
+            for (User owner : owners) {
+                emailService.sendGracePeriodNotice(owner.getEmail(), business.getName(), graceDaysRemaining);
+            }
+
+            business.setExpiryReminderSentAt(Instant.now());
+            businessRepository.save(business);
         }
     }
 

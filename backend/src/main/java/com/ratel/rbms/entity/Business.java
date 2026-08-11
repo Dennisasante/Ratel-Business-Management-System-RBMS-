@@ -78,6 +78,11 @@ public class Business {
     @Column(name = "current_period_ends_at")
     private Instant currentPeriodEndsAt;
 
+    // Only set while billingStatus == GRACE — the deadline after which
+    // BillingExpiryService flips a lapsed-but-in-grace business to READ_ONLY.
+    @Column(name = "grace_period_ends_at")
+    private Instant gracePeriodEndsAt;
+
     // Null = charge the plan's list price. Set = charge this business exactly
     // this amount instead — a negotiated rate, not a separate plan.
     @Column(name = "price_override", precision = 12, scale = 2)

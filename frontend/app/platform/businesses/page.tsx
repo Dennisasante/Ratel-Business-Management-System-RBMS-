@@ -18,12 +18,14 @@ type StatusFilter = "all" | "active" | "inactive";
 const BILLING_STATUS_LABEL: Record<string, string> = {
   TRIALING: "Trialing",
   ACTIVE: "Active",
+  GRACE: "Grace period",
   READ_ONLY: "Read-only",
 };
 
 const BILLING_STATUS_TONE: Record<string, "success" | "info" | "danger"> = {
   ACTIVE: "success",
   TRIALING: "info",
+  GRACE: "danger",
   READ_ONLY: "danger",
 };
 
