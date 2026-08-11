@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,6 +16,8 @@ import {
   Lock,
   MessageCircle,
   PackageCheck,
+  LayoutGrid,
+  ChevronRight,
 } from "lucide-react";
 import { api, ApiError, BookableService, BookingCreated, BookingWidgetConfig } from "@/lib/api";
 import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
@@ -158,6 +160,7 @@ export default function HostedBookingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedKey, setSelectedKey] = useState("");
+  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
   const [step1Error, setStep1Error] = useState<string | null>(null);
 
@@ -195,6 +198,28 @@ export default function HostedBookingPage() {
 
   const selectedService = services.find((s) => serviceKey(s) === selectedKey);
   const showSummary = !!config && config.enabled && services.length > 0 && !created;
+
+  // Group bookable services/packages by category (what the owner manages as
+  // "Service Type") so the customer picks a category before seeing the — often
+  // long — list of individual services inside it. Sorted alphabetically since
+  // categories carry no explicit ordering today.
+  const categories = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; items: BookableService[] }>();
+    for (const s of services) {
+      const id = s.serviceTypeId ?? s.serviceTypeName ?? "other";
+      const name = s.serviceTypeName ?? "Other";
+      const existing = byId.get(id);
+      if (existing) {
+        existing.items.push(s);
+      } else {
+        byId.set(id, { id, name, items: [s] });
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [services]);
+  const singleCategory = categories.length <= 1;
+  const activeCategoryId = singleCategory ? categories[0]?.id ?? null : selectedTypeId;
+  const visibleServices = activeCategoryId ? categories.find((c) => c.id === activeCategoryId)?.items ?? [] : [];
 
   function handleContinue() {
     setStep1Error(null);
@@ -304,84 +329,120 @@ export default function HostedBookingPage() {
                 </div>
                 <h1 className="text-xl font-semibold tracking-tight text-[#1c140d]">{config.businessName}</h1>
 
-                <label className="mt-5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]">
-                  <CalendarDays size={14} className="opacity-60" /> Choose a service
-                </label>
-                <div className="mt-2 flex flex-col gap-2">
-                  {services.map((s) => {
-                    const key = serviceKey(s);
-                    const selected = key === selectedKey;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setSelectedKey(key)}
-                        className="flex items-start justify-between gap-3 rounded-2xl border-[1.5px] px-4 py-3 text-left transition"
-                        style={{
-                          borderColor: selected ? ACCENT : "#ece1d2",
-                          background: selected ? "rgba(167,101,69,0.08)" : "#fff",
-                        }}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-semibold text-[#2a2018]">{s.serviceName}</p>
-                            {s.isPackage && (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                                style={{ background: "rgba(167,101,69,0.12)", color: ACCENT }}
-                              >
-                                <PackageCheck size={10} /> Package
-                              </span>
-                            )}
+                {!activeCategoryId ? (
+                  <>
+                    <label className="mt-5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]">
+                      <LayoutGrid size={14} className="opacity-60" /> Choose a category
+                    </label>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {categories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSelectedTypeId(cat.id)}
+                          className="flex items-center justify-between gap-2 rounded-2xl border-[1.5px] border-[#ece1d2] px-4 py-3 text-left transition hover:border-[#a76545]"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-[#2a2018]">{cat.name}</p>
+                            <p className="text-xs text-[#9a8c7c]">
+                              {cat.items.length} service{cat.items.length === 1 ? "" : "s"}
+                            </p>
                           </div>
-                          {s.serviceTypeName && <p className="text-xs text-[#9a8c7c]">{s.serviceTypeName}</p>}
-                          {s.description && <p className="mt-1 text-xs text-[#7a6d5f]">{s.description}</p>}
-                          {s.includedItems.length > 0 && (
-                            <ul className="mt-1 space-y-0.5">
-                              {s.includedItems.map((line) => (
-                                <li key={line} className="text-xs text-[#7a6d5f]">
-                                  • {line}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <p className="shrink-0 text-sm font-semibold" style={{ color: ACCENT }}>
-                          {formatMoney(s.price, config.currency)}
-                        </p>
+                          <ChevronRight size={16} className="shrink-0 text-[#9a8c7c]" />
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {!singleCategory && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTypeId(null)}
+                        className="mt-4 flex items-center gap-1 text-xs font-medium text-[#9a8c7c]"
+                      >
+                        <ArrowLeft size={13} /> All categories
                       </button>
-                    );
-                  })}
-                </div>
+                    )}
+                    <label className={`${singleCategory ? "mt-5" : "mt-3"} flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]`}>
+                      <CalendarDays size={14} className="opacity-60" /> Choose a service
+                    </label>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {visibleServices.map((s) => {
+                        const key = serviceKey(s);
+                        const selected = key === selectedKey;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setSelectedKey(key)}
+                            className="flex items-start justify-between gap-3 rounded-2xl border-[1.5px] px-4 py-3 text-left transition"
+                            style={{
+                              borderColor: selected ? ACCENT : "#ece1d2",
+                              background: selected ? "rgba(167,101,69,0.08)" : "#fff",
+                            }}
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-semibold text-[#2a2018]">{s.serviceName}</p>
+                                {s.isPackage && (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                                    style={{ background: "rgba(167,101,69,0.12)", color: ACCENT }}
+                                  >
+                                    <PackageCheck size={10} /> Package
+                                  </span>
+                                )}
+                              </div>
+                              {s.description && <p className="mt-1 text-xs text-[#7a6d5f]">{s.description}</p>}
+                              {s.includedItems.length > 0 && (
+                                <ul className="mt-1 space-y-0.5">
+                                  {s.includedItems.map((line) => (
+                                    <li key={line} className="text-xs text-[#7a6d5f]">
+                                      • {line}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <p className="shrink-0 text-sm font-semibold" style={{ color: ACCENT }}>
+                              {formatMoney(s.price, config.currency)}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                {policyNote(config, selectedService) && (
-                  <p className="mt-3 rounded-xl px-3 py-2.5 text-xs" style={{ color: ACCENT, background: "rgba(167,101,69,0.08)" }}>
-                    {policyNote(config, selectedService)}
-                  </p>
+                    {policyNote(config, selectedService) && (
+                      <p className="mt-3 rounded-xl px-3 py-2.5 text-xs" style={{ color: ACCENT, background: "rgba(167,101,69,0.08)" }}>
+                        {policyNote(config, selectedService)}
+                      </p>
+                    )}
+
+                    <label className="mt-5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]" htmlFor="when">
+                      <CalendarDays size={14} className="opacity-60" /> Date &amp; time
+                    </label>
+                    <input
+                      id="when"
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      min={new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 16)}
+                      className="mt-2 w-full rounded-xl border-[1.5px] border-[#ece1d2] px-3 py-2.5 text-sm text-[#2a2018] focus:border-[#a76545] focus:outline-none"
+                    />
+                    <p className="mt-1.5 text-xs text-[#9a8c7c]">{workingHoursHint(config)}</p>
+
+                    {step1Error && <p className="mt-3 rounded-lg bg-[#fdf1ee] px-3 py-2 text-sm text-[#b1432e]">{step1Error}</p>}
+
+                    <button
+                      onClick={handleContinue}
+                      className="mt-5 w-full rounded-full py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                      style={{ background: ACCENT }}
+                    >
+                      Continue
+                    </button>
+                  </>
                 )}
-
-                <label className="mt-5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#4a3d2f]" htmlFor="when">
-                  <CalendarDays size={14} className="opacity-60" /> Date &amp; time
-                </label>
-                <input
-                  id="when"
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  min={new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 16)}
-                  className="mt-2 w-full rounded-xl border-[1.5px] border-[#ece1d2] px-3 py-2.5 text-sm text-[#2a2018] focus:border-[#a76545] focus:outline-none"
-                />
-                <p className="mt-1.5 text-xs text-[#9a8c7c]">{workingHoursHint(config)}</p>
-
-                {step1Error && <p className="mt-3 rounded-lg bg-[#fdf1ee] px-3 py-2 text-sm text-[#b1432e]">{step1Error}</p>}
-
-                <button
-                  onClick={handleContinue}
-                  className="mt-5 w-full rounded-full py-3 text-sm font-semibold text-white transition hover:opacity-90"
-                  style={{ background: ACCENT }}
-                >
-                  Continue
-                </button>
               </div>
             )}
 

@@ -814,6 +814,7 @@ export interface BookableService {
   serviceCatalogId: string | null;
   packageId: string | null;
   serviceName: string;
+  serviceTypeId: string | null;
   serviceTypeName: string | null;
   description: string | null;
   price: number;
