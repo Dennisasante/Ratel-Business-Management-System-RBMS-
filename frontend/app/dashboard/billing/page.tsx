@@ -141,6 +141,11 @@ export default function BillingPage() {
             )}
           </div>
 
+          {activePlans.length === 0 ? (
+            <p className="text-sm text-ink-500">
+              No plans are available to subscribe to yet — check back soon, or reach out if you&apos;d like to upgrade now.
+            </p>
+          ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activePlans.map((plan) => {
               const isCurrent = status.plan?.id === plan.id && status.billingStatus === "ACTIVE";
@@ -182,6 +187,7 @@ export default function BillingPage() {
               );
             })}
           </div>
+          )}
 
           <Card>
             <h2 className="p-5 pb-0 text-base font-semibold text-ink-900">Payment history</h2>
