@@ -624,8 +624,10 @@ export interface BookingSettingsPayload {
 export interface BookingListItem {
   bookingNumber: number;
   customerName: string;
-  customerEmail: string;
-  customerWhatsapp: string;
+  // Nullable: a staff-entered booking may have only a name on hand — the
+  // public widget always requires both.
+  customerEmail: string | null;
+  customerWhatsapp: string | null;
   customerLocation: string | null;
   serviceName: string | null;
   orderStatus: string | null;
@@ -634,6 +636,21 @@ export interface BookingListItem {
   paymentStatus: string;
   assignedStaffName: string | null;
   createdAt: string;
+}
+
+export interface CreateStaffBookingPayload {
+  // Exactly one of these two must be set.
+  serviceCatalogId?: string;
+  packageId?: string;
+  customerId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerWhatsapp?: string;
+  scheduledAt: string;
+  notes?: string;
+  customerLocation?: string;
+  assignedStaffId?: string;
+  paymentStatus: "UNPAID" | "PAID" | "PAY_IN_PERSON";
 }
 
 export interface TestConnectionResult {
@@ -1341,6 +1358,10 @@ export const api = {
 
   listBookings: (token: string, status?: string) =>
     request<BookingListItem[]>(`/api/bookings${status ? `?status=${status}` : ""}`, {}, token),
+
+  // Staff creating a booking on a customer's behalf (e.g. a phone-in request).
+  createStaffBooking: (token: string, payload: CreateStaffBookingPayload) =>
+    request<BookingCreated>("/api/bookings", { method: "POST", body: JSON.stringify(payload) }, token),
 
   getBookingSettings: (token: string) => request<BookingSettings>("/api/bookings/settings", {}, token),
 

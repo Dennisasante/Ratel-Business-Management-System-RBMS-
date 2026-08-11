@@ -7,6 +7,7 @@ import com.ratel.rbms.dto.BookingVerifyPaymentResponse;
 import com.ratel.rbms.dto.BookingWidgetConfigResponse;
 import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.CreateBookingRequest;
+import com.ratel.rbms.dto.CreateStaffBookingRequest;
 import com.ratel.rbms.dto.WorkingHoursResponse;
 import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.Business;
@@ -32,6 +33,7 @@ import com.ratel.rbms.repository.ServicePackageItemRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
 import com.ratel.rbms.security.RateLimiterService;
+import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -332,6 +334,134 @@ public class BookingService {
         String message = paymentRequired ? "Booking received — pay to confirm." : "Booking confirmed.";
 
         return new BookingCreatedResponse(booking.getManageToken(), booking.getBookingNumber(), message, paymentRequired, amountDue);
+    }
+
+    // Authenticated counterpart to createBooking() above — a staff member
+    // entering a phone-in request. No rate limit (that's an anonymous-abuse
+    // guard), no Paystack step (staff set paymentStatus directly), and reads
+    // businessId from TenantContext rather than taking it as a param since
+    // this path always has an authenticated session.
+    @Transactional
+    public BookingCreatedResponse createStaffBooking(CreateStaffBookingRequest req) {
+        UUID businessId = TenantContext.getBusinessId();
+
+        if ((req.serviceCatalogId() == null) == (req.packageId() == null)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Select a service.");
+        }
+        if (!List.of("UNPAID", "PAID", "PAY_IN_PERSON").contains(req.paymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid payment status.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
+        validateWorkingWindow(businessId, integrations, req.scheduledAt());
+
+        String serviceName;
+        UUID serviceTypeId;
+        UUID serviceCatalogId = null;
+        UUID servicePackageId = null;
+        BigDecimal price;
+        boolean requiresLocation;
+
+        if (req.packageId() != null) {
+            ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                    .filter(ServicePackage::isActive)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available."));
+
+            Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
+            Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
+            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                    businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+            validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+            serviceName = pkg.getName();
+            serviceTypeId = pkg.getServiceTypeId();
+            servicePackageId = pkg.getId();
+            price = pkg.getPrice();
+            requiresLocation = false;
+        } else {
+            ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                    .filter(ServiceCatalogItem::isActive)
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available."));
+
+            Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
+            Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
+            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                    businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+            validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+            serviceName = catalogItem.getName();
+            serviceTypeId = catalogItem.getServiceTypeId();
+            serviceCatalogId = catalogItem.getId();
+            price = catalogItem.getPrice();
+            requiresLocation = catalogItem.isRequiresLocation();
+        }
+
+        if (requiresLocation && (req.customerLocation() == null || req.customerLocation().isBlank())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "A location is required for this service.");
+        }
+
+        UUID resolvedCustomerId = null;
+        String resolvedCustomerName = req.customerName();
+        String resolvedCustomerEmail = req.customerEmail();
+        String resolvedCustomerWhatsapp = req.customerWhatsapp();
+
+        if (req.customerId() != null) {
+            Customer customer = customerRepository.findByIdAndBusinessId(req.customerId(), businessId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Customer not found."));
+            resolvedCustomerId = customer.getId();
+            resolvedCustomerName = customer.getFullName();
+            resolvedCustomerEmail = customer.getEmail();
+            resolvedCustomerWhatsapp = customer.getPhone();
+        } else if (req.customerWhatsapp() != null && !req.customerWhatsapp().isBlank()) {
+            Customer customer = customerRepository.findFirstByBusinessIdAndPhone(businessId, req.customerWhatsapp())
+                    .orElseGet(() -> customerRepository.save(Customer.builder()
+                            .businessId(businessId)
+                            .fullName(req.customerName() != null && !req.customerName().isBlank() ? req.customerName() : "Customer")
+                            .phone(req.customerWhatsapp())
+                            .email(req.customerEmail())
+                            .build()));
+            resolvedCustomerId = customer.getId();
+            resolvedCustomerName = req.customerName() != null && !req.customerName().isBlank() ? req.customerName() : customer.getFullName();
+        }
+
+        if (resolvedCustomerName == null || resolvedCustomerName.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "A customer name is required.");
+        }
+
+        ServiceOrder order = ServiceOrder.builder()
+                .businessId(businessId)
+                .serviceTypeId(serviceTypeId)
+                .status(ServiceOrderStatus.RECEIVED)
+                .customerId(resolvedCustomerId)
+                .serviceCatalogId(serviceCatalogId)
+                .servicePackageId(servicePackageId)
+                .notes(req.notes())
+                .price(price)
+                .assignedStaffId(req.assignedStaffId())
+                .scheduledAt(req.scheduledAt())
+                .build();
+        order = serviceOrderRepository.save(order);
+
+        Booking booking = Booking.builder()
+                .businessId(businessId)
+                .serviceOrderId(order.getId())
+                .customerId(resolvedCustomerId)
+                .customerName(resolvedCustomerName)
+                .customerEmail(resolvedCustomerEmail)
+                .customerWhatsapp(resolvedCustomerWhatsapp)
+                .customerLocation(requiresLocation ? req.customerLocation() : null)
+                .manageToken(generateToken())
+                .paymentStatus(req.paymentStatus())
+                .test(isTestMode(businessId))
+                .build();
+        booking = bookingRepository.save(booking);
+        bookingRepository.flush(); // so booking_number is readable below, same reasoning as ServiceOrderService.create()
+
+        // No confirmation/notification emails here — unlike the public widget,
+        // staff already know about this booking because they're the ones
+        // entering it; there's no "customer booked while nobody was watching"
+        // moment to surface.
+        return new BookingCreatedResponse(booking.getManageToken(), booking.getBookingNumber(), "Booking created.", false, null);
     }
 
     // Mon-Sat 9am-6pm when a business has never configured any working-hours

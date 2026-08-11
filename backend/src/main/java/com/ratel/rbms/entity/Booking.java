@@ -43,13 +43,21 @@ public class Booking {
     @Column(name = "service_order_id", nullable = false)
     private UUID serviceOrderId;
 
+    // Only set for a staff-entered booking against an existing Customer
+    // record — the public widget always upserts by phone but never links
+    // this column, so it stays the source of truth only for that path.
+    @Column(name = "customer_id")
+    private UUID customerId;
+
     @Column(name = "customer_name", nullable = false, length = 150)
     private String customerName;
 
-    @Column(name = "customer_email", nullable = false)
+    // Nullable: a staff-entered booking may have only a name on hand.
+    // Always set for the public widget, which requires both.
+    @Column(name = "customer_email")
     private String customerEmail;
 
-    @Column(name = "customer_whatsapp", nullable = false, length = 20)
+    @Column(name = "customer_whatsapp", length = 20)
     private String customerWhatsapp;
 
     // Only set when the booked service/package requires it (home-service, bridal work).
