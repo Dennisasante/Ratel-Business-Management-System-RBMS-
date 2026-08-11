@@ -1233,6 +1233,15 @@ export const api = {
   resendServiceOrderReadyEmail: (token: string, id: string) =>
     request<ServiceOrder>(`/api/service-orders/${id}/resend-ready-email`, { method: "POST" }, token),
 
+  startServiceOrderPayment: (token: string, id: string) =>
+    request<CheckoutResponse>(`/api/service-orders/${id}/checkout`, { method: "POST" }, token),
+
+  verifyServiceOrderPayment: (token: string, reference: string) =>
+    request<ServiceOrder>("/api/service-orders/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  markServiceOrderPaid: (token: string, id: string) =>
+    request<ServiceOrder>(`/api/service-orders/${id}/mark-paid`, { method: "POST" }, token),
+
   listServiceOrderPhotos: (token: string, orderId: string) =>
     request<ServiceOrderPhoto[]>(`/api/service-orders/${orderId}/photos`, {}, token),
 

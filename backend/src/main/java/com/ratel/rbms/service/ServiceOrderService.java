@@ -1,5 +1,6 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.ServiceOrderItemRequest;
 import com.ratel.rbms.dto.ServiceOrderItemResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
@@ -7,6 +8,7 @@ import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.ServiceOrderUpdateRequest;
 import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.Business;
+import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
@@ -17,6 +19,7 @@ import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
+import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.ServiceOrderItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -68,6 +72,8 @@ public class ServiceOrderService {
     private final ActivityLogService activityLogService;
     private final BookingRepository bookingRepository;
     private final WhatsAppLinkService whatsAppLinkService;
+    private final BusinessIntegrationsRepository businessIntegrationsRepository;
+    private final PaystackService paystackService;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -80,7 +86,9 @@ public class ServiceOrderService {
             EmailService emailService,
             ActivityLogService activityLogService,
             BookingRepository bookingRepository,
-            WhatsAppLinkService whatsAppLinkService
+            WhatsAppLinkService whatsAppLinkService,
+            BusinessIntegrationsRepository businessIntegrationsRepository,
+            PaystackService paystackService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -93,6 +101,8 @@ public class ServiceOrderService {
         this.activityLogService = activityLogService;
         this.bookingRepository = bookingRepository;
         this.whatsAppLinkService = whatsAppLinkService;
+        this.businessIntegrationsRepository = businessIntegrationsRepository;
+        this.paystackService = paystackService;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -278,6 +288,77 @@ public class ServiceOrderService {
         order = serviceOrderRepository.save(order);
 
         activityLogService.log("Resent ready email for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
+
+        return toResponse(order);
+    }
+
+    public CheckoutResponse startPayment(UUID id) {
+        ServiceOrder order = getOwned(id);
+        if ("PAID".equals(order.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already paid.");
+        }
+        Customer customer = customerService.getOrNull(order.getCustomerId());
+        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before starting Paystack checkout.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
+        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
+        }
+
+        long amountMinorUnits = order.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        String reference = "SVCORDER-" + order.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        PaystackService.InitResult init = paystackService.initializeTransaction(
+                integrations.getPaystackSecretKey(),
+                customer.getEmail(),
+                amountMinorUnits,
+                reference,
+                Map.of("serviceOrderId", order.getId().toString())
+        );
+
+        order.setPaystackReference(init.reference());
+        serviceOrderRepository.save(order);
+
+        return new CheckoutResponse(init.accessCode(), init.reference());
+    }
+
+    @Transactional
+    public ServiceOrderResponse verifyPayment(String reference) {
+        ServiceOrder order = serviceOrderRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(order.getPaymentStatus())) {
+            return toResponse(order);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
+
+        order.setPaymentStatus(verify.success() ? "PAID" : "FAILED");
+        order = serviceOrderRepository.save(order);
+
+        if (verify.success()) {
+            activityLogService.log("Confirmed payment for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
+        }
+
+        return toResponse(order);
+    }
+
+    // A plain manual action (no Paystack) for cash/other payment — most walk-in
+    // customers won't be paying by card through the dashboard, so this stays
+    // available regardless of whether the business has Paystack configured.
+    @Transactional
+    public ServiceOrderResponse markPaid(UUID id) {
+        ServiceOrder order = getOwned(id);
+        order.setPaymentStatus("PAID");
+        order = serviceOrderRepository.save(order);
+
+        activityLogService.log("Marked service order #" + order.getOrderNumber() + " as paid", "SERVICE_ORDER", order.getId());
 
         return toResponse(order);
     }

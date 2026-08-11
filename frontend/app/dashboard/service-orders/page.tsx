@@ -73,6 +73,18 @@ const PREVIOUS_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
   CANCELLED: "Reopen",
 };
 
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: "Unpaid",
+  PAID: "Paid",
+  FAILED: "Payment failed",
+};
+
+const PAYMENT_STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
+  UNPAID: "neutral",
+  PAID: "success",
+  FAILED: "danger",
+};
+
 type ModalState = { type: "none" } | { type: "add" } | { type: "edit"; order: ServiceOrder };
 
 export default function ServiceOrdersPage() {
@@ -194,6 +206,21 @@ export default function ServiceOrdersPage() {
       await loadOrders();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't cancel this order.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleMarkPaid(order: ServiceOrder) {
+    if (!session) return;
+    const key = `${order.id}:markPaid`;
+    setActionError(null);
+    setPendingAction(key);
+    try {
+      await api.markServiceOrderPaid(session.token, order.id);
+      await loadOrders();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't mark this order as paid.");
     } finally {
       setPendingAction(null);
     }
@@ -327,6 +354,11 @@ export default function ServiceOrdersPage() {
                             {o.bookingPaymentStatus === "FAILED" ? "Payment failed" : "Awaiting payment"}
                           </Badge>
                         )}
+                        {!o.bookingPaymentStatus && (
+                          <Badge tone={PAYMENT_STATUS_TONES[o.paymentStatus] ?? "neutral"}>
+                            {PAYMENT_STATUS_LABELS[o.paymentStatus] ?? o.paymentStatus}
+                          </Badge>
+                        )}
                       </div>
                     </Td>
                     <Td className="tabular font-medium">GH₵{o.price.toFixed(2)}</Td>
@@ -380,6 +412,15 @@ export default function ServiceOrdersPage() {
                           >
                             <Mail size={13} />
                             {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
+                          </button>
+                        )}
+                        {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
+                          <button
+                            onClick={() => handleMarkPaid(o)}
+                            disabled={pendingAction === `${o.id}:markPaid`}
+                            className="text-sm font-medium text-success hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
                           </button>
                         )}
                         <button

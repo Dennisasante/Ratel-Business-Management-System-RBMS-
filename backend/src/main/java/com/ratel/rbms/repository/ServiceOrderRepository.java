@@ -15,6 +15,8 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, UUID
 
     Optional<ServiceOrder> findByIdAndBusinessId(UUID id, UUID businessId);
 
+    Optional<ServiceOrder> findByPaystackReferenceAndBusinessId(String paystackReference, UUID businessId);
+
     // Backs the list page's type/status filter chips. Every param is optional —
     // pass null to not filter on it, same convention as ActivityLogRepository.search.
     // assignedStaffId additionally scopes the STAFF role to only their own orders

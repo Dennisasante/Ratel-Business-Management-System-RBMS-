@@ -1,11 +1,13 @@
 package com.ratel.rbms.controller;
 
+import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.ServiceOrderPhotoResponse;
 import com.ratel.rbms.dto.ServiceOrderReportResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
 import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.ServiceOrderStatusRequest;
 import com.ratel.rbms.dto.ServiceOrderUpdateRequest;
+import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.service.ServiceOrderPhotoService;
 import com.ratel.rbms.service.ServiceOrderReportService;
@@ -88,6 +90,21 @@ public class ServiceOrderController {
     @PostMapping("/{id}/resend-ready-email")
     public ServiceOrderResponse resendReadyEmail(@PathVariable UUID id) {
         return serviceOrderService.resendReadyEmail(id);
+    }
+
+    @PostMapping("/{id}/checkout")
+    public CheckoutResponse startPayment(@PathVariable UUID id) {
+        return serviceOrderService.startPayment(id);
+    }
+
+    @PostMapping("/verify")
+    public ServiceOrderResponse verifyPayment(@Valid @RequestBody VerifyPaymentRequest request) {
+        return serviceOrderService.verifyPayment(request.reference());
+    }
+
+    @PostMapping("/{id}/mark-paid")
+    public ServiceOrderResponse markPaid(@PathVariable UUID id) {
+        return serviceOrderService.markPaid(id);
     }
 
     @GetMapping("/{id}/photos")
