@@ -7,9 +7,11 @@ import com.ratel.rbms.dto.BookingVerifyPaymentResponse;
 import com.ratel.rbms.dto.BookingWidgetConfigResponse;
 import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.CreateBookingRequest;
+import com.ratel.rbms.dto.WorkingHoursResponse;
 import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
+import com.ratel.rbms.entity.BusinessWorkingHours;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
@@ -22,6 +24,7 @@ import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessBlackoutDateRepository;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.BusinessWorkingHoursRepository;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
@@ -64,6 +67,7 @@ public class BookingService {
 
     private final BusinessRepository businessRepository;
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
+    private final BusinessWorkingHoursRepository businessWorkingHoursRepository;
     private final BusinessBlackoutDateRepository businessBlackoutDateRepository;
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServiceTypeRepository serviceTypeRepository;
@@ -82,6 +86,7 @@ public class BookingService {
     public BookingService(
             BusinessRepository businessRepository,
             BusinessIntegrationsRepository businessIntegrationsRepository,
+            BusinessWorkingHoursRepository businessWorkingHoursRepository,
             BusinessBlackoutDateRepository businessBlackoutDateRepository,
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServiceTypeRepository serviceTypeRepository,
@@ -99,6 +104,7 @@ public class BookingService {
     ) {
         this.businessRepository = businessRepository;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
+        this.businessWorkingHoursRepository = businessWorkingHoursRepository;
         this.businessBlackoutDateRepository = businessBlackoutDateRepository;
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.serviceTypeRepository = serviceTypeRepository;
@@ -137,13 +143,14 @@ public class BookingService {
         String businessWhatsappLink = integrations != null
                 ? whatsAppLinkService.buildLink(integrations.getWhatsappNotifyNumber(), "Hi " + business.getName() + ", I have a question about booking.")
                 : null;
+        List<WorkingHoursResponse> workingHours = resolveWorkingHours(business.getId()).stream()
+                .map(WorkingHoursResponse::from)
+                .toList();
         return new BookingWidgetConfigResponse(
                 business.getId(), business.getName(), enabled, business.getCurrency(), paystackPublicKey,
                 effectivePolicy(integrations, null), integrations != null ? integrations.getBookingDepositPercent() : 50,
                 integrations != null && integrations.isAllowPayInPerson(),
-                integrations != null ? integrations.getWorkingDays() : DEFAULT_WORKING_DAYS,
-                integrations != null ? integrations.getWorkingHoursStart() : DEFAULT_HOURS_START,
-                integrations != null ? integrations.getWorkingHoursEnd() : DEFAULT_HOURS_END,
+                workingHours,
                 businessWhatsappLink
         );
     }
@@ -325,29 +332,40 @@ public class BookingService {
         return new BookingCreatedResponse(booking.getManageToken(), booking.getBookingNumber(), message, paymentRequired, amountDue);
     }
 
-    // Business-wide working days/hours default to Mon-Sat 9am-6pm when no
-    // BusinessIntegrations row exists yet, matching the entity's own defaults —
-    // a business shouldn't lose its scheduling guardrails just because nobody's
-    // opened the Integrations page yet.
-    private static final List<Integer> DEFAULT_WORKING_DAYS = List.of(1, 2, 3, 4, 5, 6);
-    private static final java.time.LocalTime DEFAULT_HOURS_START = java.time.LocalTime.of(9, 0);
-    private static final java.time.LocalTime DEFAULT_HOURS_END = java.time.LocalTime.of(18, 0);
+    // Mon-Sat 9am-6pm when a business has never configured any working-hours
+    // rows at all — a business shouldn't lose its scheduling guardrails just
+    // because nobody's opened the Bookings settings page yet. Once a business
+    // has ANY row, absence of a row for a given day means that day is closed
+    // — there's no per-day fallback beyond this all-or-nothing default.
+    private static final List<BusinessWorkingHours> DEFAULT_WORKING_HOURS = List.of(1, 2, 3, 4, 5, 6).stream()
+            .map(day -> BusinessWorkingHours.builder()
+                    .dayOfWeek(day)
+                    .startTime(java.time.LocalTime.of(9, 0))
+                    .endTime(java.time.LocalTime.of(18, 0))
+                    .build())
+            .toList();
+
+    private List<BusinessWorkingHours> resolveWorkingHours(UUID businessId) {
+        List<BusinessWorkingHours> hours = businessWorkingHoursRepository.findAllByBusinessIdOrderByDayOfWeek(businessId);
+        return hours.isEmpty() ? DEFAULT_WORKING_HOURS : hours;
+    }
 
     private void validateWorkingWindow(UUID businessId, BusinessIntegrations integrations, Instant scheduledAt) {
-        List<Integer> workingDays = integrations != null ? integrations.getWorkingDays() : DEFAULT_WORKING_DAYS;
-        java.time.LocalTime hoursStart = integrations != null ? integrations.getWorkingHoursStart() : DEFAULT_HOURS_START;
-        java.time.LocalTime hoursEnd = integrations != null ? integrations.getWorkingHoursEnd() : DEFAULT_HOURS_END;
-
         java.time.ZonedDateTime zdt = scheduledAt.atZone(ZoneOffset.UTC);
         int isoWeekday = zdt.getDayOfWeek().getValue();
-        if (!workingDays.contains(isoWeekday)) {
+
+        BusinessWorkingHours today = resolveWorkingHours(businessId).stream()
+                .filter(h -> h.getDayOfWeek() == isoWeekday)
+                .findFirst()
+                .orElse(null);
+        if (today == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This business isn't open on that day. Please choose another date.");
         }
 
         java.time.LocalTime timeOfDay = zdt.toLocalTime();
-        if (timeOfDay.isBefore(hoursStart) || !timeOfDay.isBefore(hoursEnd)) {
+        if (timeOfDay.isBefore(today.getStartTime()) || !timeOfDay.isBefore(today.getEndTime())) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "That time is outside business hours (" + hoursStart + "–" + hoursEnd + "). Please choose another time.");
+                    "That time is outside business hours (" + today.getStartTime() + "–" + today.getEndTime() + "). Please choose another time.");
         }
 
         if (businessBlackoutDateRepository.existsByBusinessIdAndDate(businessId, zdt.toLocalDate())) {

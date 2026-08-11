@@ -1,6 +1,5 @@
 package com.ratel.rbms.dto;
 
-import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,9 +12,7 @@ public record BookingWidgetConfigResponse(
         String paymentPolicy,
         int depositPercent,
         boolean allowPayInPerson,
-        List<Integer> workingDays,
-        LocalTime workingHoursStart,
-        LocalTime workingHoursEnd,
+        List<WorkingHoursResponse> workingHours,
         String businessWhatsappLink
 ) {
 }

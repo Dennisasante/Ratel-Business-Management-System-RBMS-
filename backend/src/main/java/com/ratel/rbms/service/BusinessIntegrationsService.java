@@ -1,18 +1,12 @@
 package com.ratel.rbms.service;
 
-import com.ratel.rbms.dto.BlackoutDateRequest;
-import com.ratel.rbms.dto.BlackoutDateResponse;
 import com.ratel.rbms.dto.BusinessIntegrationsRequest;
 import com.ratel.rbms.dto.BusinessIntegrationsResponse;
 import com.ratel.rbms.dto.TestConnectionResponse;
-import com.ratel.rbms.entity.BusinessBlackoutDate;
 import com.ratel.rbms.entity.BusinessIntegrations;
-import com.ratel.rbms.exception.ApiException;
-import com.ratel.rbms.repository.BusinessBlackoutDateRepository;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -22,7 +16,6 @@ import org.springframework.web.client.RestClientResponseException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -30,51 +23,22 @@ public class BusinessIntegrationsService {
 
     private static final String WOOCOMMERCE_WEBHOOK_TOPIC_CREATED = "order.created";
     private static final String WOOCOMMERCE_WEBHOOK_TOPIC_UPDATED = "order.updated";
-    private static final Set<String> VALID_PAYMENT_POLICIES = Set.of("NONE", "DEPOSIT", "FULL");
 
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
-    private final BusinessBlackoutDateRepository businessBlackoutDateRepository;
     private final WooCommerceClient wooCommerceClient;
     private final PlanFeatureService planFeatureService;
     private final String backendUrl;
 
     public BusinessIntegrationsService(
             BusinessIntegrationsRepository businessIntegrationsRepository,
-            BusinessBlackoutDateRepository businessBlackoutDateRepository,
             WooCommerceClient wooCommerceClient,
             PlanFeatureService planFeatureService,
             @org.springframework.beans.factory.annotation.Value("${app.backend-url}") String backendUrl
     ) {
         this.businessIntegrationsRepository = businessIntegrationsRepository;
-        this.businessBlackoutDateRepository = businessBlackoutDateRepository;
         this.wooCommerceClient = wooCommerceClient;
         this.planFeatureService = planFeatureService;
         this.backendUrl = backendUrl;
-    }
-
-    public List<BlackoutDateResponse> listBlackoutDates() {
-        return businessBlackoutDateRepository.findAllByBusinessIdOrderByDateAsc(TenantContext.getBusinessId()).stream()
-                .map(BlackoutDateResponse::from)
-                .toList();
-    }
-
-    public BlackoutDateResponse addBlackoutDate(BlackoutDateRequest req) {
-        UUID businessId = TenantContext.getBusinessId();
-        if (businessBlackoutDateRepository.existsByBusinessIdAndDate(businessId, req.date())) {
-            throw new ApiException(HttpStatus.CONFLICT, "That date is already marked off.");
-        }
-        BusinessBlackoutDate blackout = BusinessBlackoutDate.builder()
-                .businessId(businessId)
-                .date(req.date())
-                .label(req.label())
-                .build();
-        return BlackoutDateResponse.from(businessBlackoutDateRepository.save(blackout));
-    }
-
-    public void removeBlackoutDate(UUID id) {
-        BusinessBlackoutDate blackout = businessBlackoutDateRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Blackout date not found."));
-        businessBlackoutDateRepository.delete(blackout);
     }
 
     public BusinessIntegrationsResponse get() {
@@ -105,43 +69,6 @@ public class BusinessIntegrationsService {
         }
         if (req.testMode() != null) {
             integrations.setTestMode(req.testMode());
-        }
-        if (req.bookingPaymentPolicy() != null) {
-            if (!VALID_PAYMENT_POLICIES.contains(req.bookingPaymentPolicy())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Payment policy must be NONE, DEPOSIT, or FULL.");
-            }
-            integrations.setBookingPaymentPolicy(req.bookingPaymentPolicy());
-        }
-        if (req.bookingDepositPercent() != null) {
-            if (req.bookingDepositPercent() < 1 || req.bookingDepositPercent() > 99) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Deposit percentage must be between 1 and 99.");
-            }
-            integrations.setBookingDepositPercent(req.bookingDepositPercent());
-        }
-        if (req.bookingAllowPayInPerson() != null) {
-            integrations.setAllowPayInPerson(req.bookingAllowPayInPerson());
-        }
-        if (req.bookingCancellationCutoffHours() != null) {
-            if (req.bookingCancellationCutoffHours() < 0) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Cancellation cutoff can't be negative.");
-            }
-            integrations.setCancellationCutoffHours(req.bookingCancellationCutoffHours());
-        }
-        if (req.workingDays() != null) {
-            if (req.workingDays().stream().anyMatch(d -> d < 1 || d > 7)) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Working days must be between 1 (Monday) and 7 (Sunday).");
-            }
-            integrations.setWorkingDays(req.workingDays());
-        }
-        if (req.workingHoursStart() != null) {
-            integrations.setWorkingHoursStart(req.workingHoursStart());
-        }
-        if (req.workingHoursEnd() != null) {
-            integrations.setWorkingHoursEnd(req.workingHoursEnd());
-        }
-        if (integrations.getWorkingHoursStart() != null && integrations.getWorkingHoursEnd() != null
-                && !integrations.getWorkingHoursStart().isBefore(integrations.getWorkingHoursEnd())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Opening time must be before closing time.");
         }
 
         return toResponse(businessIntegrationsRepository.save(integrations));
@@ -265,14 +192,7 @@ public class BusinessIntegrationsService {
                 mask(i.getWoocommerceConsumerKey()),
                 i.getWoocommerceWebhookSecret() != null,
                 i.getWhatsappNotifyNumber(),
-                i.isTestMode(),
-                i.getBookingPaymentPolicy(),
-                i.getBookingDepositPercent(),
-                i.isAllowPayInPerson(),
-                i.getCancellationCutoffHours(),
-                i.getWorkingDays(),
-                i.getWorkingHoursStart(),
-                i.getWorkingHoursEnd()
+                i.isTestMode()
         );
     }
 

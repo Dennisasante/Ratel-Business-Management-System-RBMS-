@@ -1,19 +1,11 @@
 package com.ratel.rbms.controller;
 
-import com.ratel.rbms.dto.BlackoutDateRequest;
-import com.ratel.rbms.dto.BlackoutDateResponse;
 import com.ratel.rbms.dto.BusinessIntegrationsRequest;
 import com.ratel.rbms.dto.BusinessIntegrationsResponse;
 import com.ratel.rbms.dto.TestConnectionResponse;
 import com.ratel.rbms.service.BusinessIntegrationsService;
-import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/integrations")
@@ -44,21 +36,5 @@ public class BusinessIntegrationsController {
     @PostMapping("/test-woocommerce")
     public TestConnectionResponse testWooCommerce() {
         return businessIntegrationsService.testWooCommerceConnection();
-    }
-
-    @GetMapping("/blackout-dates")
-    public List<BlackoutDateResponse> listBlackoutDates() {
-        return businessIntegrationsService.listBlackoutDates();
-    }
-
-    @PostMapping("/blackout-dates")
-    public ResponseEntity<BlackoutDateResponse> addBlackoutDate(@Valid @RequestBody BlackoutDateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(businessIntegrationsService.addBlackoutDate(request));
-    }
-
-    @DeleteMapping("/blackout-dates/{id}")
-    public ResponseEntity<Void> removeBlackoutDate(@PathVariable UUID id) {
-        businessIntegrationsService.removeBlackoutDate(id);
-        return ResponseEntity.noContent().build();
     }
 }

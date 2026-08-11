@@ -1,8 +1,5 @@
 package com.ratel.rbms.dto;
 
-import java.time.LocalTime;
-import java.util.List;
-
 /**
  * Every field follows the same "leave unchanged unless told otherwise"
  * semantics: null = don't touch this field, "" (blank) = clear it, anything
@@ -18,13 +15,6 @@ public record BusinessIntegrationsRequest(
         String woocommerceConsumerKey,
         String woocommerceConsumerSecret,
         String whatsappNotifyNumber,
-        Boolean testMode,
-        String bookingPaymentPolicy,
-        Integer bookingDepositPercent,
-        Boolean bookingAllowPayInPerson,
-        Integer bookingCancellationCutoffHours,
-        List<Integer> workingDays,
-        LocalTime workingHoursStart,
-        LocalTime workingHoursEnd
+        Boolean testMode
 ) {
 }
