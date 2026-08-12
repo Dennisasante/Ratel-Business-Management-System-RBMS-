@@ -1,19 +1,26 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.CheckoutResponse;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.SaleItemRequest;
 import com.ratel.rbms.dto.SaleItemResponse;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
+import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.Customer;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.Product;
 import com.ratel.rbms.entity.Sale;
 import com.ratel.rbms.entity.SaleItem;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.MovementType;
+import com.ratel.rbms.entity.enums.PaymentMethod;
 import com.ratel.rbms.entity.enums.SaleItemType;
 import com.ratel.rbms.dto.StockAdjustmentRequest;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.SaleItemRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
@@ -24,7 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -37,6 +46,9 @@ public class SaleService {
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final CustomerService customerService;
     private final ActivityLogService activityLogService;
+    private final BusinessIntegrationsRepository businessIntegrationsRepository;
+    private final PaystackService paystackService;
+    private final PaymentTransactionService paymentTransactionService;
 
     public SaleService(
             SaleRepository saleRepository,
@@ -45,7 +57,10 @@ public class SaleService {
             ProductService productService,
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             CustomerService customerService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            BusinessIntegrationsRepository businessIntegrationsRepository,
+            PaystackService paystackService,
+            PaymentTransactionService paymentTransactionService
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
@@ -54,6 +69,9 @@ public class SaleService {
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.customerService = customerService;
         this.activityLogService = activityLogService;
+        this.businessIntegrationsRepository = businessIntegrationsRepository;
+        this.paystackService = paystackService;
+        this.paymentTransactionService = paymentTransactionService;
     }
 
     @Transactional
@@ -68,11 +86,17 @@ public class SaleService {
             customer = customerService.getOwned(req.customerId());
         }
 
+        // CASH/BANK_TRANSFER are assumed collected the instant the sale is rung
+        // up (today's exact behavior, unchanged) — only CARD/MOBILE_MONEY defer
+        // to a real gateway charge or manual mark-paid afterward.
+        boolean collectedInPerson = req.paymentMethod() == PaymentMethod.CASH || req.paymentMethod() == PaymentMethod.BANK_TRANSFER;
+
         Sale sale = Sale.builder()
                 .businessId(businessId)
                 .customerId(req.customerId())
                 .cashierId(cashierId)
                 .paymentMethod(req.paymentMethod())
+                .paymentStatus(collectedInPerson ? "PAID" : "UNPAID")
                 .totalAmount(BigDecimal.ZERO)
                 .build();
         sale = saleRepository.save(sale); // flush needed so sale_number + id are available below
@@ -172,9 +196,133 @@ public class SaleService {
     }
 
     public SaleResponse get(UUID id) {
-        Sale sale = saleRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Sale not found."));
+        Sale sale = getOwned(id);
         return toResponseWithItems(sale);
+    }
+
+    public CheckoutResponse startPayment(UUID id) {
+        Sale sale = getOwned(id);
+        if ("PAID".equals(sale.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already paid.");
+        }
+        Customer customer = customerService.getOrNull(sale.getCustomerId());
+        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before starting Paystack checkout.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
+        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
+        }
+
+        long amountMinorUnits = sale.getTotalAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        String reference = "SALE-" + sale.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        PaystackService.InitResult init = paystackService.initializeTransaction(
+                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, reference,
+                Map.of("saleId", sale.getId().toString())
+        );
+
+        sale.setPaystackReference(init.reference());
+        saleRepository.save(sale);
+
+        return new CheckoutResponse(init.accessCode(), init.reference());
+    }
+
+    // Charges the customer's mobile money wallet directly by phone number —
+    // same "input the number, they get a prompt" flow as ServiceOrderService's
+    // equivalent method.
+    public MobileMoneyChargeResponse chargeMobileMoney(UUID id, MobileMoneyChargeRequest req) {
+        Sale sale = getOwned(id);
+        if ("PAID".equals(sale.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already paid.");
+        }
+        Customer customer = customerService.getOrNull(sale.getCustomerId());
+        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before charging mobile money.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
+        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
+        }
+
+        long amountMinorUnits = sale.getTotalAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        String reference = "SALE-MOMO-" + sale.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        PaystackService.MobileMoneyChargeResult result = paystackService.chargeMobileMoney(
+                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, req.phone(), req.provider(), reference
+        );
+
+        sale.setPaystackReference(result.reference());
+        if (result.success()) {
+            sale.setPaymentStatus("PAID");
+        }
+        saleRepository.save(sale);
+
+        paymentTransactionService.record(
+                sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
+                sale.getId(), "PAYSTACK", "MOBILE_MONEY", sale.getTotalAmount(), result.success() ? "SUCCESS" : "PENDING",
+                result.reference(), sale.getCustomerId(), req.phone(), null, TenantContext.getUserId()
+        );
+
+        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
+    }
+
+    @Transactional
+    public SaleResponse verifyPayment(String reference) {
+        Sale sale = saleRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(sale.getPaymentStatus())) {
+            return toResponseWithItems(sale);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
+
+        sale.setPaymentStatus(verify.success() ? "PAID" : "FAILED");
+        sale = saleRepository.save(sale);
+
+        if (verify.success()) {
+            activityLogService.log("Confirmed payment for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
+        }
+
+        paymentTransactionService.record(
+                sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
+                sale.getId(), "PAYSTACK", "CARD", sale.getTotalAmount(), verify.success() ? "SUCCESS" : "FAILED",
+                reference, sale.getCustomerId(), null, null, TenantContext.getUserId()
+        );
+
+        return toResponseWithItems(sale);
+    }
+
+    // A plain manual action (no Paystack) for cash/other payment collected
+    // after the fact — mirrors ServiceOrderService.markPaid().
+    @Transactional
+    public SaleResponse markPaid(UUID id) {
+        Sale sale = getOwned(id);
+        sale.setPaymentStatus("PAID");
+        sale = saleRepository.save(sale);
+
+        activityLogService.log("Marked sale #" + sale.getSaleNumber() + " as paid", "SALE", sale.getId());
+
+        paymentTransactionService.record(
+                sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
+                sale.getId(), "MANUAL", null, sale.getTotalAmount(), "SUCCESS",
+                null, sale.getCustomerId(), null, "Marked paid manually", TenantContext.getUserId()
+        );
+
+        return toResponseWithItems(sale);
+    }
+
+    private Sale getOwned(UUID id) {
+        return saleRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Sale not found."));
     }
 
     private SaleResponse toResponseWithItems(Sale sale) {

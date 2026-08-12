@@ -17,7 +17,10 @@ public record PurchaseOrderResponse(
         String createdByName,
         List<PurchaseOrderItemResponse> items,
         Instant createdAt,
-        Instant receivedAt
+        Instant receivedAt,
+        // UNPAID/PAID — whether the business has settled this PO with the
+        // supplier. Manual only; no gateway sends money out.
+        String paymentStatus
 ) {
     public static PurchaseOrderResponse from(
             PurchaseOrder po, String supplierName, String createdByName, List<PurchaseOrderItemResponse> items
@@ -32,7 +35,8 @@ public record PurchaseOrderResponse(
                 createdByName,
                 items,
                 po.getCreatedAt(),
-                po.getReceivedAt()
+                po.getReceivedAt(),
+                po.getPaymentStatus()
         );
     }
 }

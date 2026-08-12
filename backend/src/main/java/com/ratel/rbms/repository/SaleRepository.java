@@ -16,6 +16,8 @@ public interface SaleRepository extends JpaRepository<Sale, UUID> {
 
     Optional<Sale> findByIdAndBusinessId(UUID id, UUID businessId);
 
+    Optional<Sale> findByPaystackReferenceAndBusinessId(String paystackReference, UUID businessId);
+
     // Used to compute a customer's lifetime spend/purchase count on demand
     // rather than maintaining a denormalized running total on Customer.
     List<Sale> findAllByBusinessIdAndCustomerId(UUID businessId, UUID customerId);

@@ -51,6 +51,13 @@ public class PurchaseOrder {
     @Column(name = "created_by")
     private UUID createdBy;
 
+    // UNPAID/PAID — money going OUT to the supplier, manually tracked only
+    // (no gateway sends money out, so there's no card/mobile-money option here,
+    // just an explicit "mark as paid" once the business has settled it).
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private String paymentStatus = "UNPAID";
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

@@ -89,6 +89,14 @@ public class BusinessIntegrations {
     @Builder.Default
     private boolean testMode = false;
 
+    // PAYSTACK today — only value supported. Kept as an explicit field (rather
+    // than inferring "which gateway" purely from which secret key is set) so a
+    // future second gateway (e.g. Hubtel) has a real selector to switch on
+    // instead of a guess.
+    @Column(name = "payment_gateway", nullable = false, length = 20)
+    @Builder.Default
+    private String paymentGateway = "PAYSTACK";
+
     // Working hours moved to BusinessWorkingHours (one row per open day) so a
     // day like Sunday can carry its own hours — see that entity.
 

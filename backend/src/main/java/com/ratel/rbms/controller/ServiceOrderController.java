@@ -1,6 +1,8 @@
 package com.ratel.rbms.controller;
 
 import com.ratel.rbms.dto.CheckoutResponse;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.ServiceOrderPhotoResponse;
 import com.ratel.rbms.dto.ServiceOrderReportResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
@@ -95,6 +97,11 @@ public class ServiceOrderController {
     @PostMapping("/{id}/checkout")
     public CheckoutResponse startPayment(@PathVariable UUID id) {
         return serviceOrderService.startPayment(id);
+    }
+
+    @PostMapping("/{id}/charge-mobile-money")
+    public MobileMoneyChargeResponse chargeMobileMoney(@PathVariable UUID id, @Valid @RequestBody MobileMoneyChargeRequest request) {
+        return serviceOrderService.chargeMobileMoney(id, request);
     }
 
     @PostMapping("/verify")

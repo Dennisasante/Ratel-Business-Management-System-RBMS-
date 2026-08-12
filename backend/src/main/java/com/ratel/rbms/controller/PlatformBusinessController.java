@@ -1,6 +1,7 @@
 package com.ratel.rbms.controller;
 
 import com.ratel.rbms.dto.AdminResetPasswordResponse;
+import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
@@ -34,6 +35,11 @@ public class PlatformBusinessController {
     @GetMapping("/{id}")
     public PlatformBusinessDetailResponse detail(@PathVariable UUID id) {
         return platformBusinessService.getDetail(id);
+    }
+
+    @GetMapping("/{id}/payment-transactions")
+    public List<PaymentTransactionResponse> paymentTransactions(@PathVariable UUID id) {
+        return platformBusinessService.getPaymentTransactions(id);
     }
 
     @PatchMapping("/{id}/status")

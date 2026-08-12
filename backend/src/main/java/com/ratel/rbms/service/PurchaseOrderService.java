@@ -5,6 +5,7 @@ import com.ratel.rbms.dto.PurchaseOrderItemResponse;
 import com.ratel.rbms.dto.PurchaseOrderRequest;
 import com.ratel.rbms.dto.PurchaseOrderResponse;
 import com.ratel.rbms.dto.StockAdjustmentRequest;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.Product;
 import com.ratel.rbms.entity.PurchaseOrder;
 import com.ratel.rbms.entity.PurchaseOrderItem;
@@ -36,6 +37,7 @@ public class PurchaseOrderService {
     private final ProductService productService;
     private final SupplierService supplierService;
     private final ActivityLogService activityLogService;
+    private final PaymentTransactionService paymentTransactionService;
 
     public PurchaseOrderService(
             PurchaseOrderRepository purchaseOrderRepository,
@@ -43,7 +45,8 @@ public class PurchaseOrderService {
             UserRepository userRepository,
             ProductService productService,
             SupplierService supplierService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            PaymentTransactionService paymentTransactionService
     ) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
@@ -51,6 +54,7 @@ public class PurchaseOrderService {
         this.productService = productService;
         this.supplierService = supplierService;
         this.activityLogService = activityLogService;
+        this.paymentTransactionService = paymentTransactionService;
     }
 
     @Transactional
@@ -147,6 +151,25 @@ public class PurchaseOrderService {
         po = purchaseOrderRepository.save(po);
 
         activityLogService.log("Cancelled purchase order #" + po.getPoNumber(), "PURCHASE_ORDER", po.getId());
+
+        return toResponseWithItems(po);
+    }
+
+    // Manual only — no gateway sends money out to a supplier, this just records
+    // that the business has settled the bill.
+    @Transactional
+    public PurchaseOrderResponse markPaid(UUID id) {
+        PurchaseOrder po = getOwned(id);
+        po.setPaymentStatus("PAID");
+        po = purchaseOrderRepository.save(po);
+
+        activityLogService.log("Marked purchase order #" + po.getPoNumber() + " as paid", "PURCHASE_ORDER", po.getId());
+
+        paymentTransactionService.record(
+                po.getBusinessId(), PaymentTransaction.Direction.OUTGOING, PaymentTransaction.SourceType.PURCHASE_ORDER,
+                po.getId(), "MANUAL", null, po.getTotalAmount(), "SUCCESS",
+                null, null, null, "Marked paid manually", TenantContext.getUserId()
+        );
 
         return toResponseWithItems(po);
     }

@@ -191,6 +191,56 @@ public class PaystackService {
     }
 
     /**
+     * Charges a customer's mobile money wallet directly by phone number — no
+     * card, no popup. Paystack sends a USSD/app approval prompt straight to
+     * that phone; the customer approves it there. Confirmed against Paystack's
+     * real Charge API docs (POST /charge, mobile_money.provider one of
+     * mtn/atl/vod for Ghana) rather than guessed.
+     *
+     * Unlike initializeTransaction/verifyTransaction, a "not yet successful"
+     * response here isn't a failure — Paystack's own docs show several
+     * legitimate in-progress states (pending, send_otp, pay_offline) that mean
+     * "the prompt is on its way to their phone, come back and verify by
+     * reference once they've approved it." Only a genuine HTTP/communication
+     * failure throws; call verifyTransaction(reference) afterward to resolve
+     * the final PAID/FAILED outcome, same as the card checkout flow.
+     */
+    public MobileMoneyChargeResult chargeMobileMoney(String secretKey, String email, long amountMinorUnits, String phone, String provider, String reference) {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Paystack isn't configured.");
+        }
+
+        Map<String, Object> body = Map.of(
+                "email", email,
+                "amount", amountMinorUnits,
+                "reference", reference,
+                "currency", "GHS",
+                "mobile_money", Map.of("phone", phone, "provider", provider)
+        );
+
+        ChargeResponse response;
+        try {
+            response = client(secretKey)
+                    .post()
+                    .uri("/charge")
+                    .body(body)
+                    .retrieve()
+                    .body(ChargeResponse.class);
+        } catch (RestClientException e) {
+            log.error("Paystack chargeMobileMoney call failed", e);
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to start the mobile money charge.");
+        }
+
+        if (response == null || response.data() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to start the mobile money charge.");
+        }
+
+        ChargeData data = response.data();
+        boolean success = response.status() && "success".equalsIgnoreCase(data.status());
+        return new MobileMoneyChargeResult(success, data.status(), data.reference(), data.displayText());
+    }
+
+    /**
      * HMAC-SHA512 of the raw request body against the platform's own secret
      * key, compared to Paystack's x-paystack-signature header — per
      * Paystack's webhook docs. Must run against the untouched raw body bytes,
@@ -231,6 +281,14 @@ public class PaystackService {
     }
 
     public record ChargeResult(boolean success, String status, String reference) {
+    }
+
+    // status is Paystack's raw charge status (e.g. "success", "pending",
+    // "send_otp", "pay_offline") — success is only true for "success" itself;
+    // anything else needs a follow-up verifyTransaction(reference) once the
+    // customer has acted on their phone. displayText is Paystack's own
+    // customer-facing instruction text when present (e.g. a USSD code to dial).
+    public record MobileMoneyChargeResult(boolean success, String status, String reference, String displayText) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -275,5 +333,13 @@ public class PaystackService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record ChargeAuthorizationData(String status, String reference) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record ChargeResponse(boolean status, String message, ChargeData data) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record ChargeData(String status, String reference, @JsonProperty("display_text") String displayText) {
     }
 }

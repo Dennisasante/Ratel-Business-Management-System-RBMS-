@@ -1,7 +1,11 @@
 package com.ratel.rbms.controller;
 
+import com.ratel.rbms.dto.CheckoutResponse;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
+import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
@@ -47,6 +51,26 @@ public class SaleController {
     @PostMapping
     public ResponseEntity<SaleResponse> create(@Valid @RequestBody SaleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(saleService.createSale(request));
+    }
+
+    @PostMapping("/{id}/checkout")
+    public CheckoutResponse startPayment(@PathVariable UUID id) {
+        return saleService.startPayment(id);
+    }
+
+    @PostMapping("/{id}/charge-mobile-money")
+    public MobileMoneyChargeResponse chargeMobileMoney(@PathVariable UUID id, @Valid @RequestBody MobileMoneyChargeRequest request) {
+        return saleService.chargeMobileMoney(id, request);
+    }
+
+    @PostMapping("/verify")
+    public SaleResponse verifyPayment(@Valid @RequestBody VerifyPaymentRequest request) {
+        return saleService.verifyPayment(request.reference());
+    }
+
+    @PostMapping("/{id}/mark-paid")
+    public SaleResponse markPaid(@PathVariable UUID id) {
+        return saleService.markPaid(id);
     }
 
     @GetMapping("/{id}/receipt")

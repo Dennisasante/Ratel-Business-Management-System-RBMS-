@@ -23,6 +23,7 @@ import CustomerForm from "@/components/CustomerForm";
 import QuickServiceCatalogForm from "@/components/QuickServiceCatalogForm";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
@@ -563,7 +564,14 @@ export default function SalesPage() {
                     <Td className="text-ink-500">
                       {s.items.map((i) => `${i.productName} ×${i.quantity}`).join(", ")}
                     </Td>
-                    <Td className="text-ink-500">{s.paymentMethod.replace("_", " ")}</Td>
+                    <Td className="text-ink-500">
+                      <span className="block">{s.paymentMethod.replace("_", " ")}</span>
+                      {s.paymentStatus !== "PAID" && (
+                        <Badge tone={s.paymentStatus === "FAILED" ? "danger" : "neutral"}>
+                          {s.paymentStatus === "FAILED" ? "Payment failed" : "Unpaid"}
+                        </Badge>
+                      )}
+                    </Td>
                     <Td className="tabular text-right font-medium">GH₵{s.totalAmount.toFixed(2)}</Td>
                     <Td className="text-right">
                       <div className="flex justify-end gap-3">

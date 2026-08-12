@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
-import { api, ApiError, PlatformBusinessDetail, SubscriptionPlan } from "@/lib/api";
+import { api, ApiError, PaymentTransaction, PlatformBusinessDetail, SubscriptionPlan } from "@/lib/api";
+import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
@@ -56,6 +57,8 @@ export default function PlatformBusinessDetailPage() {
   const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
 
+  const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
+
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [editingBilling, setEditingBilling] = useState(false);
   const [planId, setPlanId] = useState<string>("");
@@ -77,6 +80,11 @@ export default function PlatformBusinessDetailPage() {
     if (!session) return;
     api.listPlatformSubscriptionPlans(session.token).then(setPlans);
   }, [session]);
+
+  useEffect(() => {
+    if (!session || !params.id) return;
+    api.getPlatformBusinessPaymentTransactions(session.token, params.id).then(setTransactions);
+  }, [session, params.id]);
 
   function startEditingBilling() {
     if (!business) return;
@@ -355,6 +363,50 @@ export default function PlatformBusinessDetailPage() {
                 </ul>
               </Card>
               </div>
+
+              <Card className="p-5">
+                <h2 className="text-base font-semibold text-ink-900">Payment Transactions</h2>
+                <p className="text-xs text-ink-500">Every payment event recorded for this business — gateway and manual.</p>
+                {transactions.length === 0 ? (
+                  <p className="mt-3 text-sm text-ink-500">No payment transactions yet.</p>
+                ) : (
+                  <div className="mt-4 overflow-x-auto">
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>When</Th>
+                          <Th>For</Th>
+                          <Th>Customer</Th>
+                          <Th>Gateway</Th>
+                          <Th>Status</Th>
+                          <Th className="text-right">Amount</Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {transactions.slice(0, 25).map((t) => (
+                          <Tr key={t.id}>
+                            <Td className="tabular text-ink-500">{new Date(t.createdAt).toLocaleDateString()}</Td>
+                            <Td className="text-ink-700">{t.sourceLabel ?? t.sourceType}</Td>
+                            <Td className="text-ink-500">{t.customerName ?? t.customerPhone ?? "—"}</Td>
+                            <Td className="text-ink-500">{t.gateway === "PAYSTACK" ? "Paystack" : "Manual"}</Td>
+                            <Td>
+                              <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "FAILED" ? "danger" : "neutral"}>
+                                {t.status}
+                              </Badge>
+                            </Td>
+                            <Td className="tabular text-right font-medium">
+                              {t.direction === "OUTGOING" ? "-" : ""}GH₵{t.amount.toFixed(2)}
+                            </Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                    {transactions.length > 25 && (
+                      <p className="mt-2 text-xs text-ink-500">Showing the 25 most recent of {transactions.length} transactions.</p>
+                    )}
+                  </div>
+                )}
+              </Card>
 
               <Card className="p-5">
                 <div className="flex items-center justify-between">

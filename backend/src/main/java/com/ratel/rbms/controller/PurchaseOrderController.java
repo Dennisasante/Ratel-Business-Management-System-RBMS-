@@ -47,4 +47,9 @@ public class PurchaseOrderController {
     public PurchaseOrderResponse cancel(@PathVariable UUID id) {
         return purchaseOrderService.cancel(id);
     }
+
+    @PostMapping("/{id}/mark-paid")
+    public PurchaseOrderResponse markPaid(@PathVariable UUID id) {
+        return purchaseOrderService.markPaid(id);
+    }
 }

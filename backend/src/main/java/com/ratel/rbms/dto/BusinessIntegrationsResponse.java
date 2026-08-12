@@ -9,6 +9,8 @@ public record BusinessIntegrationsResponse(
         String woocommerceConsumerKeyMasked,
         boolean woocommerceWebhookRegistered,
         String whatsappNotifyNumber,
-        boolean testMode
+        boolean testMode,
+        // PAYSTACK today — only value supported; see BusinessIntegrations.paymentGateway.
+        String paymentGateway
 ) {
 }

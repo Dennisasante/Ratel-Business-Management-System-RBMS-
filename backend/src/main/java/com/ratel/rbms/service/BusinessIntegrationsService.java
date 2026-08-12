@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.BusinessIntegrationsRequest;
 import com.ratel.rbms.dto.BusinessIntegrationsResponse;
+import com.ratel.rbms.dto.PaymentGatewayStatusResponse;
 import com.ratel.rbms.dto.TestConnectionResponse;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
@@ -43,6 +44,14 @@ public class BusinessIntegrationsService {
 
     public BusinessIntegrationsResponse get() {
         return toResponse(getOrCreate());
+    }
+
+    // Safe for any authenticated business role (not OWNER-only) — see
+    // PaymentGatewayStatusResponse's own doc comment for why.
+    public PaymentGatewayStatusResponse getPaymentGatewayStatus() {
+        BusinessIntegrations integrations = getOrCreate();
+        boolean configured = integrations.getPaystackSecretKey() != null && !integrations.getPaystackSecretKey().isBlank();
+        return new PaymentGatewayStatusResponse(configured);
     }
 
     @Transactional
@@ -192,7 +201,8 @@ public class BusinessIntegrationsService {
                 mask(i.getWoocommerceConsumerKey()),
                 i.getWoocommerceWebhookSecret() != null,
                 i.getWhatsappNotifyNumber(),
-                i.isTestMode()
+                i.isTestMode(),
+                i.getPaymentGateway()
         );
     }
 

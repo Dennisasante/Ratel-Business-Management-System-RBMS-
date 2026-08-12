@@ -1,6 +1,8 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.CheckoutResponse;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.ServiceOrderItemRequest;
 import com.ratel.rbms.dto.ServiceOrderItemResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
@@ -13,6 +15,7 @@ import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderItem;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.Role;
@@ -74,6 +77,7 @@ public class ServiceOrderService {
     private final WhatsAppLinkService whatsAppLinkService;
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final PaystackService paystackService;
+    private final PaymentTransactionService paymentTransactionService;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -88,7 +92,8 @@ public class ServiceOrderService {
             BookingRepository bookingRepository,
             WhatsAppLinkService whatsAppLinkService,
             BusinessIntegrationsRepository businessIntegrationsRepository,
-            PaystackService paystackService
+            PaystackService paystackService,
+            PaymentTransactionService paymentTransactionService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -103,6 +108,7 @@ public class ServiceOrderService {
         this.whatsAppLinkService = whatsAppLinkService;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.paystackService = paystackService;
+        this.paymentTransactionService = paymentTransactionService;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -325,6 +331,49 @@ public class ServiceOrderService {
         return new CheckoutResponse(init.accessCode(), init.reference());
     }
 
+    // Charges the customer's mobile money wallet directly by phone number — the
+    // "input the customer's number, they get a prompt on their phone" flow, for
+    // whoever's behind the till rather than the customer typing card details
+    // themselves. The order's paymentStatus stays UNPAID until a later
+    // verifyPayment(reference) confirms the customer actually approved it.
+    public MobileMoneyChargeResponse chargeMobileMoney(UUID id, MobileMoneyChargeRequest req) {
+        ServiceOrder order = getOwned(id);
+        if ("PAID".equals(order.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already paid.");
+        }
+        Customer customer = customerService.getOrNull(order.getCustomerId());
+        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before charging mobile money.");
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
+        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
+        }
+
+        long amountMinorUnits = order.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        String reference = "SVCORDER-MOMO-" + order.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        PaystackService.MobileMoneyChargeResult result = paystackService.chargeMobileMoney(
+                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, req.phone(), req.provider(), reference
+        );
+
+        order.setPaystackReference(result.reference());
+        if (result.success()) {
+            order.setPaymentStatus("PAID");
+        }
+        serviceOrderRepository.save(order);
+
+        paymentTransactionService.record(
+                order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
+                order.getId(), "PAYSTACK", "MOBILE_MONEY", order.getPrice(), result.success() ? "SUCCESS" : "PENDING",
+                result.reference(), order.getCustomerId(), req.phone(), null, TenantContext.getUserId()
+        );
+
+        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
+    }
+
     @Transactional
     public ServiceOrderResponse verifyPayment(String reference) {
         ServiceOrder order = serviceOrderRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
@@ -346,6 +395,12 @@ public class ServiceOrderService {
             activityLogService.log("Confirmed payment for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
         }
 
+        paymentTransactionService.record(
+                order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
+                order.getId(), "PAYSTACK", "CARD", order.getPrice(), verify.success() ? "SUCCESS" : "FAILED",
+                reference, order.getCustomerId(), null, null, TenantContext.getUserId()
+        );
+
         return toResponse(order);
     }
 
@@ -359,6 +414,12 @@ public class ServiceOrderService {
         order = serviceOrderRepository.save(order);
 
         activityLogService.log("Marked service order #" + order.getOrderNumber() + " as paid", "SERVICE_ORDER", order.getId());
+
+        paymentTransactionService.record(
+                order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
+                order.getId(), "MANUAL", null, order.getPrice(), "SUCCESS",
+                null, order.getCustomerId(), null, "Marked paid manually", TenantContext.getUserId()
+        );
 
         return toResponse(order);
     }

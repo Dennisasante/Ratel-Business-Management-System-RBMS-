@@ -17,6 +17,7 @@ import {
   ClipboardList,
   Wrench,
   CreditCard,
+  Wallet,
   CalendarCheck2,
   ArrowUpRight,
   X,
@@ -76,6 +77,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: "Business",
     items: [
       { href: "/dashboard/customers", label: "Customers", icon: Users },
+      { href: "/dashboard/payments", label: "Payments", icon: Wallet, hiddenFrom: STAFF_HIDDEN },
       { href: "/dashboard/expenses", label: "Expenses", icon: Receipt, hiddenFrom: STAFF_HIDDEN },
       { href: "/dashboard/reports", label: "Reports", icon: BarChart3, hiddenFrom: STAFF_HIDDEN },
       { href: "/dashboard/team", label: "Team", icon: UserCog, hiddenFrom: STAFF_HIDDEN },

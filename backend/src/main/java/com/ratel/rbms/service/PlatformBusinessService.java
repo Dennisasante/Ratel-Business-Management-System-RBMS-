@@ -1,6 +1,7 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.AdminResetPasswordResponse;
+import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
@@ -54,6 +55,7 @@ public class PlatformBusinessService {
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final PasswordEncoder passwordEncoder;
     private final PlatformAuditLogService auditLogService;
+    private final PaymentTransactionService paymentTransactionService;
 
     public PlatformBusinessService(
             BusinessRepository businessRepository,
@@ -69,7 +71,8 @@ public class PlatformBusinessService {
             SubscriptionPlanRepository subscriptionPlanRepository,
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PasswordEncoder passwordEncoder,
-            PlatformAuditLogService auditLogService
+            PlatformAuditLogService auditLogService,
+            PaymentTransactionService paymentTransactionService
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -85,6 +88,16 @@ public class PlatformBusinessService {
         this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogService = auditLogService;
+        this.paymentTransactionService = paymentTransactionService;
+    }
+
+    // Full payment-event visibility for a single business — "so I'm never
+    // found wanting" when the owner needs to verify a payment dispute or
+    // check what actually moved through the system.
+    public List<PaymentTransactionResponse> getPaymentTransactions(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return paymentTransactionService.search(businessId, null, null, null, null);
     }
 
     public List<PlatformBusinessSummaryResponse> search(String query, Boolean activeOnly) {

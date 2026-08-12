@@ -59,6 +59,17 @@ public class Sale {
     @Builder.Default
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
+    // UNPAID/PAID/FAILED. CASH/BANK_TRANSFER sales are assumed collected the
+    // instant they're rung up (defaults PAID, unchanged POS behavior) — only
+    // CARD/MOBILE_MONEY start as UNPAID and need an explicit gateway charge or
+    // manual mark-paid afterward. See SaleService.create().
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private String paymentStatus = "PAID";
+
+    @Column(name = "paystack_reference", unique = true, length = 100)
+    private String paystackReference;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

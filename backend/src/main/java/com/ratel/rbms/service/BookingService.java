@@ -14,6 +14,7 @@ import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.BusinessWorkingHours;
 import com.ratel.rbms.entity.Customer;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderItem;
@@ -86,6 +87,7 @@ public class BookingService {
     private final EmailService emailService;
     private final WhatsAppLinkService whatsAppLinkService;
     private final RateLimiterService rateLimiterService;
+    private final PaymentTransactionService paymentTransactionService;
     private final String frontendUrl;
 
     public BookingService(
@@ -106,6 +108,7 @@ public class BookingService {
             EmailService emailService,
             WhatsAppLinkService whatsAppLinkService,
             RateLimiterService rateLimiterService,
+            PaymentTransactionService paymentTransactionService,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -125,6 +128,7 @@ public class BookingService {
         this.emailService = emailService;
         this.whatsAppLinkService = whatsAppLinkService;
         this.rateLimiterService = rateLimiterService;
+        this.paymentTransactionService = paymentTransactionService;
         this.frontendUrl = frontendUrl;
     }
 
@@ -563,15 +567,26 @@ public class BookingService {
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
 
         PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
+        BigDecimal chargedAmount = BigDecimal.valueOf(verify.amountMinorUnits()).divide(BigDecimal.valueOf(100));
 
         if (!verify.success()) {
             booking.setPaymentStatus("FAILED");
             bookingRepository.save(booking);
+            paymentTransactionService.record(
+                    booking.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.BOOKING,
+                    booking.getId(), "PAYSTACK", "CARD", chargedAmount, "FAILED",
+                    reference, booking.getCustomerId(), null, null, null
+            );
             return new BookingVerifyPaymentResponse(false, "Payment wasn't completed (" + verify.status() + ").");
         }
 
         booking.setPaymentStatus("PAID");
         bookingRepository.save(booking);
+        paymentTransactionService.record(
+                booking.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.BOOKING,
+                booking.getId(), "PAYSTACK", "CARD", chargedAmount, "SUCCESS",
+                reference, booking.getCustomerId(), null, null, null
+        );
         return new BookingVerifyPaymentResponse(true, "Payment confirmed.");
     }
 

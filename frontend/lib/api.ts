@@ -216,6 +216,9 @@ export interface Sale {
   commissionAmount: number;
   items: SaleItem[];
   createdAt: string;
+  // UNPAID/PAID/FAILED — CASH/BANK_TRANSFER sales are PAID immediately;
+  // CARD/MOBILE_MONEY start UNPAID until charged or manually marked paid.
+  paymentStatus: string;
 }
 
 export type ExpenseCategory =
@@ -319,6 +322,8 @@ export interface PurchaseOrder {
   items: PurchaseOrderItem[];
   createdAt: string;
   receivedAt: string | null;
+  // UNPAID/PAID — whether the business has settled this PO with the supplier.
+  paymentStatus: string;
 }
 
 export interface PurchaseOrderItemPayload {
@@ -593,6 +598,35 @@ export interface CheckoutResponse {
   accessCode: string;
   reference: string;
 }
+
+export interface PaymentTransaction {
+  id: string;
+  direction: "INCOMING" | "OUTGOING";
+  sourceType: "SERVICE_ORDER" | "SALE" | "BOOKING" | "PURCHASE_ORDER";
+  sourceId: string | null;
+  sourceLabel: string | null;
+  gateway: string; // "PAYSTACK" | "MANUAL"
+  method: string | null;
+  amount: number;
+  currency: string;
+  status: string; // PENDING / SUCCESS / FAILED
+  gatewayReference: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  note: string | null;
+  createdByName: string | null;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface MobileMoneyChargeResponse {
+  reference: string;
+  status: string;
+  displayText: string | null;
+}
+
+export type MobileMoneyProvider = "mtn" | "atl" | "vod";
 
 export interface VerifyPaymentResponse {
   success: boolean;
@@ -1243,11 +1277,31 @@ export const api = {
   startServiceOrderPayment: (token: string, id: string) =>
     request<CheckoutResponse>(`/api/service-orders/${id}/checkout`, { method: "POST" }, token),
 
+  chargeServiceOrderMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
+    request<MobileMoneyChargeResponse>(
+      `/api/service-orders/${id}/charge-mobile-money`,
+      { method: "POST", body: JSON.stringify({ phone, provider }) },
+      token
+    ),
+
   verifyServiceOrderPayment: (token: string, reference: string) =>
     request<ServiceOrder>("/api/service-orders/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
 
   markServiceOrderPaid: (token: string, id: string) =>
     request<ServiceOrder>(`/api/service-orders/${id}/mark-paid`, { method: "POST" }, token),
+
+  listPaymentTransactions: (
+    token: string,
+    filters?: { direction?: "INCOMING" | "OUTGOING"; gateway?: string; from?: string; to?: string }
+  ) => {
+    const params = new URLSearchParams();
+    if (filters?.direction) params.set("direction", filters.direction);
+    if (filters?.gateway) params.set("gateway", filters.gateway);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<PaymentTransaction[]>(`/api/payment-transactions${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   listServiceOrderPhotos: (token: string, orderId: string) =>
     request<ServiceOrderPhoto[]>(`/api/service-orders/${orderId}/photos`, {}, token),
@@ -1313,6 +1367,22 @@ export const api = {
   createSale: (token: string, payload: SalePayload) =>
     request<Sale>("/api/sales", { method: "POST", body: JSON.stringify(payload) }, token),
 
+  startSalePayment: (token: string, id: string) =>
+    request<CheckoutResponse>(`/api/sales/${id}/checkout`, { method: "POST" }, token),
+
+  chargeSaleMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
+    request<MobileMoneyChargeResponse>(
+      `/api/sales/${id}/charge-mobile-money`,
+      { method: "POST", body: JSON.stringify({ phone, provider }) },
+      token
+    ),
+
+  verifySalePayment: (token: string, reference: string) =>
+    request<Sale>("/api/sales/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  markSalePaid: (token: string, id: string) =>
+    request<Sale>(`/api/sales/${id}/mark-paid`, { method: "POST" }, token),
+
   listExpenses: (token: string) => request<Expense[]>("/api/expenses", {}, token),
 
   createExpense: (token: string, payload: ExpensePayload) =>
@@ -1366,6 +1436,9 @@ export const api = {
   cancelPurchaseOrder: (token: string, id: string) =>
     request<PurchaseOrder>(`/api/purchase-orders/${id}/cancel`, { method: "POST" }, token),
 
+  markPurchaseOrderPaid: (token: string, id: string) =>
+    request<PurchaseOrder>(`/api/purchase-orders/${id}/mark-paid`, { method: "POST" }, token),
+
   listActivityLogs: (token: string, filters?: { userId?: string; from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (filters?.userId) params.set("userId", filters.userId);
@@ -1398,6 +1471,12 @@ export const api = {
   // --- Business Integrations (Owner only — client's own Paystack/WooCommerce keys) ---
 
   getBusinessIntegrations: (token: string) => request<BusinessIntegrations>("/api/integrations", {}, token),
+
+  // Unlike getBusinessIntegrations above (OWNER-only, full config), this is safe
+  // for any role — receipt pages need it to decide whether to show a "Pay with
+  // Paystack" button, and those are viewed by Manager/Sales Person/Accountant too.
+  getPaymentGatewayStatus: (token: string) =>
+    request<{ paystackConfigured: boolean }>("/api/integrations/payment-status", {}, token),
 
   updateBusinessIntegrations: (token: string, payload: BusinessIntegrationsPayload) =>
     request<BusinessIntegrations>("/api/integrations", { method: "PUT", body: JSON.stringify(payload) }, token),
@@ -1478,6 +1557,9 @@ export const api = {
 
   getPlatformBusiness: (token: string, id: string) =>
     request<PlatformBusinessDetail>(`/api/platform/businesses/${id}`, {}, token),
+
+  getPlatformBusinessPaymentTransactions: (token: string, id: string) =>
+    request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions`, {}, token),
 
   setPlatformBusinessStatus: (token: string, id: string, active: boolean) =>
     request<PlatformBusinessSummary>(

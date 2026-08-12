@@ -145,6 +145,20 @@ export default function PurchaseOrdersPage() {
     }
   }
 
+  async function handleMarkPaid(id: string) {
+    if (!session) return;
+    setActionError(null);
+    setPendingAction(`${id}:markPaid`);
+    try {
+      await api.markPurchaseOrderPaid(session.token, id);
+      await loadAll();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't mark this order as paid.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -343,29 +357,43 @@ export default function PurchaseOrdersPage() {
                     </Td>
                     <Td className="tabular font-medium">GH₵{o.totalAmount.toFixed(2)}</Td>
                     <Td>
-                      <Badge tone={o.status === "RECEIVED" ? "success" : o.status === "CANCELLED" ? "danger" : "neutral"}>
-                        {o.status}
-                      </Badge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={o.status === "RECEIVED" ? "success" : o.status === "CANCELLED" ? "danger" : "neutral"}>
+                          {o.status}
+                        </Badge>
+                        {o.paymentStatus !== "PAID" && o.status !== "CANCELLED" && <Badge tone="neutral">Unpaid</Badge>}
+                      </div>
                     </Td>
                     <Td className="text-right">
-                      {o.status === "PENDING" && (
-                        <div className="flex justify-end gap-3">
+                      <div className="flex flex-wrap justify-end gap-3">
+                        {o.status === "PENDING" && (
+                          <>
+                            <button
+                              onClick={() => handleReceive(o.id)}
+                              disabled={pendingAction === `${o.id}:receive` || pendingAction === `${o.id}:cancel`}
+                              className="text-sm font-medium text-accent-hover hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pendingAction === `${o.id}:receive` ? "Marking..." : "Mark received"}
+                            </button>
+                            <button
+                              onClick={() => handleCancel(o.id)}
+                              disabled={pendingAction === `${o.id}:receive` || pendingAction === `${o.id}:cancel`}
+                              className="text-sm font-medium text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pendingAction === `${o.id}:cancel` ? "Cancelling..." : "Cancel"}
+                            </button>
+                          </>
+                        )}
+                        {o.paymentStatus !== "PAID" && o.status !== "CANCELLED" && (
                           <button
-                            onClick={() => handleReceive(o.id)}
-                            disabled={pendingAction === `${o.id}:receive` || pendingAction === `${o.id}:cancel`}
-                            className="text-sm font-medium text-accent-hover hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => handleMarkPaid(o.id)}
+                            disabled={pendingAction === `${o.id}:markPaid`}
+                            className="text-sm font-medium text-success hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {pendingAction === `${o.id}:receive` ? "Marking..." : "Mark received"}
+                            {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
                           </button>
-                          <button
-                            onClick={() => handleCancel(o.id)}
-                            disabled={pendingAction === `${o.id}:receive` || pendingAction === `${o.id}:cancel`}
-                            className="text-sm font-medium text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {pendingAction === `${o.id}:cancel` ? "Cancelling..." : "Cancel"}
-                          </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </Td>
                   </Tr>
                 ))}
