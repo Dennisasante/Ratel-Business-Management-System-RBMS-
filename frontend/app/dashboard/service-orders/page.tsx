@@ -46,22 +46,10 @@ const STATUS_TONES: Record<ServiceOrderStatus, "neutral" | "accent" | "success" 
   CANCELLED: "danger",
 };
 
-const NEXT_STATUS: Partial<Record<ServiceOrderStatus, ServiceOrderStatus>> = {
-  RECEIVED: "IN_PROGRESS",
-  IN_PROGRESS: "COMPLETED",
-  COMPLETED: "PICKED_UP",
-};
-
-const NEXT_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
-  RECEIVED: "Mark in progress",
-  IN_PROGRESS: "Mark completed",
-  COMPLETED: "Mark picked up",
-};
-
 // Mirrors ServiceOrderService.ALLOWED_TRANSITIONS exactly — every destination
-// a "Move to stage" submenu can offer, since the backend rejects anything
-// outside this graph (no skipping a stage in either direction). Keep in sync
-// if the backend graph ever changes.
+// the backend actually accepts from a given status (no skipping a stage in
+// either direction, e.g. Received can't jump straight to Picked up). Keep in
+// sync if the backend graph ever changes.
 const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
   RECEIVED: ["IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["RECEIVED", "COMPLETED", "CANCELLED"],
@@ -69,6 +57,11 @@ const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
   PICKED_UP: ["COMPLETED"],
   CANCELLED: ["RECEIVED"],
 };
+
+// Display order for the "Move to stage" list — every stage is always shown
+// (minus whichever one is current) so staff can see the whole pipeline, even
+// though only the backend-allowed ones are actually clickable.
+const ALL_STAGES: ServiceOrderStatus[] = ["RECEIVED", "IN_PROGRESS", "COMPLETED", "PICKED_UP", "CANCELLED"];
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   UNPAID: "Unpaid",
@@ -169,12 +162,6 @@ export default function ServiceOrdersPage() {
     await api.updateServiceOrder(session.token, orderId, payload);
     await loadOrders();
     setModal({ type: "none" });
-  }
-
-  async function handleAdvanceStatus(order: ServiceOrder) {
-    const next = NEXT_STATUS[order.status];
-    if (!session || !next) return;
-    await handleSetStatus(order, next);
   }
 
   async function handleSetStatus(order: ServiceOrder, status: ServiceOrderStatus) {
@@ -299,10 +286,15 @@ export default function ServiceOrdersPage() {
             </THead>
             <TBody>
               {orders.map((o) => {
-                const nextStatus = NEXT_STATUS[o.status];
-                // Everything the backend allows from here, minus whatever's
-                // already the one-click "Mark X" button above.
-                const moveOptions = ALLOWED_TRANSITIONS[o.status].filter((s) => s !== nextStatus);
+                const allowedFromHere = ALLOWED_TRANSITIONS[o.status];
+                // Every stage except the current one, each flagged with
+                // whether the backend will actually accept moving there
+                // directly right now — shown either way so the whole
+                // pipeline is visible, not just the one or two next steps.
+                const moveOptions = ALL_STAGES.filter((s) => s !== o.status).map((s) => ({
+                  status: s,
+                  allowed: allowedFromHere.includes(s),
+                }));
                 const canResend = o.status === "COMPLETED" || o.status === "PICKED_UP";
                 return (
                   <Tr key={o.id}>
@@ -343,15 +335,11 @@ export default function ServiceOrdersPage() {
                     </Td>
                     <Td>
                       <div className="flex flex-nowrap items-center justify-end gap-3 whitespace-nowrap text-right">
-                        {nextStatus && (
-                          <button
-                            onClick={() => handleAdvanceStatus(o)}
-                            disabled={pendingAction === `${o.id}:status`}
-                            className="text-sm font-medium text-accent-hover hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {pendingAction === `${o.id}:status` ? "Updating..." : NEXT_STATUS_LABEL[o.status]}
-                          </button>
-                        )}
+                        <StageMenu
+                          options={moveOptions}
+                          pending={pendingAction === `${o.id}:status`}
+                          onSelect={(status) => handleSetStatus(o, status)}
+                        />
                         <Link
                           href={`/receipt/service-order/${o.id}`}
                           target="_blank"
@@ -373,34 +361,31 @@ export default function ServiceOrdersPage() {
                             Collect payment
                           </button>
                         )}
-                        <ActionsMenu>
-                          {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
-                            <a
-                              href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-success hover:bg-canvas"
-                            >
-                              <MessageCircle size={14} />
-                              Message on WhatsApp
-                            </a>
-                          )}
-                          {canResend && (
-                            <button
-                              onClick={() => handleResendEmail(o)}
-                              disabled={pendingAction === `${o.id}:resend`}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Mail size={14} />
-                              {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
-                            </button>
-                          )}
-                          <MoveToStageSubmenu
-                            options={moveOptions}
-                            pending={pendingAction === `${o.id}:status`}
-                            onSelect={(status) => handleSetStatus(o, status)}
-                          />
-                        </ActionsMenu>
+                        {((o.bookingWhatsappLink || o.customerWhatsappLink) || canResend) && (
+                          <ActionsMenu>
+                            {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
+                              <a
+                                href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-success hover:bg-canvas"
+                              >
+                                <MessageCircle size={14} />
+                                Message on WhatsApp
+                              </a>
+                            )}
+                            {canResend && (
+                              <button
+                                onClick={() => handleResendEmail(o)}
+                                disabled={pendingAction === `${o.id}:resend`}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Mail size={14} />
+                                {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
+                              </button>
+                            )}
+                          </ActionsMenu>
+                        )}
                       </div>
                     </Td>
                   </Tr>
@@ -497,47 +482,60 @@ function ActionsMenu({ children }: { children: React.ReactNode }) {
 // overflow menu rather than a hover flyout, since this menu is click-driven
 // (works the same on touch). Unmounts (and so resets its own expanded state)
 // whenever the parent ActionsMenu closes, since it only exists in `children`.
-function MoveToStageSubmenu({
+// The primary, always-visible way to change an order's stage — shows every
+// stage (not just the immediately-next one) so staff can see the whole
+// pipeline at a glance; stages the backend won't accept a direct jump to
+// right now are visible but disabled, rather than hidden entirely.
+function StageMenu({
   options,
   pending,
   onSelect,
 }: {
-  options: ServiceOrderStatus[];
+  options: { status: ServiceOrderStatus; allowed: boolean }[];
   pending: boolean;
   onSelect: (status: ServiceOrderStatus) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (options.length === 0) return null;
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
 
   return (
-    <div>
+    <div ref={ref} className="relative inline-block text-left">
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setExpanded((v) => !v);
-        }}
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-sm font-medium text-accent-hover hover:underline"
       >
-        <span className="flex items-center gap-2">
-          <Move size={14} />
-          Move to stage
-        </span>
-        <ChevronRight size={14} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
+        <Move size={14} />
+        Move to stage
+        <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
-      {expanded && (
-        <div className="border-t border-border bg-canvas/50 py-1">
-          {options.map((s) => (
+      {open && (
+        <div className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-border bg-surface py-1 text-left shadow-card">
+          {options.map(({ status, allowed }) => (
             <button
-              key={s}
+              key={status}
               type="button"
-              onClick={() => onSelect(s)}
-              disabled={pending}
-              className={`flex w-full items-center gap-2 py-1.5 pl-8 pr-3 text-left text-sm font-medium hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50 ${
-                s === "CANCELLED" ? "text-danger" : "text-ink-700"
+              onClick={() => {
+                if (!allowed) return;
+                onSelect(status);
+                setOpen(false);
+              }}
+              disabled={!allowed || pending}
+              title={allowed ? undefined : "Not reachable directly from the current stage"}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
+                status === "CANCELLED" ? "text-danger" : "text-ink-700"
               }`}
             >
-              {STATUS_LABELS[s]}
+              {STATUS_LABELS[status]}
             </button>
           ))}
         </div>
