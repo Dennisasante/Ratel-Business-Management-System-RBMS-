@@ -20,6 +20,7 @@ import {
   Wallet,
   CalendarCheck2,
   ArrowUpRight,
+  LifeBuoy,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -83,6 +84,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: "/dashboard/team", label: "Team", icon: UserCog, hiddenFrom: STAFF_HIDDEN },
       { href: "/dashboard/activity", label: "Activity Log", icon: History, hiddenFrom: STAFF_HIDDEN },
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
+      { href: "/dashboard/help", label: "Help & Support", icon: LifeBuoy },
     ],
   },
 ];

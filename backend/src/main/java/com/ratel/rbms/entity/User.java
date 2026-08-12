@@ -67,6 +67,11 @@ public class User {
     @Builder.Default
     private BigDecimal commissionRate = BigDecimal.ZERO;
 
+    // Null means this user hasn't completed (or skipped) the first-login
+    // walkthrough yet — the frontend shows it once and calls back to set this.
+    @Column(name = "onboarding_completed_at")
+    private Instant onboardingCompletedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

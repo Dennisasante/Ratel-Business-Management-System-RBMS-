@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import ReadOnlyBanner from "./ReadOnlyBanner";
+import OnboardingTour from "@/components/OnboardingTour";
 
 // Pages built around a wide, many-column table (Service Orders being the
 // worst offender — 8 columns including an Actions cell) get more room than
@@ -43,6 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas">
+      <OnboardingTour />
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 lg:block">
         <Sidebar />

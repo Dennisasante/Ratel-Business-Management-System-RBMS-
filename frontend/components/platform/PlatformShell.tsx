@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ShieldCheck, LayoutDashboard, Building2, History, ShieldAlert, Users, KeyRound, LogOut, Layers, CreditCard } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, Building2, History, ShieldAlert, Users, KeyRound, LogOut, Layers, CreditCard, LifeBuoy } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/platform/businesses", label: "Businesses", icon: Building2 },
   { href: "/platform/plans", label: "Plans", icon: Layers },
   { href: "/platform/billing-settings", label: "Billing Settings", icon: CreditCard },
+  { href: "/platform/help-requests", label: "Help Requests", icon: LifeBuoy },
   { href: "/platform/activity", label: "Activity Log", icon: History },
   { href: "/platform/audit", label: "Admin Actions", icon: ShieldAlert },
   { href: "/platform/admins", label: "Admins", icon: Users },

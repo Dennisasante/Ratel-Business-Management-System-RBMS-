@@ -1035,6 +1035,37 @@ export interface PlatformBusinessBillingUpdatePayload {
   clearPriceOverride?: boolean;
 }
 
+export type HelpRequestCategory = "GENERAL" | "BUG" | "BILLING" | "FEATURE_REQUEST";
+export type HelpRequestStatus = "OPEN" | "RESOLVED";
+
+export interface HelpRequest {
+  id: string;
+  requesterName: string;
+  requesterEmail: string;
+  category: HelpRequestCategory;
+  subject: string;
+  message: string;
+  status: HelpRequestStatus;
+  adminResponse: string | null;
+  respondedAt: string | null;
+  createdAt: string;
+}
+
+export interface HelpRequestPayload {
+  category: HelpRequestCategory;
+  subject: string;
+  message: string;
+}
+
+export interface PlatformHelpRequest extends HelpRequest {
+  businessId: string;
+  businessName: string;
+}
+
+export interface OnboardingStatus {
+  completed: boolean;
+}
+
 class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -1835,6 +1866,27 @@ export const api = {
 
   acceptCustomWigRequest: (token: string, id: string) =>
     request<CustomWigRequest>(`/api/custom-wig-requests/${id}/accept`, { method: "PATCH" }, token),
+
+  getOnboardingStatus: (token: string) =>
+    request<OnboardingStatus>("/api/users/me/onboarding-status", {}, token),
+
+  completeOnboarding: (token: string) =>
+    request<OnboardingStatus>("/api/users/me/complete-onboarding", { method: "POST" }, token),
+
+  listHelpRequests: (token: string) => request<HelpRequest[]>("/api/help-requests", {}, token),
+
+  createHelpRequest: (token: string, payload: HelpRequestPayload) =>
+    request<HelpRequest>("/api/help-requests", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  listPlatformHelpRequests: (token: string) =>
+    request<PlatformHelpRequest[]>("/api/platform/help-requests", {}, token),
+
+  respondPlatformHelpRequest: (token: string, id: string, responseMessage: string) =>
+    request<PlatformHelpRequest>(
+      `/api/platform/help-requests/${id}/respond`,
+      { method: "PATCH", body: JSON.stringify({ response: responseMessage }) },
+      token
+    ),
 };
 
 export { ApiError };
