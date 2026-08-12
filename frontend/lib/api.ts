@@ -486,6 +486,13 @@ export interface ServiceOrderReport {
   from: string;
   to: string;
   revenueByType: { serviceTypeId: string; serviceTypeName: string | null; revenue: number }[];
+  revenueByService: {
+    serviceCatalogId: string | null;
+    serviceName: string;
+    serviceTypeId: string | null;
+    serviceTypeName: string | null;
+    revenue: number;
+  }[];
   statusCounts: Record<ServiceOrderStatus, number>;
   avgTurnaroundHours: number;
 }
@@ -1283,7 +1290,12 @@ export const api = {
   setServiceCatalogItemActive: (token: string, id: string, active: boolean) =>
     request<ServiceCatalogItem>(`/api/service-catalog/${id}/active`, { method: "PATCH", body: JSON.stringify({ active }) }, token),
 
-  listCustomers: (token: string) => request<Customer[]>("/api/customers", {}, token),
+  listCustomers: (token: string, filters?: { search?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    const qs = params.toString();
+    return request<Customer[]>(`/api/customers${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   getCustomer: (token: string, id: string) => request<Customer>(`/api/customers/${id}`, {}, token),
 

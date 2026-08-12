@@ -151,6 +151,29 @@ export default function ServiceOrdersReportPage() {
           </Card>
 
           <Card className="p-5">
+            <h2 className="text-base font-semibold text-ink-900">Revenue by service</h2>
+            <p className="text-xs text-ink-500">Individual services, not just their category — orders picked up in this range.</p>
+            {report.revenueByService.length === 0 ? (
+              <p className="mt-3 text-sm text-ink-500">No services picked up in this range yet.</p>
+            ) : (
+              <ul className="mt-4 flex flex-col gap-2">
+                {report.revenueByService.map((r) => (
+                  <li
+                    key={`${r.serviceCatalogId ?? "custom"}-${r.serviceName}`}
+                    className="flex items-center justify-between border-b border-border py-2 text-sm last:border-0"
+                  >
+                    <div>
+                      <span className="text-ink-700">{r.serviceName}</span>
+                      {r.serviceTypeName && <span className="ml-2 text-xs text-ink-400">{r.serviceTypeName}</span>}
+                    </div>
+                    <span className="tabular font-medium text-ink-900">GH₵{r.revenue.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card className="p-5">
             <h2 className="text-base font-semibold text-ink-900">Status mix</h2>
             <p className="text-xs text-ink-500">Of the {totalReceived} order{totalReceived === 1 ? "" : "s"} received in this range.</p>
             <div className="mt-4 flex flex-wrap gap-3">

@@ -154,8 +154,8 @@ export default function ServiceCatalogPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Service Catalog"
-        subtitle="Categories, prices, and packages — plus a live preview of what customers see."
+        title="Services"
+        subtitle="Categories, prices, and service groups — plus a live preview of what customers see."
         actions={
           <Link href="/dashboard/service-orders">
             <Button variant="secondary">
@@ -201,7 +201,7 @@ export default function ServiceCatalogPage() {
         <>
           <Card className="p-5">
             <h2 className="text-base font-semibold text-ink-900">Categories</h2>
-            <p className="mt-1 text-sm text-ink-500">The groups your catalog items and packages belong to.</p>
+            <p className="mt-1 text-sm text-ink-500">The groups your services and service groups belong to.</p>
             <div className="mt-4">
               <ServiceTypeManager
                 types={serviceTypes}
@@ -213,7 +213,7 @@ export default function ServiceCatalogPage() {
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-ink-900">Catalog</h2>
+            <h2 className="text-base font-semibold text-ink-900">Services</h2>
             <p className="mt-1 text-sm text-ink-500">Individual services and prices — used for both walk-in orders and online booking.</p>
             <div className="mt-4">
               <ServiceCatalogManager
@@ -228,8 +228,8 @@ export default function ServiceCatalogPage() {
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-ink-900">Packages</h2>
-            <p className="mt-1 text-sm text-ink-500">Bundles of catalog items sold and booked as one appointment.</p>
+            <h2 className="text-base font-semibold text-ink-900">Service Groups</h2>
+            <p className="mt-1 text-sm text-ink-500">Bundles of services sold and booked as one appointment.</p>
             <div className="mt-4">
               <ServicePackageManager
                 packages={packages}

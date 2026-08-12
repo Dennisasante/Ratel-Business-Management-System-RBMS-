@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Plus } from "lucide-react";
+import { Users, Plus, Search } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, Customer, CustomerPayload } from "@/lib/api";
 import Modal from "@/components/Modal";
@@ -21,11 +21,12 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [fetching, setFetching] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState("");
 
   const loadCustomers = useCallback(async () => {
     if (!session) return;
-    setCustomers(await api.listCustomers(session.token));
-  }, [session]);
+    setCustomers(await api.listCustomers(session.token, { search: search || undefined }));
+  }, [session, search]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -59,18 +60,34 @@ export default function CustomersPage() {
         }
       />
 
+      <div className="relative max-w-sm">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, phone, or email"
+          className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+      </div>
+
       <Card>
         {fetching ? (
           <TableSkeleton cols={4} />
         ) : customers.length === 0 ? (
           <EmptyState
             icon={Users}
-            title="No customers yet"
-            description="Add a customer to start tracking their purchase history."
+            title={search ? "No matching customers" : "No customers yet"}
+            description={
+              search
+                ? "Try a different name, phone number, or email."
+                : "Add a customer to start tracking their purchase history."
+            }
             action={
-              <Button onClick={() => setShowAdd(true)}>
-                <Plus size={16} /> Add customer
-              </Button>
+              search ? undefined : (
+                <Button onClick={() => setShowAdd(true)}>
+                  <Plus size={16} /> Add customer
+                </Button>
+              )
             }
           />
         ) : (

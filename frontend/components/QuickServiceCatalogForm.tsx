@@ -36,7 +36,7 @@ export default function QuickServiceCatalogForm({ serviceTypes, onSubmit }: Quic
   }
 
   if (serviceTypes.length === 0) {
-    return <p className="text-sm text-ink-500">Add a category in the Service Catalog first, then come back here.</p>;
+    return <p className="text-sm text-ink-500">Add a category in Services first, then come back here.</p>;
   }
 
   return (

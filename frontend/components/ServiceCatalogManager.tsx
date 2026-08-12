@@ -76,7 +76,7 @@ export default function ServiceCatalogManager({
       setRequiresLocation(false);
       setPaymentPolicyOverride("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't add that catalog item.");
+      setError(err instanceof ApiError ? err.message : "Couldn't add that service.");
     } finally {
       setSubmitting(false);
     }
@@ -92,7 +92,7 @@ export default function ServiceCatalogManager({
   }
 
   if (serviceTypes.length === 0) {
-    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before building a price catalog.</p>;
+    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before adding services.</p>;
   }
 
   return (
@@ -181,14 +181,14 @@ export default function ServiceCatalogManager({
         <Button type="submit" disabled={submitting || !name.trim()} className="w-full">
           {submitting ? "Adding..." : (
             <>
-              <Plus size={16} /> Add catalog item
+              <Plus size={16} /> Add service
             </>
           )}
         </Button>
       </form>
 
       {items.length === 0 ? (
-        <p className="text-sm text-ink-500">No catalog items yet — add one above to speed up order entry.</p>
+        <p className="text-sm text-ink-500">No services yet — add one above to speed up order entry.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((item) => (

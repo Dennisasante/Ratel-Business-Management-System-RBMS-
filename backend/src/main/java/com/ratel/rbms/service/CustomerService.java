@@ -32,11 +32,12 @@ public class CustomerService {
         this.activityLogService = activityLogService;
     }
 
-    public List<CustomerResponse> listAll() {
+    public List<CustomerResponse> listAll(String search) {
         UUID businessId = TenantContext.getBusinessId();
-        return customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId).stream()
-                .map(c -> toResponse(c, businessId))
-                .toList();
+        List<Customer> customers = search == null || search.isBlank()
+                ? customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId)
+                : customerRepository.search(businessId, search);
+        return customers.stream().map(c -> toResponse(c, businessId)).toList();
     }
 
     public CustomerResponse get(UUID id) {

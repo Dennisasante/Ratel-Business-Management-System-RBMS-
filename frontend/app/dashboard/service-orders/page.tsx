@@ -254,7 +254,7 @@ export default function ServiceOrdersPage() {
           <>
             <Link href="/dashboard/service-orders/catalog">
               <Button variant="secondary">
-                <ListTree size={16} /> Service Catalog
+                <ListTree size={16} /> Services
               </Button>
             </Link>
             <Link href="/dashboard/service-orders/calendar">
@@ -276,7 +276,7 @@ export default function ServiceOrdersPage() {
 
       {serviceTypes.length === 0 && !fetching && (
         <p className="text-sm text-ink-500">
-          Add your first category under &ldquo;Service Catalog&rdquo; above before creating an order.
+          Add your first category under &ldquo;Services&rdquo; above before creating an order.
         </p>
       )}
 

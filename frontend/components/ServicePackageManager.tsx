@@ -40,10 +40,10 @@ export default function ServicePackageManager({
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   if (serviceTypes.length === 0) {
-    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before building a package.</p>;
+    return <p className="text-sm text-ink-500">Add a category first (under &ldquo;Categories&rdquo;) before building a service group.</p>;
   }
   if (catalogItems.length === 0) {
-    return <p className="text-sm text-ink-500">Add some catalog items first (under &ldquo;Catalog&rdquo;) — a package bundles existing services together.</p>;
+    return <p className="text-sm text-ink-500">Add some services first (under &ldquo;Services&rdquo;) — a service group bundles existing services together.</p>;
   }
 
   async function handleToggle(pkg: ServicePackage) {
@@ -60,12 +60,12 @@ export default function ServicePackageManager({
       <PackageForm
         serviceTypes={serviceTypes}
         catalogItems={catalogItems}
-        submitLabel="Add package"
+        submitLabel="Add service group"
         onSubmit={onCreate}
       />
 
       {packages.length === 0 ? (
-        <p className="text-sm text-ink-500">No packages yet — bundle a few catalog items above at a special price.</p>
+        <p className="text-sm text-ink-500">No service groups yet — bundle a few services above at a special price.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {packages.map((pkg) => (
@@ -172,11 +172,11 @@ function PackageForm({
       .map((r) => ({ serviceCatalogId: r.serviceCatalogId, quantity: Number(r.quantity) || 1 }));
 
     if (!name.trim()) {
-      setError("Package name is required.");
+      setError("Service group name is required.");
       return;
     }
     if (cleanItems.length === 0) {
-      setError("Add at least one item to the package.");
+      setError("Add at least one service to the group.");
       return;
     }
 
@@ -204,7 +204,7 @@ function PackageForm({
         setPaymentPolicyOverride("");
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't save that package.");
+      setError(err instanceof ApiError ? err.message : "Couldn't save that service group.");
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +229,7 @@ function PackageForm({
         </div>
         <FormField label="Price" name="packagePrice" type="number" value={price} onChange={setPrice} />
       </div>
-      <FormField label="Name" name="packageName" required value={name} onChange={setName} placeholder="e.g. Bridal Package - Basic" />
+      <FormField label="Name" name="packageName" required value={name} onChange={setName} placeholder="e.g. Bridal Service Group - Basic" />
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-ink-700">Description (optional)</label>

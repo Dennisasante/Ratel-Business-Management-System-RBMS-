@@ -22,8 +22,8 @@ public class CustomerController {
     }
 
     @GetMapping
-    public List<CustomerResponse> list() {
-        return customerService.listAll();
+    public List<CustomerResponse> list(@RequestParam(required = false) String search) {
+        return customerService.listAll(search);
     }
 
     @GetMapping("/{id}")

@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,6 +70,16 @@ public class ServiceOrderReportService {
             revenueByTypeId.merge(item.getServiceTypeId(), item.getPrice(), BigDecimal::add);
         }
 
+        // Finer breakdown than revenueByType: one row per individual service
+        // (catalog item) rather than per broad category — e.g. "Bob Install" vs
+        // "Closure Install" instead of both folding into "Installation". Custom
+        // freeform-priced lines (no catalog item) group by their own name snapshot.
+        Map<ServiceKey, BigDecimal> revenueByServiceKey = new LinkedHashMap<>();
+        for (ServiceOrderItem item : pickedUpItems) {
+            ServiceKey key = new ServiceKey(item.getServiceCatalogId(), item.getServiceName(), item.getServiceTypeId());
+            revenueByServiceKey.merge(key, item.getPrice(), BigDecimal::add);
+        }
+
         var avgMinutes = pickedUp.stream()
                 .filter(o -> o.getReceivedAt() != null && o.getPickedUpAt() != null)
                 .mapToLong(o -> Duration.between(o.getReceivedAt(), o.getPickedUpAt()).toMinutes())
@@ -85,6 +96,15 @@ public class ServiceOrderReportService {
                 .map(e -> new ServiceOrderReportResponse.TypeRevenue(e.getKey(), typeNames.get(e.getKey()), e.getValue()))
                 .toList();
 
-        return new ServiceOrderReportResponse(from, to, revenueByType, statusCountsOut, avgTurnaroundHours);
+        List<ServiceOrderReportResponse.ServiceRevenue> revenueByService = revenueByServiceKey.entrySet().stream()
+                .map(e -> new ServiceOrderReportResponse.ServiceRevenue(
+                        e.getKey().catalogId(), e.getKey().name(), e.getKey().typeId(), typeNames.get(e.getKey().typeId()), e.getValue()))
+                .sorted(Comparator.comparing(ServiceOrderReportResponse.ServiceRevenue::revenue).reversed())
+                .toList();
+
+        return new ServiceOrderReportResponse(from, to, revenueByType, revenueByService, statusCountsOut, avgTurnaroundHours);
+    }
+
+    private record ServiceKey(UUID catalogId, String name, UUID typeId) {
     }
 }

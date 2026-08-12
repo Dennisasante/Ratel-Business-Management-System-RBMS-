@@ -354,7 +354,7 @@ export default function SalesPage() {
               <p className="mt-3 text-sm text-ink-500">
                 No services yet. Use &quot;+ New service&quot; above, or add some in the{" "}
                 <Link href="/dashboard/service-orders/catalog" className="font-medium text-accent-hover hover:underline">
-                  Service Catalog
+                  Services
                 </Link>
                 .
               </p>

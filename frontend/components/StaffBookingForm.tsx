@@ -51,7 +51,7 @@ export default function StaffBookingForm({ catalog, packages, customers, staff, 
     e.preventDefault();
     setError(null);
     if (!serviceKey) {
-      setError("Add a service to your catalog first.");
+      setError("Add a service first.");
       return;
     }
     if (!scheduledAt) {
