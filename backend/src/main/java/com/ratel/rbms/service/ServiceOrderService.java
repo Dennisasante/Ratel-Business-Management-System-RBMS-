@@ -371,6 +371,38 @@ public class ServiceOrderService {
         return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
     }
 
+    // Completes a mobile-money charge that came back "send_otp" — the customer
+    // reads back the code Paystack texted them, staff enters it here. A wrong/
+    // expired code just comes back non-success (order stays UNPAID, try again),
+    // not an error.
+    @Transactional
+    public ServiceOrderResponse submitMobileMoneyOtp(String reference, String otp) {
+        ServiceOrder order = serviceOrderRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(order.getPaymentStatus())) {
+            return toResponse(order);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.ChargeResult result = paystackService.submitOtp(integrations.getPaystackSecretKey(), otp, reference);
+
+        if (result.success()) {
+            order.setPaymentStatus("PAID");
+            order = serviceOrderRepository.save(order);
+            activityLogService.log("Charged mobile money for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
+            paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "SUCCESS");
+        } else if ("failed".equalsIgnoreCase(result.status())) {
+            order.setPaymentStatus("FAILED");
+            order = serviceOrderRepository.save(order);
+            paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "FAILED");
+        }
+
+        return toResponse(order);
+    }
+
     @Transactional
     public ServiceOrderResponse verifyPayment(String reference) {
         ServiceOrder order = serviceOrderRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())

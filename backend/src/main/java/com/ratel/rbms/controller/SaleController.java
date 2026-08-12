@@ -5,6 +5,7 @@ import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
+import com.ratel.rbms.dto.SubmitOtpRequest;
 import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.exception.ApiException;
@@ -61,6 +62,11 @@ public class SaleController {
     @PostMapping("/{id}/charge-mobile-money")
     public MobileMoneyChargeResponse chargeMobileMoney(@PathVariable UUID id, @Valid @RequestBody MobileMoneyChargeRequest request) {
         return saleService.chargeMobileMoney(id, request);
+    }
+
+    @PostMapping("/submit-mobile-money-otp")
+    public SaleResponse submitMobileMoneyOtp(@Valid @RequestBody SubmitOtpRequest request) {
+        return saleService.submitMobileMoneyOtp(request.reference(), request.otp());
     }
 
     @PostMapping("/verify")

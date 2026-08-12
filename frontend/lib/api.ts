@@ -1315,6 +1315,13 @@ export const api = {
   verifyServiceOrderPayment: (token: string, reference: string) =>
     request<ServiceOrder>("/api/service-orders/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
 
+  submitServiceOrderMobileMoneyOtp: (token: string, reference: string, otp: string) =>
+    request<ServiceOrder>(
+      "/api/service-orders/submit-mobile-money-otp",
+      { method: "POST", body: JSON.stringify({ reference, otp }) },
+      token
+    ),
+
   markServiceOrderPaid: (token: string, id: string) =>
     request<ServiceOrder>(`/api/service-orders/${id}/mark-paid`, { method: "POST" }, token),
 
@@ -1407,6 +1414,9 @@ export const api = {
 
   verifySalePayment: (token: string, reference: string) =>
     request<Sale>("/api/sales/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  submitSaleMobileMoneyOtp: (token: string, reference: string, otp: string) =>
+    request<Sale>("/api/sales/submit-mobile-money-otp", { method: "POST", body: JSON.stringify({ reference, otp }) }, token),
 
   markSalePaid: (token: string, id: string) =>
     request<Sale>(`/api/sales/${id}/mark-paid`, { method: "POST" }, token),

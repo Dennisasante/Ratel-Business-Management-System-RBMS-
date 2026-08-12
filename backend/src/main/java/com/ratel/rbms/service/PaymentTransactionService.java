@@ -88,6 +88,21 @@ public class PaymentTransactionService {
                 .build());
     }
 
+    // Flips a PENDING row (written when a mobile-money charge came back
+    // send_otp/pending) to its final status once the follow-up OTP submission
+    // resolves it — updates the existing row rather than inserting a second one,
+    // since record() already logged the attempt at charge time.
+    public void updateStatusByReference(UUID businessId, String gatewayReference, String status) {
+        paymentTransactionRepository.findByGatewayReferenceAndBusinessId(gatewayReference, businessId)
+                .ifPresent(t -> {
+                    t.setStatus(status);
+                    if ("SUCCESS".equals(status) && t.getPaidAt() == null) {
+                        t.setPaidAt(Instant.now());
+                    }
+                    paymentTransactionRepository.save(t);
+                });
+    }
+
     public List<PaymentTransactionResponse> search(UUID businessId, PaymentTransaction.Direction direction, String gateway, Instant from, Instant to) {
         return paymentTransactionRepository.search(businessId, direction, gateway, from, to).stream()
                 .map(this::toResponse)

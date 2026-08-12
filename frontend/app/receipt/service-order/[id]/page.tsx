@@ -43,8 +43,10 @@ export default function ServiceOrderReceiptPage() {
   const [momoPhone, setMomoPhone] = useState("");
   const [momoProvider, setMomoProvider] = useState<MobileMoneyProvider>("mtn");
   const [chargingMomo, setChargingMomo] = useState(false);
-  const [momoPending, setMomoPending] = useState<{ reference: string; message: string } | null>(null);
+  const [momoPending, setMomoPending] = useState<{ reference: string; message: string; status: string } | null>(null);
   const [verifyingMomo, setVerifyingMomo] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [submittingOtp, setSubmittingOtp] = useState(false);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -99,7 +101,12 @@ export default function ServiceOrderReceiptPage() {
       } else {
         setMomoPending({
           reference: result.reference,
-          message: result.displayText || "Ask the customer to check their phone and approve the payment.",
+          status: result.status,
+          message:
+            result.displayText ||
+            (result.status.toLowerCase() === "send_otp"
+              ? "A code was texted to the customer's phone."
+              : "Ask the customer to check their phone and approve the payment."),
         });
       }
     } catch (err) {
@@ -126,6 +133,28 @@ export default function ServiceOrderReceiptPage() {
       setPayError(err instanceof ApiError ? err.message : "Couldn't verify this payment.");
     } finally {
       setVerifyingMomo(false);
+    }
+  }
+
+  async function handleSubmitOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session || !momoPending || !otpCode.trim()) return;
+    setSubmittingOtp(true);
+    setPayError(null);
+    try {
+      const updated = await api.submitServiceOrderMobileMoneyOtp(session.token, momoPending.reference, otpCode.trim());
+      setOrder(updated);
+      if (updated.paymentStatus === "PAID") {
+        setMomoPending(null);
+        setShowMomoForm(false);
+        setOtpCode("");
+      } else {
+        setPayError("That code didn't work — check with the customer and try again.");
+      }
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't submit that code.");
+    } finally {
+      setSubmittingOtp(false);
     }
   }
 
@@ -248,7 +277,26 @@ export default function ServiceOrderReceiptPage() {
                 </form>
               )}
 
-              {momoPending && (
+              {momoPending && momoPending.status.toLowerCase() === "send_otp" && (
+                <form onSubmit={handleSubmitOtp} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                  <p className="text-xs text-ink-500">{momoPending.message}</p>
+                  <input
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    placeholder="Code from the customer's SMS"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingOtp || !otpCode.trim()}
+                    className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submittingOtp ? "Submitting..." : "Submit code"}
+                  </button>
+                </form>
+              )}
+
+              {momoPending && momoPending.status.toLowerCase() !== "send_otp" && (
                 <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
                   <p className="text-xs text-ink-500">{momoPending.message}</p>
                   <button

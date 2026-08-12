@@ -9,6 +9,7 @@ import com.ratel.rbms.dto.ServiceOrderRequest;
 import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.ServiceOrderStatusRequest;
 import com.ratel.rbms.dto.ServiceOrderUpdateRequest;
+import com.ratel.rbms.dto.SubmitOtpRequest;
 import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.service.ServiceOrderPhotoService;
@@ -107,6 +108,11 @@ public class ServiceOrderController {
     @PostMapping("/verify")
     public ServiceOrderResponse verifyPayment(@Valid @RequestBody VerifyPaymentRequest request) {
         return serviceOrderService.verifyPayment(request.reference());
+    }
+
+    @PostMapping("/submit-mobile-money-otp")
+    public ServiceOrderResponse submitMobileMoneyOtp(@Valid @RequestBody SubmitOtpRequest request) {
+        return serviceOrderService.submitMobileMoneyOtp(request.reference(), request.otp());
     }
 
     @PostMapping("/{id}/mark-paid")

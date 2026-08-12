@@ -241,6 +241,45 @@ public class PaystackService {
     }
 
     /**
+     * Completes a charge that came back `status: "send_otp"` — Paystack's own
+     * docs (POST /charge/submit_otp) confirm this is a real, separate step from
+     * the initial charge and from verifyTransaction: the customer receives an
+     * SMS with a code (not a tap-to-approve prompt) for many Ghana mobile money
+     * charges, and the charge stays stuck forever unless that code is submitted
+     * back here. Same not-a-failure-unless-genuinely-unreachable contract as
+     * chargeMobileMoney — a wrong/expired OTP comes back as a normal
+     * non-"success" status, not a thrown exception.
+     */
+    public ChargeResult submitOtp(String secretKey, String otp, String reference) {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Paystack isn't configured.");
+        }
+
+        Map<String, Object> body = Map.of("otp", otp, "reference", reference);
+
+        ChargeAuthorizationResponse response;
+        try {
+            response = client(secretKey)
+                    .post()
+                    .uri("/charge/submit_otp")
+                    .body(body)
+                    .retrieve()
+                    .body(ChargeAuthorizationResponse.class);
+        } catch (RestClientException e) {
+            log.error("Paystack submitOtp call failed", e);
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to submit that code.");
+        }
+
+        if (response == null || response.data() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to submit that code.");
+        }
+
+        ChargeAuthorizationData data = response.data();
+        boolean success = response.status() && "success".equalsIgnoreCase(data.status());
+        return new ChargeResult(success, data.status(), data.reference());
+    }
+
+    /**
      * HMAC-SHA512 of the raw request body against the platform's own secret
      * key, compared to Paystack's x-paystack-signature header — per
      * Paystack's webhook docs. Must run against the untouched raw body bytes,

@@ -273,6 +273,36 @@ public class SaleService {
         return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
     }
 
+    // Same "customer reads back the SMS code" completion step as
+    // ServiceOrderService's equivalent — see its comment for why this exists.
+    @Transactional
+    public SaleResponse submitMobileMoneyOtp(String reference, String otp) {
+        Sale sale = saleRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(sale.getPaymentStatus())) {
+            return toResponseWithItems(sale);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.ChargeResult result = paystackService.submitOtp(integrations.getPaystackSecretKey(), otp, reference);
+
+        if (result.success()) {
+            sale.setPaymentStatus("PAID");
+            sale = saleRepository.save(sale);
+            activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
+            paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "SUCCESS");
+        } else if ("failed".equalsIgnoreCase(result.status())) {
+            sale.setPaymentStatus("FAILED");
+            sale = saleRepository.save(sale);
+            paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "FAILED");
+        }
+
+        return toResponseWithItems(sale);
+    }
+
     @Transactional
     public SaleResponse verifyPayment(String reference) {
         Sale sale = saleRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
