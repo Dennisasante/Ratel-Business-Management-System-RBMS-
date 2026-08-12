@@ -5,6 +5,9 @@ import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
+import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
+import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
+import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
 import com.ratel.rbms.dto.UpdateUserStatusRequest;
 import com.ratel.rbms.service.PlatformBusinessService;
 import org.springframework.http.ResponseEntity;
@@ -61,6 +64,41 @@ public class PlatformBusinessController {
     @PostMapping("/{businessId}/users/{userId}/reset-password")
     public AdminResetPasswordResponse resetUserPassword(@PathVariable UUID businessId, @PathVariable UUID userId) {
         return platformBusinessService.resetUserPassword(currentAdminId(), businessId, userId);
+    }
+
+    // Data-cleanup panel — list + delete individual test records a staff
+    // member created on a real business's account.
+    @GetMapping("/{id}/service-orders")
+    public List<PlatformServiceOrderSummaryResponse> serviceOrders(@PathVariable UUID id) {
+        return platformBusinessService.listServiceOrders(id);
+    }
+
+    @DeleteMapping("/{businessId}/service-orders/{orderId}")
+    public ResponseEntity<Void> deleteServiceOrder(@PathVariable UUID businessId, @PathVariable UUID orderId) {
+        platformBusinessService.deleteServiceOrder(currentAdminId(), businessId, orderId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/sales")
+    public List<PlatformSaleSummaryResponse> sales(@PathVariable UUID id) {
+        return platformBusinessService.listSales(id);
+    }
+
+    @DeleteMapping("/{businessId}/sales/{saleId}")
+    public ResponseEntity<Void> deleteSale(@PathVariable UUID businessId, @PathVariable UUID saleId) {
+        platformBusinessService.deleteSale(currentAdminId(), businessId, saleId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/customers")
+    public List<PlatformCustomerSummaryResponse> customers(@PathVariable UUID id) {
+        return platformBusinessService.listCustomers(id);
+    }
+
+    @DeleteMapping("/{businessId}/customers/{customerId}")
+    public ResponseEntity<Void> deleteCustomer(@PathVariable UUID businessId, @PathVariable UUID customerId) {
+        platformBusinessService.deleteCustomer(currentAdminId(), businessId, customerId);
+        return ResponseEntity.noContent().build();
     }
 
     private UUID currentAdminId() {

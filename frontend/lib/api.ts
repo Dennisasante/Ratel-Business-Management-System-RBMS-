@@ -620,6 +620,34 @@ export interface PaymentTransaction {
   createdAt: string;
 }
 
+// Lightweight rows for the Super Admin per-business data-cleanup panel.
+export interface PlatformServiceOrderSummary {
+  id: string;
+  orderNumber: number;
+  customerName: string;
+  price: number;
+  status: string;
+  paymentStatus: string;
+  receivedAt: string;
+}
+
+export interface PlatformSaleSummary {
+  id: string;
+  saleNumber: number;
+  customerName: string;
+  totalAmount: number;
+  paymentStatus: string;
+  createdAt: string;
+}
+
+export interface PlatformCustomerSummary {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  createdAt: string;
+}
+
 export interface MobileMoneyChargeResponse {
   reference: string;
   status: string;
@@ -1560,6 +1588,24 @@ export const api = {
 
   getPlatformBusinessPaymentTransactions: (token: string, id: string) =>
     request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions`, {}, token),
+
+  getPlatformBusinessServiceOrders: (token: string, id: string) =>
+    request<PlatformServiceOrderSummary[]>(`/api/platform/businesses/${id}/service-orders`, {}, token),
+
+  deletePlatformServiceOrder: (token: string, businessId: string, orderId: string) =>
+    request<void>(`/api/platform/businesses/${businessId}/service-orders/${orderId}`, { method: "DELETE" }, token),
+
+  getPlatformBusinessSales: (token: string, id: string) =>
+    request<PlatformSaleSummary[]>(`/api/platform/businesses/${id}/sales`, {}, token),
+
+  deletePlatformSale: (token: string, businessId: string, saleId: string) =>
+    request<void>(`/api/platform/businesses/${businessId}/sales/${saleId}`, { method: "DELETE" }, token),
+
+  getPlatformBusinessCustomers: (token: string, id: string) =>
+    request<PlatformCustomerSummary[]>(`/api/platform/businesses/${id}/customers`, {}, token),
+
+  deletePlatformCustomer: (token: string, businessId: string, customerId: string) =>
+    request<void>(`/api/platform/businesses/${businessId}/customers/${customerId}`, { method: "DELETE" }, token),
 
   setPlatformBusinessStatus: (token: string, id: string, active: boolean) =>
     request<PlatformBusinessSummary>(

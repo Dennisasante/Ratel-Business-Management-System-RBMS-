@@ -15,6 +15,9 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, UUID
 
     Optional<ServiceOrder> findByIdAndBusinessId(UUID id, UUID businessId);
 
+    // Backs the Super Admin per-business data-cleanup list.
+    List<ServiceOrder> findAllByBusinessIdOrderByReceivedAtDesc(UUID businessId);
+
     Optional<ServiceOrder> findByPaystackReferenceAndBusinessId(String paystackReference, UUID businessId);
 
     // Backs the list page's type/status filter chips. Every param is optional —

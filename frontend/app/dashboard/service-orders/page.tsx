@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, CheckCircle2, Ban, ArrowLeftCircle } from "lucide-react";
+import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, CheckCircle2, Move, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -57,20 +57,16 @@ const NEXT_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
   COMPLETED: "Mark picked up",
 };
 
-// Mirrors ServiceOrderService.ALLOWED_TRANSITIONS' one-step-back edges — lets
-// a mistaken status change be corrected without allowing an arbitrary jump.
-const PREVIOUS_STATUS: Partial<Record<ServiceOrderStatus, ServiceOrderStatus>> = {
-  IN_PROGRESS: "RECEIVED",
-  COMPLETED: "IN_PROGRESS",
-  PICKED_UP: "COMPLETED",
-  CANCELLED: "RECEIVED",
-};
-
-const PREVIOUS_STATUS_LABEL: Partial<Record<ServiceOrderStatus, string>> = {
-  IN_PROGRESS: "Move back to received",
-  COMPLETED: "Move back to in progress",
-  PICKED_UP: "Move back to completed",
-  CANCELLED: "Reopen",
+// Mirrors ServiceOrderService.ALLOWED_TRANSITIONS exactly — every destination
+// a "Move to stage" submenu can offer, since the backend rejects anything
+// outside this graph (no skipping a stage in either direction). Keep in sync
+// if the backend graph ever changes.
+const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
+  RECEIVED: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["RECEIVED", "COMPLETED", "CANCELLED"],
+  COMPLETED: ["IN_PROGRESS", "PICKED_UP", "CANCELLED"],
+  PICKED_UP: ["COMPLETED"],
+  CANCELLED: ["RECEIVED"],
 };
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -175,12 +171,6 @@ export default function ServiceOrdersPage() {
     await handleSetStatus(order, next);
   }
 
-  async function handleMoveBack(order: ServiceOrder) {
-    const previous = PREVIOUS_STATUS[order.status];
-    if (!session || !previous) return;
-    await handleSetStatus(order, previous);
-  }
-
   async function handleSetStatus(order: ServiceOrder, status: ServiceOrderStatus) {
     if (!session) return;
     const key = `${order.id}:status`;
@@ -191,21 +181,6 @@ export default function ServiceOrdersPage() {
       await loadOrders();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't update this order's status.");
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleCancel(order: ServiceOrder) {
-    if (!session) return;
-    const key = `${order.id}:cancel`;
-    setActionError(null);
-    setPendingAction(key);
-    try {
-      await api.updateServiceOrderStatus(session.token, order.id, "CANCELLED");
-      await loadOrders();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Couldn't cancel this order.");
     } finally {
       setPendingAction(null);
     }
@@ -326,8 +301,9 @@ export default function ServiceOrdersPage() {
             <TBody>
               {orders.map((o) => {
                 const nextStatus = NEXT_STATUS[o.status];
-                const previousStatus = PREVIOUS_STATUS[o.status];
-                const canCancel = o.status !== "PICKED_UP" && o.status !== "CANCELLED";
+                // Everything the backend allows from here, minus whatever's
+                // already the one-click "Mark X" button above.
+                const moveOptions = ALLOWED_TRANSITIONS[o.status].filter((s) => s !== nextStatus);
                 const canResend = o.status === "COMPLETED" || o.status === "PICKED_UP";
                 return (
                   <Tr key={o.id}>
@@ -402,16 +378,6 @@ export default function ServiceOrdersPage() {
                               Message on WhatsApp
                             </a>
                           )}
-                          {previousStatus && (
-                            <button
-                              onClick={() => handleMoveBack(o)}
-                              disabled={pendingAction === `${o.id}:status`}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <ArrowLeftCircle size={14} />
-                              {pendingAction === `${o.id}:status` ? "Updating..." : PREVIOUS_STATUS_LABEL[o.status]}
-                            </button>
-                          )}
                           {canResend && (
                             <button
                               onClick={() => handleResendEmail(o)}
@@ -432,16 +398,11 @@ export default function ServiceOrdersPage() {
                               {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
                             </button>
                           )}
-                          {canCancel && (
-                            <button
-                              onClick={() => handleCancel(o)}
-                              disabled={pendingAction === `${o.id}:cancel`}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-danger hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Ban size={14} />
-                              {pendingAction === `${o.id}:cancel` ? "Cancelling..." : "Cancel"}
-                            </button>
-                          )}
+                          <MoveToStageSubmenu
+                            options={moveOptions}
+                            pending={pendingAction === `${o.id}:status`}
+                            onSelect={(status) => handleSetStatus(o, status)}
+                          />
                         </ActionsMenu>
                       </div>
                     </Td>
@@ -510,6 +471,59 @@ function ActionsMenu({ children }: { children: React.ReactNode }) {
           className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-border bg-surface py-1 text-left shadow-card"
         >
           {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Jira-style "Move work item ▸" pattern: an accordion entry inside the
+// overflow menu rather than a hover flyout, since this menu is click-driven
+// (works the same on touch). Unmounts (and so resets its own expanded state)
+// whenever the parent ActionsMenu closes, since it only exists in `children`.
+function MoveToStageSubmenu({
+  options,
+  pending,
+  onSelect,
+}: {
+  options: ServiceOrderStatus[];
+  pending: boolean;
+  onSelect: (status: ServiceOrderStatus) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (options.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas"
+      >
+        <span className="flex items-center gap-2">
+          <Move size={14} />
+          Move to stage
+        </span>
+        <ChevronRight size={14} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="border-t border-border bg-canvas/50 py-1">
+          {options.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onSelect(s)}
+              disabled={pending}
+              className={`flex w-full items-center gap-2 py-1.5 pl-8 pr-3 text-left text-sm font-medium hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50 ${
+                s === "CANCELLED" ? "text-danger" : "text-ink-700"
+              }`}
+            >
+              {STATUS_LABELS[s]}
+            </button>
+          ))}
         </div>
       )}
     </div>

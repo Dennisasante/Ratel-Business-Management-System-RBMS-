@@ -7,6 +7,7 @@ import com.ratel.rbms.dto.SaleItemRequest;
 import com.ratel.rbms.dto.SaleItemResponse;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
+import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.PaymentTransaction;
@@ -21,6 +22,7 @@ import com.ratel.rbms.entity.enums.SaleItemType;
 import com.ratel.rbms.dto.StockAdjustmentRequest;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
+import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.SaleItemRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
@@ -47,6 +49,7 @@ public class SaleService {
     private final CustomerService customerService;
     private final ActivityLogService activityLogService;
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
+    private final BusinessRepository businessRepository;
     private final PaystackService paystackService;
     private final PaymentTransactionService paymentTransactionService;
 
@@ -59,6 +62,7 @@ public class SaleService {
             CustomerService customerService,
             ActivityLogService activityLogService,
             BusinessIntegrationsRepository businessIntegrationsRepository,
+            BusinessRepository businessRepository,
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService
     ) {
@@ -70,6 +74,7 @@ public class SaleService {
         this.customerService = customerService;
         this.activityLogService = activityLogService;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
+        this.businessRepository = businessRepository;
         this.paystackService = paystackService;
         this.paymentTransactionService = paymentTransactionService;
     }
@@ -206,9 +211,7 @@ public class SaleService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already paid.");
         }
         Customer customer = customerService.getOrNull(sale.getCustomerId());
-        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before starting Paystack checkout.");
-        }
+        String customerEmail = resolveCustomerEmail(customer, sale.getBusinessId(), sale.getId());
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
@@ -220,7 +223,7 @@ public class SaleService {
         String reference = "SALE-" + sale.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         PaystackService.InitResult init = paystackService.initializeTransaction(
-                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, reference,
+                integrations.getPaystackSecretKey(), customerEmail, amountMinorUnits, reference,
                 Map.of("saleId", sale.getId().toString())
         );
 
@@ -239,9 +242,7 @@ public class SaleService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already paid.");
         }
         Customer customer = customerService.getOrNull(sale.getCustomerId());
-        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before charging mobile money.");
-        }
+        String customerEmail = resolveCustomerEmail(customer, sale.getBusinessId(), sale.getId());
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
@@ -253,12 +254,13 @@ public class SaleService {
         String reference = "SALE-MOMO-" + sale.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         PaystackService.MobileMoneyChargeResult result = paystackService.chargeMobileMoney(
-                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, req.phone(), req.provider(), reference
+                integrations.getPaystackSecretKey(), customerEmail, amountMinorUnits, req.phone(), req.provider(), reference
         );
 
         sale.setPaystackReference(result.reference());
         if (result.success()) {
             sale.setPaymentStatus("PAID");
+            activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
         }
         saleRepository.save(sale);
 
@@ -323,6 +325,20 @@ public class SaleService {
     private Sale getOwned(UUID id) {
         return saleRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Sale not found."));
+    }
+
+    // Same placeholder-email fallback as ServiceOrderService — Paystack's
+    // charge/checkout API requires an email even for a walk-in paying by
+    // phone number alone.
+    private String resolveCustomerEmail(Customer customer, UUID businessId, UUID saleId) {
+        if (customer != null && customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            return customer.getEmail();
+        }
+        Business business = businessRepository.findById(businessId).orElse(null);
+        String slug = business != null && business.getSlug() != null && !business.getSlug().isBlank()
+                ? business.getSlug()
+                : businessId.toString().substring(0, 8);
+        return "sale-" + saleId.toString().substring(0, 8) + "@" + slug + ".ratelsystems.tech";
     }
 
     private SaleResponse toResponseWithItems(Sale sale) {

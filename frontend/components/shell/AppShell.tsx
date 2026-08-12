@@ -7,11 +7,26 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import ReadOnlyBanner from "./ReadOnlyBanner";
 
+// Pages built around a wide, many-column table (Service Orders being the
+// worst offender — 8 columns including an Actions cell) get more room than
+// the standard reading-width container; form-centric pages stay narrow and
+// centered, which reads better for those.
+const WIDE_PATH_PREFIXES = [
+  "/dashboard/service-orders",
+  "/dashboard/sales",
+  "/dashboard/purchase-orders",
+  "/dashboard/payments",
+  "/dashboard/customers",
+  "/dashboard/inventory",
+  "/dashboard/bookings",
+];
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { session } = useAuth();
+  const isWide = WIDE_PATH_PREFIXES.some((prefix) => pathname?.startsWith(prefix));
 
   // Close the mobile drawer automatically whenever the route changes.
   useEffect(() => {
@@ -51,7 +66,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <Topbar onMenuClick={() => setDrawerOpen(true)} />
         <ReadOnlyBanner />
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
+          <div className={`mx-auto ${isWide ? "max-w-screen-2xl" : "max-w-6xl"}`}>{children}</div>
         </main>
       </div>
     </div>

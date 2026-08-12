@@ -304,9 +304,7 @@ public class ServiceOrderService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already paid.");
         }
         Customer customer = customerService.getOrNull(order.getCustomerId());
-        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before starting Paystack checkout.");
-        }
+        String customerEmail = resolveCustomerEmail(customer, order.getBusinessId(), order.getId());
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
@@ -319,7 +317,7 @@ public class ServiceOrderService {
 
         PaystackService.InitResult init = paystackService.initializeTransaction(
                 integrations.getPaystackSecretKey(),
-                customer.getEmail(),
+                customerEmail,
                 amountMinorUnits,
                 reference,
                 Map.of("serviceOrderId", order.getId().toString())
@@ -342,9 +340,7 @@ public class ServiceOrderService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already paid.");
         }
         Customer customer = customerService.getOrNull(order.getCustomerId());
-        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Add a customer email before charging mobile money.");
-        }
+        String customerEmail = resolveCustomerEmail(customer, order.getBusinessId(), order.getId());
 
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
@@ -356,12 +352,13 @@ public class ServiceOrderService {
         String reference = "SVCORDER-MOMO-" + order.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         PaystackService.MobileMoneyChargeResult result = paystackService.chargeMobileMoney(
-                integrations.getPaystackSecretKey(), customer.getEmail(), amountMinorUnits, req.phone(), req.provider(), reference
+                integrations.getPaystackSecretKey(), customerEmail, amountMinorUnits, req.phone(), req.provider(), reference
         );
 
         order.setPaystackReference(result.reference());
         if (result.success()) {
             order.setPaymentStatus("PAID");
+            activityLogService.log("Charged mobile money for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
         }
         serviceOrderRepository.save(order);
 
@@ -436,6 +433,21 @@ public class ServiceOrderService {
 
         order.setReadyEmailSentAt(Instant.now());
         serviceOrderRepository.save(order);
+    }
+
+    // Paystack's charge/checkout API requires a customer email even though
+    // walk-ins are routinely paid by phone number alone — this synthesizes a
+    // stable, invisible-to-the-customer placeholder so online payment never
+    // blocks on "add an email first." A real email on file always wins.
+    private String resolveCustomerEmail(Customer customer, UUID businessId, UUID orderId) {
+        if (customer != null && customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            return customer.getEmail();
+        }
+        Business business = businessRepository.findById(businessId).orElse(null);
+        String slug = business != null && business.getSlug() != null && !business.getSlug().isBlank()
+                ? business.getSlug()
+                : businessId.toString().substring(0, 8);
+        return "order-" + orderId.toString().substring(0, 8) + "@" + slug + ".ratelsystems.tech";
     }
 
     private ServiceOrder getOwned(UUID id) {

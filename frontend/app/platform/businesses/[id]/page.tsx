@@ -5,7 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
-import { api, ApiError, PaymentTransaction, PlatformBusinessDetail, SubscriptionPlan } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  PaymentTransaction,
+  PlatformBusinessDetail,
+  PlatformCustomerSummary,
+  PlatformSaleSummary,
+  PlatformServiceOrderSummary,
+  SubscriptionPlan,
+} from "@/lib/api";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PageHeader from "@/components/ui/PageHeader";
@@ -59,6 +68,14 @@ export default function PlatformBusinessDetailPage() {
 
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
 
+  const [cleanupTab, setCleanupTab] = useState<"orders" | "sales" | "customers">("orders");
+  const [cleanupOrders, setCleanupOrders] = useState<PlatformServiceOrderSummary[]>([]);
+  const [cleanupSales, setCleanupSales] = useState<PlatformSaleSummary[]>([]);
+  const [cleanupCustomers, setCleanupCustomers] = useState<PlatformCustomerSummary[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "order" | "sale" | "customer"; id: string; label: string } | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [editingBilling, setEditingBilling] = useState(false);
   const [planId, setPlanId] = useState<string>("");
@@ -85,6 +102,43 @@ export default function PlatformBusinessDetailPage() {
     if (!session || !params.id) return;
     api.getPlatformBusinessPaymentTransactions(session.token, params.id).then(setTransactions);
   }, [session, params.id]);
+
+  const loadCleanupLists = useCallback(async () => {
+    if (!session || !params.id) return;
+    const [orders, sales, customers] = await Promise.all([
+      api.getPlatformBusinessServiceOrders(session.token, params.id),
+      api.getPlatformBusinessSales(session.token, params.id),
+      api.getPlatformBusinessCustomers(session.token, params.id),
+    ]);
+    setCleanupOrders(orders);
+    setCleanupSales(sales);
+    setCleanupCustomers(customers);
+  }, [session, params.id]);
+
+  useEffect(() => {
+    loadCleanupLists();
+  }, [loadCleanupLists]);
+
+  async function handleConfirmDelete() {
+    if (!session || !business || !confirmDelete) return;
+    setDeletingRecord(true);
+    setCleanupError(null);
+    try {
+      if (confirmDelete.type === "order") {
+        await api.deletePlatformServiceOrder(session.token, business.id, confirmDelete.id);
+      } else if (confirmDelete.type === "sale") {
+        await api.deletePlatformSale(session.token, business.id, confirmDelete.id);
+      } else {
+        await api.deletePlatformCustomer(session.token, business.id, confirmDelete.id);
+      }
+      setConfirmDelete(null);
+      await loadCleanupLists();
+    } catch (err) {
+      setCleanupError(err instanceof ApiError ? err.message : "Couldn't delete this record.");
+    } finally {
+      setDeletingRecord(false);
+    }
+  }
 
   function startEditingBilling() {
     if (!business) return;
@@ -444,9 +498,161 @@ export default function PlatformBusinessDetailPage() {
                 </ul>
               </Card>
             </div>
+
+            <Card className="p-5">
+              <h2 className="text-base font-semibold text-ink-900">Data cleanup</h2>
+              <p className="text-xs text-ink-500">
+                Remove an individual test record a staff member created — each removal is logged to this
+                business&apos;s own Activity feed as well as the platform audit log.
+              </p>
+
+              <div className="mt-4 flex gap-1 rounded-lg bg-canvas p-1">
+                {(["orders", "sales", "customers"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setCleanupTab(tab)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition ${
+                      cleanupTab === tab ? "bg-surface text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"
+                    }`}
+                  >
+                    {tab === "orders" ? `Service orders (${cleanupOrders.length})` : tab === "sales" ? `Sales (${cleanupSales.length})` : `Customers (${cleanupCustomers.length})`}
+                  </button>
+                ))}
+              </div>
+
+              {cleanupError && <p className="mt-3 text-sm text-danger">{cleanupError}</p>}
+
+              <div className="mt-3 max-h-96 overflow-y-auto">
+                {cleanupTab === "orders" && (
+                  cleanupOrders.length === 0 ? (
+                    <p className="py-4 text-sm text-ink-500">No service orders.</p>
+                  ) : (
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>Order</Th>
+                          <Th>Customer</Th>
+                          <Th>Status</Th>
+                          <Th className="text-right">Price</Th>
+                          <Th></Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {cleanupOrders.map((o) => (
+                          <Tr key={o.id}>
+                            <Td className="tabular font-medium">#{o.orderNumber}</Td>
+                            <Td className="text-ink-500">{o.customerName}</Td>
+                            <Td className="text-ink-500">
+                              {o.status} · {o.paymentStatus}
+                            </Td>
+                            <Td className="tabular text-right">GH₵{o.price.toFixed(2)}</Td>
+                            <Td className="text-right">
+                              <button
+                                onClick={() => setConfirmDelete({ type: "order", id: o.id, label: `service order #${o.orderNumber}` })}
+                                className="text-xs font-medium text-danger hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                )}
+
+                {cleanupTab === "sales" && (
+                  cleanupSales.length === 0 ? (
+                    <p className="py-4 text-sm text-ink-500">No sales.</p>
+                  ) : (
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>Sale</Th>
+                          <Th>Customer</Th>
+                          <Th>Payment</Th>
+                          <Th className="text-right">Total</Th>
+                          <Th></Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {cleanupSales.map((s) => (
+                          <Tr key={s.id}>
+                            <Td className="tabular font-medium">#{s.saleNumber}</Td>
+                            <Td className="text-ink-500">{s.customerName}</Td>
+                            <Td className="text-ink-500">{s.paymentStatus}</Td>
+                            <Td className="tabular text-right">GH₵{s.totalAmount.toFixed(2)}</Td>
+                            <Td className="text-right">
+                              <button
+                                onClick={() => setConfirmDelete({ type: "sale", id: s.id, label: `sale #${s.saleNumber}` })}
+                                className="text-xs font-medium text-danger hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                )}
+
+                {cleanupTab === "customers" && (
+                  cleanupCustomers.length === 0 ? (
+                    <p className="py-4 text-sm text-ink-500">No customers.</p>
+                  ) : (
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>Name</Th>
+                          <Th>Phone</Th>
+                          <Th>Email</Th>
+                          <Th></Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {cleanupCustomers.map((c) => (
+                          <Tr key={c.id}>
+                            <Td className="font-medium">{c.fullName}</Td>
+                            <Td className="text-ink-500">{c.phone}</Td>
+                            <Td className="text-ink-500">{c.email ?? "—"}</Td>
+                            <Td className="text-right">
+                              <button
+                                onClick={() => setConfirmDelete({ type: "customer", id: c.id, label: `customer "${c.fullName}"` })}
+                                className="text-xs font-medium text-danger hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                )}
+              </div>
+            </Card>
           </>
         )}
       </div>
+
+      {confirmDelete && (
+        <Modal title={`Delete ${confirmDelete.label}?`} onClose={() => setConfirmDelete(null)}>
+          <p className="text-sm text-ink-700">
+            {confirmDelete.type === "customer"
+              ? "Orders, sales, and bookings that reference this customer keep existing — they'll just show as \"Walk-in\" going forward."
+              : "This also removes its ledger entries from the Payments page. This can't be undone."}
+          </p>
+          <div className="mt-4 flex gap-2">
+            <Button variant="danger" onClick={handleConfirmDelete} disabled={deletingRecord} className="flex-1">
+              {deletingRecord ? "Deleting..." : "Delete"}
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmDelete(null)} disabled={deletingRecord} className="flex-1">
+              Cancel
+            </Button>
+          </div>
+        </Modal>
+      )}
 
       {showDelete && business && (
         <Modal title={`Delete ${business.name}?`} onClose={() => setShowDelete(false)}>

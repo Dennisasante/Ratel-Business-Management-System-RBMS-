@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShoppingCart, Plus, X, Receipt, Search } from "lucide-react";
+import { ShoppingCart, Plus, X, Receipt, Search, CheckCircle2, Smartphone } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
   ApiError,
   Customer,
   CustomerPayload,
+  MobileMoneyProvider,
   PaymentMethod,
   Product,
   ProductCategory,
@@ -21,6 +22,7 @@ import {
 import Modal from "@/components/Modal";
 import CustomerForm from "@/components/CustomerForm";
 import QuickServiceCatalogForm from "@/components/QuickServiceCatalogForm";
+import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -28,6 +30,12 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+
+const MOMO_PROVIDERS: { value: MobileMoneyProvider; label: string }[] = [
+  { value: "mtn", label: "MTN Mobile Money" },
+  { value: "atl", label: "AirtelTigo Money" },
+  { value: "vod", label: "Telecel Cash (Vodafone)" },
+];
 
 interface ProductCartLine {
   kind: "product";
@@ -91,15 +99,30 @@ export default function SalesPage() {
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
 
+  // A CARD/MOBILE_MONEY sale that's been created but not yet collected —
+  // the checkout panel stays inline here instead of sending the cashier to
+  // the receipt page, so the whole till interaction stays on one screen.
+  const [pendingSale, setPendingSale] = useState<Sale | null>(null);
+  const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [showMomoForm, setShowMomoForm] = useState(false);
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoProvider, setMomoProvider] = useState<MobileMoneyProvider>("mtn");
+  const [chargingMomo, setChargingMomo] = useState(false);
+  const [momoPending, setMomoPending] = useState<{ reference: string; message: string } | null>(null);
+  const [verifyingMomo, setVerifyingMomo] = useState(false);
+
   const loadAll = useCallback(async () => {
     if (!session) return;
-    const [p, cat, svc, svcTypes, c, s] = await Promise.all([
+    const [p, cat, svc, svcTypes, c, s, gw] = await Promise.all([
       api.listProducts(session.token),
       api.listProductCategories(session.token),
       api.listServiceCatalog(session.token, true),
       api.listServiceTypes(session.token),
       api.listCustomers(session.token),
       api.listSales(session.token),
+      api.getPaymentGatewayStatus(session.token),
     ]);
     setProducts(p);
     setCategories(cat);
@@ -107,6 +130,7 @@ export default function SalesPage() {
     setServiceTypes(svcTypes);
     setCustomers(c);
     setSales(s);
+    setPaystackConfigured(gw.paystackConfigured);
   }, [session]);
 
   const visibleProducts = products.filter((p) => {
@@ -195,7 +219,7 @@ export default function SalesPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await api.createSale(session.token, {
+      const sale = await api.createSale(session.token, {
         customerId: customerId || undefined,
         paymentMethod,
         items: cart.map((l) =>
@@ -206,11 +230,81 @@ export default function SalesPage() {
       });
       setCart([]);
       setCustomerId("");
+      if (sale.paymentStatus !== "PAID") {
+        // Card/mobile money — stay right here to collect it instead of
+        // sending the cashier off to the receipt page.
+        setPendingSale(sale);
+      }
       await loadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function closePendingSale() {
+    setPendingSale(null);
+    setPayError(null);
+    setShowMomoForm(false);
+    setMomoPhone("");
+    setMomoPending(null);
+  }
+
+  async function handleMarkPendingSalePaid() {
+    if (!session || !pendingSale) return;
+    setMarkingPaid(true);
+    setPayError(null);
+    try {
+      await api.markSalePaid(session.token, pendingSale.id);
+      closePendingSale();
+      await loadAll();
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't mark this sale as paid.");
+    } finally {
+      setMarkingPaid(false);
+    }
+  }
+
+  async function handleChargePendingSaleMobileMoney(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session || !pendingSale || !momoPhone.trim()) return;
+    setChargingMomo(true);
+    setPayError(null);
+    try {
+      const result = await api.chargeSaleMobileMoney(session.token, pendingSale.id, momoPhone.trim(), momoProvider);
+      if (result.status.toLowerCase() === "success") {
+        closePendingSale();
+        await loadAll();
+      } else {
+        setMomoPending({
+          reference: result.reference,
+          message: result.displayText || "Ask the customer to check their phone and approve the payment.",
+        });
+      }
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't start the mobile money charge.");
+    } finally {
+      setChargingMomo(false);
+    }
+  }
+
+  async function handleVerifyPendingSaleMobileMoney() {
+    if (!session || !momoPending) return;
+    setVerifyingMomo(true);
+    setPayError(null);
+    try {
+      const updated = await api.verifySalePayment(session.token, momoPending.reference);
+      if (updated.paymentStatus === "PAID") {
+        closePendingSale();
+        await loadAll();
+      } else {
+        setPayError("Not confirmed yet — ask the customer to approve it on their phone, then try again.");
+      }
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't verify this payment.");
+    } finally {
+      setVerifyingMomo(false);
     }
   }
 
@@ -397,6 +491,119 @@ export default function SalesPage() {
 
           {/* Cart / checkout */}
           <Card className="p-5">
+            {pendingSale ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-ink-900">Collect payment</h2>
+                  <button
+                    type="button"
+                    onClick={closePendingSale}
+                    className="text-xs font-medium text-ink-500 hover:text-ink-900"
+                  >
+                    Do this later
+                  </button>
+                </div>
+                <p className="mt-1 text-sm text-ink-500">
+                  Sale #{pendingSale.saleNumber} · GH₵{pendingSale.totalAmount.toFixed(2)} ·{" "}
+                  {pendingSale.paymentMethod.replace("_", " ")}
+                </p>
+
+                <div className="mt-4 flex flex-col gap-2">
+                  {payError && <p className="text-xs text-danger">{payError}</p>}
+
+                  {paystackConfigured && !momoPending && (
+                    <PaystackCheckoutButton
+                      planId={pendingSale.id}
+                      buttonLabel={`Pay GH₵${pendingSale.totalAmount.toFixed(2)} with Paystack`}
+                      onStartCheckout={async (id) => {
+                        if (!session) throw new Error("Not signed in.");
+                        return api.startSalePayment(session.token, id);
+                      }}
+                      onVerify={async (reference) => {
+                        if (!session) return false;
+                        try {
+                          const updated = await api.verifySalePayment(session.token, reference);
+                          if (updated.paymentStatus === "PAID") {
+                            closePendingSale();
+                            await loadAll();
+                            return true;
+                          }
+                          return false;
+                        } catch (err) {
+                          setPayError(err instanceof ApiError ? err.message : "Couldn't verify this payment.");
+                          return false;
+                        }
+                      }}
+                      onError={(msg) => setPayError(msg)}
+                      className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  )}
+
+                  <button
+                    onClick={handleMarkPendingSalePaid}
+                    disabled={markingPaid}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={15} />
+                    {markingPaid ? "Marking..." : "Mark as paid"}
+                  </button>
+
+                  {paystackConfigured && !momoPending && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMomoForm((s) => !s)}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-canvas"
+                    >
+                      <Smartphone size={15} />
+                      {showMomoForm ? "Cancel mobile money charge" : "Charge mobile money"}
+                    </button>
+                  )}
+
+                  {showMomoForm && !momoPending && (
+                    <form onSubmit={handleChargePendingSaleMobileMoney} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                      <select
+                        value={momoProvider}
+                        onChange={(e) => setMomoProvider(e.target.value as MobileMoneyProvider)}
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      >
+                        {MOMO_PROVIDERS.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={momoPhone}
+                        onChange={(e) => setMomoPhone(e.target.value)}
+                        placeholder="Customer's mobile money number"
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      />
+                      <button
+                        type="submit"
+                        disabled={chargingMomo || !momoPhone.trim()}
+                        className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {chargingMomo ? "Sending prompt..." : `Send GH₵${pendingSale.totalAmount.toFixed(2)} prompt`}
+                      </button>
+                    </form>
+                  )}
+
+                  {momoPending && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                      <p className="text-xs text-ink-500">{momoPending.message}</p>
+                      <button
+                        onClick={handleVerifyPendingSaleMobileMoney}
+                        disabled={verifyingMomo}
+                        className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {verifyingMomo ? "Checking..." : "They've approved it — verify now"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
             <h2 className="text-base font-semibold text-ink-900">Cart</h2>
 
             {cart.length === 0 ? (
@@ -513,6 +720,8 @@ export default function SalesPage() {
             <Button onClick={completeSale} disabled={cart.length === 0 || submitting} className="mt-4 w-full">
               {submitting ? "Completing sale..." : "Complete sale"}
             </Button>
+              </>
+            )}
           </Card>
         </div>
       )}

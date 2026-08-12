@@ -14,6 +14,10 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     Optional<PaymentTransaction> findByGatewayReferenceAndBusinessId(String gatewayReference, UUID businessId);
 
+    // Used when Super Admin deletes the source record (a test service order/sale)
+    // so its ledger entries don't become orphaned rows pointing at nothing.
+    void deleteBySourceTypeAndSourceId(PaymentTransaction.SourceType sourceType, UUID sourceId);
+
     // Backs both the owner-facing Payments page and the Super Admin per-business
     // view — every param is optional, same convention as ServiceOrderRepository.search.
     // Each JPQL occurrence of a named parameter compiles to its OWN separate `?`

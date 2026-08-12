@@ -5,11 +5,22 @@ import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
+import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
+import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
+import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
 import com.ratel.rbms.dto.UserResponse;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
+import com.ratel.rbms.entity.Customer;
+import com.ratel.rbms.entity.PaymentTransaction;
+import com.ratel.rbms.entity.Product;
+import com.ratel.rbms.entity.Sale;
+import com.ratel.rbms.entity.SaleItem;
+import com.ratel.rbms.entity.ServiceOrder;
+import com.ratel.rbms.entity.StockMovement;
 import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.entity.User;
+import com.ratel.rbms.entity.enums.MovementType;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
@@ -19,17 +30,22 @@ import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.EcommerceOrderRepository;
 import com.ratel.rbms.repository.ExpenseRepository;
+import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.ProductRepository;
+import com.ratel.rbms.repository.SaleItemRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.StockMovementRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +72,10 @@ public class PlatformBusinessService {
     private final PasswordEncoder passwordEncoder;
     private final PlatformAuditLogService auditLogService;
     private final PaymentTransactionService paymentTransactionService;
+    private final PaymentTransactionRepository paymentTransactionRepository;
+    private final SaleItemRepository saleItemRepository;
+    private final StockMovementRepository stockMovementRepository;
+    private final ActivityLogService activityLogService;
 
     public PlatformBusinessService(
             BusinessRepository businessRepository,
@@ -72,7 +92,11 @@ public class PlatformBusinessService {
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PasswordEncoder passwordEncoder,
             PlatformAuditLogService auditLogService,
-            PaymentTransactionService paymentTransactionService
+            PaymentTransactionService paymentTransactionService,
+            PaymentTransactionRepository paymentTransactionRepository,
+            SaleItemRepository saleItemRepository,
+            StockMovementRepository stockMovementRepository,
+            ActivityLogService activityLogService
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -89,6 +113,10 @@ public class PlatformBusinessService {
         this.passwordEncoder = passwordEncoder;
         this.auditLogService = auditLogService;
         this.paymentTransactionService = paymentTransactionService;
+        this.paymentTransactionRepository = paymentTransactionRepository;
+        this.saleItemRepository = saleItemRepository;
+        this.stockMovementRepository = stockMovementRepository;
+        this.activityLogService = activityLogService;
     }
 
     // Full payment-event visibility for a single business — "so I'm never
@@ -98,6 +126,129 @@ public class PlatformBusinessService {
         businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
         return paymentTransactionService.search(businessId, null, null, null, null);
+    }
+
+    // Read-only listings backing the Super Admin data-cleanup panel — "remove
+    // whatever test stuff a staff member created on a real account."
+    public List<PlatformServiceOrderSummaryResponse> listServiceOrders(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        List<ServiceOrder> orders = serviceOrderRepository.findAllByBusinessIdOrderByReceivedAtDesc(businessId);
+        Map<UUID, String> customerNames = customerNamesFor(businessId);
+        return orders.stream()
+                .map(o -> new PlatformServiceOrderSummaryResponse(
+                        o.getId(), o.getOrderNumber(),
+                        o.getCustomerId() != null ? customerNames.getOrDefault(o.getCustomerId(), "Unknown") : "Walk-in",
+                        o.getPrice(), o.getStatus().name(), o.getPaymentStatus(), o.getReceivedAt()
+                ))
+                .toList();
+    }
+
+    public List<PlatformSaleSummaryResponse> listSales(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        List<Sale> sales = saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
+        Map<UUID, String> customerNames = customerNamesFor(businessId);
+        return sales.stream()
+                .map(s -> new PlatformSaleSummaryResponse(
+                        s.getId(), s.getSaleNumber(),
+                        s.getCustomerId() != null ? customerNames.getOrDefault(s.getCustomerId(), "Unknown") : "Walk-in",
+                        s.getTotalAmount(), s.getPaymentStatus(), s.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    public List<PlatformCustomerSummaryResponse> listCustomers(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId).stream()
+                .map(c -> new PlatformCustomerSummaryResponse(c.getId(), c.getFullName(), c.getPhone(), c.getEmail(), c.getCreatedAt()))
+                .toList();
+    }
+
+    private Map<UUID, String> customerNamesFor(UUID businessId) {
+        Map<UUID, String> names = new HashMap<>();
+        for (Customer c : customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId)) {
+            names.put(c.getId(), c.getFullName());
+        }
+        return names;
+    }
+
+    // Deletes a single test record a staff member created, for cleanup on a
+    // real business's account. Each removal is logged twice: once to the
+    // Super Admin's own platform audit trail, and once to the business's own
+    // activity feed (as "System"/no user) so the owner sees it happened too.
+    @Transactional
+    public void deleteServiceOrder(UUID adminId, UUID businessId, UUID orderId) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(orderId, businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service order not found."));
+        long orderNumber = order.getOrderNumber();
+
+        // service_order_items, service_order_photos, and any originating booking
+        // all cascade at the DB level via ON DELETE CASCADE — only the ledger
+        // (deliberately FK-less, since it's polymorphic across 4 source types)
+        // needs an explicit cleanup pass.
+        paymentTransactionRepository.deleteBySourceTypeAndSourceId(PaymentTransaction.SourceType.SERVICE_ORDER, orderId);
+        serviceOrderRepository.delete(order);
+
+        activityLogService.log(businessId, null, "Removed service order #" + orderNumber + " (by Super Admin)", "SERVICE_ORDER", orderId);
+        auditLogService.log(adminId, "Deleted service order #" + orderNumber + " at \"" + business.getName() + "\"",
+                businessId, business.getName(), null);
+    }
+
+    @Transactional
+    public void deleteSale(UUID adminId, UUID businessId, UUID saleId) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        Sale sale = saleRepository.findByIdAndBusinessId(saleId, businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Sale not found."));
+        long saleNumber = sale.getSaleNumber();
+
+        // Restore the stock this sale removed — same audit trail a manual
+        // adjustment uses (ProductService.adjustStock isn't callable here since
+        // it reads TenantContext, which this platform-scoped request never sets).
+        for (SaleItem item : saleItemRepository.findAllBySaleId(saleId)) {
+            if (item.getProductId() == null) continue;
+            productRepository.findByIdAndBusinessId(item.getProductId(), businessId).ifPresent(product -> {
+                int newQuantity = product.getQuantity() + item.getQuantity();
+                product.setQuantity(newQuantity);
+                productRepository.save(product);
+                stockMovementRepository.save(StockMovement.builder()
+                        .businessId(businessId)
+                        .productId(product.getId())
+                        .movementType(MovementType.ADD)
+                        .quantityChange(item.getQuantity())
+                        .resultingQuantity(newQuantity)
+                        .note("Reversal: deleted sale #" + saleNumber + " (by Super Admin)")
+                        .build());
+            });
+        }
+
+        paymentTransactionRepository.deleteBySourceTypeAndSourceId(PaymentTransaction.SourceType.SALE, saleId);
+        saleRepository.delete(sale); // sale_items cascade at the DB level
+
+        activityLogService.log(businessId, null, "Removed sale #" + saleNumber + " (by Super Admin)", "SALE", saleId);
+        auditLogService.log(adminId, "Deleted sale #" + saleNumber + " at \"" + business.getName() + "\"",
+                businessId, business.getName(), null);
+    }
+
+    @Transactional
+    public void deleteCustomer(UUID adminId, UUID businessId, UUID customerId) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        Customer customer = customerRepository.findByIdAndBusinessId(customerId, businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Customer not found."));
+        String name = customer.getFullName();
+
+        // Every order/sale/booking referencing this customer keeps existing
+        // (ON DELETE SET NULL) and just reads as "Walk-in" going forward.
+        customerRepository.delete(customer);
+
+        activityLogService.log(businessId, null, "Removed customer \"" + name + "\" (by Super Admin)", "CUSTOMER", customerId);
+        auditLogService.log(adminId, "Deleted customer \"" + name + "\" at \"" + business.getName() + "\"",
+                businessId, business.getName(), null);
     }
 
     public List<PlatformBusinessSummaryResponse> search(String query, Boolean activeOnly) {
