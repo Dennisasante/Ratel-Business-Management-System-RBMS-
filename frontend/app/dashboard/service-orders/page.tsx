@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, CheckCircle2, Move, ChevronRight } from "lucide-react";
+import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, Move, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -21,6 +21,7 @@ import {
 import Modal from "@/components/Modal";
 import ServiceOrderForm from "@/components/ServiceOrderForm";
 import ServiceOrderEditForm from "@/components/ServiceOrderEditForm";
+import PaymentCollectionPanel from "@/components/PaymentCollectionPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -101,6 +102,9 @@ export default function ServiceOrdersPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null); // `${orderId}:${action}`
 
+  const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [collectingPaymentOrder, setCollectingPaymentOrder] = useState<ServiceOrder | null>(null);
+
   const loadOrders = useCallback(async () => {
     if (!session) return;
     const data = await api.listServiceOrders(session.token, {
@@ -118,14 +122,16 @@ export default function ServiceOrdersPage() {
 
   const loadSupportingData = useCallback(async () => {
     if (!session) return;
-    const [c, cat, s] = await Promise.all([
+    const [c, cat, s, gw] = await Promise.all([
       api.listCustomers(session.token),
       api.listServiceCatalog(session.token),
       api.listUsers(session.token),
+      api.getPaymentGatewayStatus(session.token),
     ]);
     setCustomers(c);
     setCatalog(cat);
     setStaff(s);
+    setPaystackConfigured(gw.paystackConfigured);
   }, [session]);
 
   useEffect(() => {
@@ -186,18 +192,11 @@ export default function ServiceOrdersPage() {
     }
   }
 
-  async function handleMarkPaid(order: ServiceOrder) {
-    if (!session) return;
-    const key = `${order.id}:markPaid`;
-    setActionError(null);
-    setPendingAction(key);
-    try {
-      await api.markServiceOrderPaid(session.token, order.id);
-      await loadOrders();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Couldn't mark this order as paid.");
-    } finally {
-      setPendingAction(null);
+  function handleOrderChanged(updated: ServiceOrder) {
+    setCollectingPaymentOrder(updated);
+    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+    if (updated.paymentStatus === "PAID") {
+      setCollectingPaymentOrder(null);
     }
   }
 
@@ -366,6 +365,14 @@ export default function ServiceOrdersPage() {
                         >
                           Edit
                         </button>
+                        {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
+                          <button
+                            onClick={() => setCollectingPaymentOrder(o)}
+                            className="text-sm font-medium text-accent-hover hover:underline"
+                          >
+                            Collect payment
+                          </button>
+                        )}
                         <ActionsMenu>
                           {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
                             <a
@@ -386,16 +393,6 @@ export default function ServiceOrdersPage() {
                             >
                               <Mail size={14} />
                               {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
-                            </button>
-                          )}
-                          {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
-                            <button
-                              onClick={() => handleMarkPaid(o)}
-                              disabled={pendingAction === `${o.id}:markPaid`}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-success hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <CheckCircle2 size={14} />
-                              {pendingAction === `${o.id}:markPaid` ? "Marking..." : "Mark paid"}
                             </button>
                           )}
                           <MoveToStageSubmenu
@@ -438,6 +435,25 @@ export default function ServiceOrdersPage() {
         </Modal>
       )}
 
+      {collectingPaymentOrder && (
+        <Modal
+          title={`Collect payment — Order #${collectingPaymentOrder.orderNumber}`}
+          onClose={() => setCollectingPaymentOrder(null)}
+        >
+          <PaymentCollectionPanel<ServiceOrder>
+            id={collectingPaymentOrder.id}
+            amount={collectingPaymentOrder.price}
+            paymentStatus={collectingPaymentOrder.paymentStatus}
+            paystackConfigured={paystackConfigured}
+            onStartCheckout={(id) => api.startServiceOrderPayment(session.token, id)}
+            onVerifyPayment={(reference) => api.verifyServiceOrderPayment(session.token, reference)}
+            onMarkPaid={(id) => api.markServiceOrderPaid(session.token, id)}
+            onChargeMobileMoney={(id, phone, provider) => api.chargeServiceOrderMobileMoney(session.token, id, phone, provider)}
+            onSubmitOtp={(reference, otp) => api.submitServiceOrderMobileMoneyOtp(session.token, reference, otp)}
+            onChanged={handleOrderChanged}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

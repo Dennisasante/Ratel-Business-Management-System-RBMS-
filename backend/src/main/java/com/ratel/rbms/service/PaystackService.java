@@ -187,7 +187,7 @@ public class PaystackService {
 
         ChargeAuthorizationData data = response.data();
         boolean success = response.status() && "success".equalsIgnoreCase(data.status());
-        return new ChargeResult(success, data.status(), data.reference());
+        return new ChargeResult(success, data.status(), data.reference(), firstNonBlank(data.gatewayResponse(), response.message()));
     }
 
     /**
@@ -276,7 +276,12 @@ public class PaystackService {
 
         ChargeAuthorizationData data = response.data();
         boolean success = response.status() && "success".equalsIgnoreCase(data.status());
-        return new ChargeResult(success, data.status(), data.reference());
+        return new ChargeResult(success, data.status(), data.reference(), firstNonBlank(data.gatewayResponse(), response.message()));
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        return b;
     }
 
     /**
@@ -319,7 +324,11 @@ public class PaystackService {
     ) {
     }
 
-    public record ChargeResult(boolean success, String status, String reference) {
+    // message is Paystack's own explanation of the outcome (its gateway_response
+    // when present, else the top-level response message) — surfaced to the
+    // caller instead of a generic "didn't work" so a wrong OTP, an expired
+    // code, and a genuine API error are distinguishable in the UI.
+    public record ChargeResult(boolean success, String status, String reference, String message) {
     }
 
     // status is Paystack's raw charge status (e.g. "success", "pending",
@@ -371,7 +380,11 @@ public class PaystackService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record ChargeAuthorizationData(String status, String reference) {
+    private record ChargeAuthorizationData(
+            String status,
+            String reference,
+            @JsonProperty("gateway_response") String gatewayResponse
+    ) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

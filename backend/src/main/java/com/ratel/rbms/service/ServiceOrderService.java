@@ -398,6 +398,11 @@ public class ServiceOrderService {
             order.setPaymentStatus("FAILED");
             order = serviceOrderRepository.save(order);
             paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "FAILED");
+            // Surface Paystack's own reason (e.g. "Invalid OTP", "Expired OTP")
+            // instead of a generic message, now that we know this attempt is
+            // genuinely done rather than just still-pending.
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    result.message() != null && !result.message().isBlank() ? result.message() : "That code didn't work.");
         }
 
         return toResponse(order);

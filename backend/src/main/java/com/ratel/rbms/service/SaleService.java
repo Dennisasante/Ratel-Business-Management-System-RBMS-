@@ -298,6 +298,8 @@ public class SaleService {
             sale.setPaymentStatus("FAILED");
             sale = saleRepository.save(sale);
             paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "FAILED");
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    result.message() != null && !result.message().isBlank() ? result.message() : "That code didn't work.");
         }
 
         return toResponseWithItems(sale);
