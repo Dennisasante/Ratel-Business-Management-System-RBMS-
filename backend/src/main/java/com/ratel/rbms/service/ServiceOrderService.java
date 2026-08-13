@@ -1,8 +1,9 @@
 package com.ratel.rbms.service;
 
-import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
+import com.ratel.rbms.dto.RecordPaymentRequest;
+import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.ServiceOrderItemRequest;
 import com.ratel.rbms.dto.ServiceOrderItemResponse;
 import com.ratel.rbms.dto.ServiceOrderRequest;
@@ -17,8 +18,9 @@ import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.ServiceType;
+import com.ratel.rbms.entity.StaffMember;
 import com.ratel.rbms.entity.User;
-import com.ratel.rbms.entity.enums.Role;
+import com.ratel.rbms.entity.enums.PaymentMethod;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
@@ -26,6 +28,7 @@ import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.ServiceOrderItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.StaffMemberRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.data.domain.PageRequest;
@@ -67,6 +70,7 @@ public class ServiceOrderService {
     private final ServiceOrderRepository serviceOrderRepository;
     private final ServiceOrderItemRepository serviceOrderItemRepository;
     private final UserRepository userRepository;
+    private final StaffMemberRepository staffMemberRepository;
     private final BusinessRepository businessRepository;
     private final CustomerService customerService;
     private final ServiceCatalogService serviceCatalogService;
@@ -83,6 +87,7 @@ public class ServiceOrderService {
             ServiceOrderRepository serviceOrderRepository,
             ServiceOrderItemRepository serviceOrderItemRepository,
             UserRepository userRepository,
+            StaffMemberRepository staffMemberRepository,
             BusinessRepository businessRepository,
             CustomerService customerService,
             ServiceCatalogService serviceCatalogService,
@@ -98,6 +103,7 @@ public class ServiceOrderService {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
         this.userRepository = userRepository;
+        this.staffMemberRepository = staffMemberRepository;
         this.businessRepository = businessRepository;
         this.customerService = customerService;
         this.serviceCatalogService = serviceCatalogService;
@@ -134,6 +140,12 @@ public class ServiceOrderService {
                 catalogItem = serviceCatalogService.getOwned(itemReq.serviceCatalogId());
                 name = catalogItem.getName();
             }
+            // A typed description (e.g. from an Instagram/WhatsApp order) always
+            // wins over the catalog/category name — it's more specific and is
+            // exactly what the person recording the order chose to say.
+            if (itemReq.customName() != null && !itemReq.customName().isBlank()) {
+                name = itemReq.customName().trim();
+            }
             BigDecimal itemDiscount = itemReq.discountAmount() != null ? itemReq.discountAmount() : BigDecimal.ZERO;
             resolvedItems.add(new ResolvedItem(itemType, catalogItem, name, itemReq.price(), itemDiscount));
         }
@@ -141,13 +153,6 @@ public class ServiceOrderService {
         BigDecimal totalPrice = resolvedItems.stream().map(ResolvedItem::price).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalDiscount = resolvedItems.stream().map(ResolvedItem::discountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         ResolvedItem first = resolvedItems.get(0);
-
-        // A STAFF user can't hand work to someone else — every order they create
-        // lands on themselves, regardless of what the form submitted. Also keeps
-        // the order from becoming invisible to its own creator once list()/get()
-        // start scoping STAFF to only their own assigned orders, below.
-        User currentUser = currentUser();
-        UUID assignedStaffId = currentUser.getRole() == Role.STAFF ? currentUser.getId() : req.assignedStaffId();
 
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
@@ -161,7 +166,7 @@ public class ServiceOrderService {
                 .notes(req.notes())
                 .price(totalPrice)
                 .discountAmount(totalDiscount)
-                .assignedStaffId(assignedStaffId)
+                .assignedStaffId(req.assignedStaffId())
                 .receivedAt(Instant.now())
                 .scheduledAt(req.scheduledAt())
                 .createdBy(TenantContext.getUserId())
@@ -192,9 +197,8 @@ public class ServiceOrderService {
 
     public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page) {
         UUID businessId = TenantContext.getBusinessId();
-        UUID staffScope = currentUser().getRole() == Role.STAFF ? TenantContext.getUserId() : null;
         List<ServiceOrder> orders = serviceOrderRepository.search(
-                businessId, serviceTypeId, status, staffScope, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
+                businessId, serviceTypeId, status, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
         return orders.stream().map(this::toResponse).toList();
     }
 
@@ -205,11 +209,6 @@ public class ServiceOrderService {
     @Transactional
     public ServiceOrderResponse update(UUID id, ServiceOrderUpdateRequest req) {
         ServiceOrder order = getOwned(id);
-        User currentUser = currentUser();
-        // A STAFF user can only ever reassign an order to themselves — never hand
-        // it off to someone else, and never orphan it (which would make it
-        // invisible to everyone once it has no owner in their own scoped view).
-        UUID assignedStaffId = currentUser.getRole() == Role.STAFF ? currentUser.getId() : req.assignedStaffId();
 
         if (req.price() != null) {
             List<ServiceOrderItem> items = serviceOrderItemRepository.findAllByServiceOrderId(order.getId());
@@ -231,7 +230,7 @@ public class ServiceOrderService {
         }
 
         order.setNotes(req.notes());
-        order.setAssignedStaffId(assignedStaffId);
+        order.setAssignedStaffId(req.assignedStaffId());
         order.setScheduledAt(req.scheduledAt());
         order = serviceOrderRepository.save(order);
 
@@ -298,37 +297,6 @@ public class ServiceOrderService {
         return toResponse(order);
     }
 
-    public CheckoutResponse startPayment(UUID id) {
-        ServiceOrder order = getOwned(id);
-        if ("PAID".equals(order.getPaymentStatus())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already paid.");
-        }
-        Customer customer = customerService.getOrNull(order.getCustomerId());
-        String customerEmail = resolveCustomerEmail(customer, order.getBusinessId(), order.getId());
-
-        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(order.getBusinessId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
-        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
-        }
-
-        long amountMinorUnits = order.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
-        String reference = "SVCORDER-" + order.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
-
-        PaystackService.InitResult init = paystackService.initializeTransaction(
-                integrations.getPaystackSecretKey(),
-                customerEmail,
-                amountMinorUnits,
-                reference,
-                Map.of("serviceOrderId", order.getId().toString())
-        );
-
-        order.setPaystackReference(init.reference());
-        serviceOrderRepository.save(order);
-
-        return new CheckoutResponse(init.accessCode(), init.reference());
-    }
-
     // Charges the customer's mobile money wallet directly by phone number — the
     // "input the customer's number, they get a prompt on their phone" flow, for
     // whoever's behind the till rather than the customer typing card details
@@ -358,6 +326,7 @@ public class ServiceOrderService {
         order.setPaystackReference(result.reference());
         if (result.success()) {
             order.setPaymentStatus("PAID");
+            order.setAmountPaid(order.getPrice());
             activityLogService.log("Charged mobile money for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
         }
         serviceOrderRepository.save(order);
@@ -391,6 +360,7 @@ public class ServiceOrderService {
 
         if (result.success()) {
             order.setPaymentStatus("PAID");
+            order.setAmountPaid(order.getPrice());
             order = serviceOrderRepository.save(order);
             activityLogService.log("Charged mobile money for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
             paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "SUCCESS");
@@ -423,6 +393,9 @@ public class ServiceOrderService {
         PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
 
         order.setPaymentStatus(verify.success() ? "PAID" : "FAILED");
+        if (verify.success()) {
+            order.setAmountPaid(order.getPrice());
+        }
         order = serviceOrderRepository.save(order);
 
         if (verify.success()) {
@@ -431,7 +404,7 @@ public class ServiceOrderService {
 
         paymentTransactionService.record(
                 order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
-                order.getId(), "PAYSTACK", "CARD", order.getPrice(), verify.success() ? "SUCCESS" : "FAILED",
+                order.getId(), "PAYSTACK", "MOBILE_MONEY", order.getPrice(), verify.success() ? "SUCCESS" : "FAILED",
                 reference, order.getCustomerId(), null, null, TenantContext.getUserId()
         );
 
@@ -441,21 +414,78 @@ public class ServiceOrderService {
     // A plain manual action (no Paystack) for cash/other payment — most walk-in
     // customers won't be paying by card through the dashboard, so this stays
     // available regardless of whether the business has Paystack configured.
+    // Thin wrapper over recordPayment(): "mark paid" just means "the whole
+    // remaining balance came in, in cash."
     @Transactional
     public ServiceOrderResponse markPaid(UUID id) {
         ServiceOrder order = getOwned(id);
-        order.setPaymentStatus("PAID");
+        BigDecimal balanceDue = order.getPrice().subtract(order.getAmountPaid()).max(BigDecimal.ZERO);
+        return recordPayment(id, new RecordPaymentRequest(balanceDue, PaymentMethod.CASH, "Marked paid manually"));
+    }
+
+    // Records a payment against an order's outstanding balance — the manual
+    // "type in what came in" counterpart to the gateway flows above, and the
+    // only path that can produce PARTIALLY_PAID.
+    @Transactional
+    public ServiceOrderResponse recordPayment(UUID id, RecordPaymentRequest req) {
+        ServiceOrder order = getOwned(id);
+        BigDecimal balanceDue = order.getPrice().subtract(order.getAmountPaid()).max(BigDecimal.ZERO);
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This order is already fully paid.");
+        }
+        if (req.amount().compareTo(balanceDue) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "That's more than the outstanding balance of GH₵" + balanceDue + ".");
+        }
+
+        BigDecimal newAmountPaid = order.getAmountPaid().add(req.amount());
+        order.setAmountPaid(newAmountPaid);
+        order.setPaymentStatus(derivePaymentStatus(newAmountPaid, order.getPrice()));
         order = serviceOrderRepository.save(order);
 
-        activityLogService.log("Marked service order #" + order.getOrderNumber() + " as paid", "SERVICE_ORDER", order.getId());
+        activityLogService.log(
+                "Recorded a GH₵" + req.amount() + " payment on service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
 
         paymentTransactionService.record(
                 order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
-                order.getId(), "MANUAL", null, order.getPrice(), "SUCCESS",
-                null, order.getCustomerId(), null, "Marked paid manually", TenantContext.getUserId()
+                order.getId(), "MANUAL", req.method().name(), req.amount(), "SUCCESS",
+                null, order.getCustomerId(), null, req.note(), TenantContext.getUserId()
         );
 
         return toResponse(order);
+    }
+
+    // Full refund only — no partial-refund reconciliation. amountPaid is left
+    // as-is (a record of what was actually collected); REFUNDED overrides
+    // paymentStatus so the ledger's OUTGOING row is the source of truth for
+    // the refund event itself.
+    @Transactional
+    public ServiceOrderResponse refund(UUID id, RefundRequest req) {
+        ServiceOrder order = getOwned(id);
+        if (order.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this order to refund.");
+        }
+
+        BigDecimal refundedAmount = order.getAmountPaid();
+        order.setPaymentStatus("REFUNDED");
+        order = serviceOrderRepository.save(order);
+
+        activityLogService.log("Refunded GH₵" + refundedAmount + " on service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
+
+        paymentTransactionService.record(
+                order.getBusinessId(), PaymentTransaction.Direction.OUTGOING, PaymentTransaction.SourceType.SERVICE_ORDER,
+                order.getId(), "MANUAL", null, refundedAmount, "SUCCESS",
+                null, order.getCustomerId(), null, req.note() != null && !req.note().isBlank() ? req.note() : "Refunded",
+                TenantContext.getUserId()
+        );
+
+        return toResponse(order);
+    }
+
+    private static String derivePaymentStatus(BigDecimal amountPaid, BigDecimal total) {
+        if (amountPaid.compareTo(BigDecimal.ZERO) <= 0) return "UNPAID";
+        if (amountPaid.compareTo(total) >= 0) return "PAID";
+        return "PARTIALLY_PAID";
     }
 
     private void sendReadyEmailIfPossible(ServiceOrder order) {
@@ -488,20 +518,8 @@ public class ServiceOrderService {
     }
 
     private ServiceOrder getOwned(UUID id) {
-        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+        return serviceOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service order not found."));
-        User currentUser = currentUser();
-        // 404, not 403 — a STAFF user shouldn't be able to tell an order belonging
-        // to someone else even exists.
-        if (currentUser.getRole() == Role.STAFF && !currentUser.getId().equals(order.getAssignedStaffId())) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Service order not found.");
-        }
-        return order;
-    }
-
-    private User currentUser() {
-        return userRepository.findById(TenantContext.getUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
     }
 
     private ServiceOrderResponse toResponse(ServiceOrder order) {
@@ -520,8 +538,13 @@ public class ServiceOrderService {
                 .map(item -> ServiceOrderItemResponse.from(item, typeNameCache.computeIfAbsent(item.getServiceTypeId(), this::typeNameOrNull)))
                 .toList();
 
+        // StaffMember first — that's what assignedStaffId points at now. Falls
+        // back to User only for a pre-migration edge case; the V34 migration
+        // guarantees no id collisions between the two tables, so this is just
+        // a safety net, not the expected path.
         String assignedStaffName = order.getAssignedStaffId() != null
-                ? userRepository.findById(order.getAssignedStaffId()).map(User::getFullName).orElse(null)
+                ? staffMemberRepository.findById(order.getAssignedStaffId()).map(StaffMember::getFullName)
+                        .orElseGet(() -> userRepository.findById(order.getAssignedStaffId()).map(User::getFullName).orElse(null))
                 : null;
         String createdByName = order.getCreatedBy() != null
                 ? userRepository.findById(order.getCreatedBy()).map(User::getFullName).orElse("Unknown")

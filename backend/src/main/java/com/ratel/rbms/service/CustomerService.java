@@ -75,6 +75,7 @@ public class CustomerService {
                 .phone(req.phone())
                 .email(req.email())
                 .notes(req.notes())
+                .source(req.source())
                 .build();
         customer = customerRepository.save(customer);
         activityLogService.log("Added customer \"" + customer.getFullName() + "\"", "CUSTOMER", customer.getId());

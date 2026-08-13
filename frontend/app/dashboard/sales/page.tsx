@@ -8,8 +8,6 @@ import { useAuth } from "@/lib/auth";
 import {
   api,
   ApiError,
-  Customer,
-  CustomerPayload,
   PaymentMethod,
   Product,
   ProductCategory,
@@ -19,7 +17,7 @@ import {
   ServiceType,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
-import CustomerForm from "@/components/CustomerForm";
+import CustomerPicker from "@/components/CustomerPicker";
 import QuickServiceCatalogForm from "@/components/QuickServiceCatalogForm";
 import PaymentCollectionPanel from "@/components/PaymentCollectionPanel";
 import PageHeader from "@/components/ui/PageHeader";
@@ -62,10 +60,8 @@ function cartLineUnitPrice(l: CartLine): number {
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "CASH", label: "Cash" },
-  { value: "MOBILE_MONEY", label: "Mobile Money (online)" },
-  { value: "MOBILE_MONEY_DIRECT", label: "Mobile Money (direct)" },
-  { value: "CARD", label: "Card" },
-  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+  { value: "MOBILE_MONEY_DIRECT", label: "Direct Mobile Money" },
+  { value: "MOBILE_MONEY", label: "Online Payment" },
 ];
 
 export default function SalesPage() {
@@ -76,7 +72,6 @@ export default function SalesPage() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [fetching, setFetching] = useState(true);
 
@@ -88,11 +83,13 @@ export default function SalesPage() {
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerId, setCustomerId] = useState<string>("");
+  // Bumped after every completed sale to force CustomerPicker to remount and
+  // reset back to its unselected search state.
+  const [customerPickerKey, setCustomerPickerKey] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
 
   const [paystackConfigured, setPaystackConfigured] = useState(false);
@@ -104,12 +101,11 @@ export default function SalesPage() {
 
   const loadAll = useCallback(async () => {
     if (!session) return;
-    const [p, cat, svc, svcTypes, c, s, gw] = await Promise.all([
+    const [p, cat, svc, svcTypes, s, gw] = await Promise.all([
       api.listProducts(session.token),
       api.listProductCategories(session.token),
       api.listServiceCatalog(session.token, true),
       api.listServiceTypes(session.token),
-      api.listCustomers(session.token),
       api.listSales(session.token),
       api.getPaymentGatewayStatus(session.token),
     ]);
@@ -117,7 +113,6 @@ export default function SalesPage() {
     setCategories(cat);
     setServices(svc);
     setServiceTypes(svcTypes);
-    setCustomers(c);
     setSales(s);
     setPaystackConfigured(gw.paystackConfigured);
   }, [session]);
@@ -213,11 +208,15 @@ export default function SalesPage() {
 
   async function completeSale() {
     if (!session || cart.length === 0) return;
+    if (!customerId) {
+      setError("Pick a customer first.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       const sale = await api.createSale(session.token, {
-        customerId: customerId || undefined,
+        customerId,
         paymentMethod,
         items: cart.map((l) =>
           l.kind === "product"
@@ -227,6 +226,7 @@ export default function SalesPage() {
       });
       setCart([]);
       setCustomerId("");
+      setCustomerPickerKey((k) => k + 1);
       if (sale.paymentStatus !== "PAID") {
         // Card/mobile money — open the payment modal right away instead of
         // leaving the cashier to hunt for it afterward.
@@ -246,14 +246,6 @@ export default function SalesPage() {
     if (updated.paymentStatus === "PAID") {
       setCollectingPaymentSale(null);
     }
-  }
-
-  async function handleAddCustomer(payload: CustomerPayload) {
-    if (!session) return;
-    const customer = await api.createCustomer(session.token, payload);
-    setCustomers((prev) => [...prev, customer].sort((a, b) => a.fullName.localeCompare(b.fullName)));
-    setCustomerId(customer.id);
-    setShowAddCustomer(false);
   }
 
   async function handleAddService(payload: ServiceCatalogItemPayload) {
@@ -504,28 +496,14 @@ export default function SalesPage() {
             )}
 
             <div className="mt-4 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCustomer(true)}
-                  className="text-xs font-medium text-accent-hover hover:underline"
-                >
-                  + New customer
-                </button>
-              </div>
-              <select
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              >
-                <option value="">Walk-in customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.fullName}
-                  </option>
-                ))}
-              </select>
+              <label className="text-sm font-medium text-ink-700">
+                Customer <span className="text-danger">*</span>
+              </label>
+              <CustomerPicker
+                key={customerPickerKey}
+                token={session.token}
+                onSelect={(c) => setCustomerId(c.id)}
+              />
             </div>
 
             <div className="mt-3 flex flex-col gap-1.5">
@@ -558,7 +536,7 @@ export default function SalesPage() {
 
             {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-            <Button onClick={completeSale} disabled={cart.length === 0 || submitting} className="mt-4 w-full">
+            <Button onClick={completeSale} disabled={cart.length === 0 || !customerId || submitting} className="mt-4 w-full">
               {submitting ? "Completing sale..." : "Complete sale"}
             </Button>
           </Card>
@@ -615,20 +593,36 @@ export default function SalesPage() {
                     <Td className="text-ink-500">
                       <span className="block">{s.paymentMethod.replaceAll("_", " ")}</span>
                       {s.paymentStatus !== "PAID" && (
-                        <Badge tone={s.paymentStatus === "FAILED" ? "danger" : "neutral"}>
-                          {s.paymentStatus === "FAILED" ? "Payment failed" : "Unpaid"}
+                        <Badge
+                          tone={
+                            s.paymentStatus === "FAILED"
+                              ? "danger"
+                              : s.paymentStatus === "PARTIALLY_PAID"
+                              ? "info"
+                              : s.paymentStatus === "REFUNDED"
+                              ? "violet"
+                              : "neutral"
+                          }
+                        >
+                          {s.paymentStatus === "FAILED"
+                            ? "Payment failed"
+                            : s.paymentStatus === "PARTIALLY_PAID"
+                            ? "Partially paid"
+                            : s.paymentStatus === "REFUNDED"
+                            ? "Refunded"
+                            : "Unpaid"}
                         </Badge>
                       )}
                     </Td>
                     <Td className="tabular text-right font-medium">GH₵{s.totalAmount.toFixed(2)}</Td>
                     <Td className="text-right">
                       <div className="flex justify-end gap-3">
-                        {s.paymentStatus !== "PAID" && (
+                        {s.paymentStatus !== "REFUNDED" && (
                           <button
                             onClick={() => setCollectingPaymentSale(s)}
                             className="text-sm font-medium text-accent-hover hover:underline"
                           >
-                            Collect payment
+                            {s.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
                           </button>
                         )}
                         <Link
@@ -655,12 +649,6 @@ export default function SalesPage() {
         )}
       </Card>
 
-      {showAddCustomer && (
-        <Modal title="Add customer" onClose={() => setShowAddCustomer(false)}>
-          <CustomerForm onSubmit={handleAddCustomer} />
-        </Modal>
-      )}
-
       {showAddService && (
         <Modal title="Add service" onClose={() => setShowAddService(false)}>
           <QuickServiceCatalogForm serviceTypes={serviceTypes} onSubmit={handleAddService} />
@@ -672,13 +660,15 @@ export default function SalesPage() {
           <PaymentCollectionPanel<Sale>
             id={collectingPaymentSale.id}
             amount={collectingPaymentSale.totalAmount}
+            balanceDue={collectingPaymentSale.balanceDue}
             paymentStatus={collectingPaymentSale.paymentStatus}
             paystackConfigured={paystackConfigured}
-            onStartCheckout={(id) => api.startSalePayment(session.token, id)}
             onVerifyPayment={(reference) => api.verifySalePayment(session.token, reference)}
             onMarkPaid={(id) => api.markSalePaid(session.token, id)}
             onChargeMobileMoney={(id, phone, provider) => api.chargeSaleMobileMoney(session.token, id, phone, provider)}
             onSubmitOtp={(reference, otp) => api.submitSaleMobileMoneyOtp(session.token, reference, otp)}
+            onRecordPayment={(id, payload) => api.recordSalePayment(session.token, id, payload)}
+            onRefund={(id, note) => api.refundSale(session.token, id, note)}
             onChanged={handleSaleChanged}
           />
         </Modal>

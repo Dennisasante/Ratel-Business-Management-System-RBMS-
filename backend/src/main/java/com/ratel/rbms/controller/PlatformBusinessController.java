@@ -45,6 +45,12 @@ public class PlatformBusinessController {
         return platformBusinessService.getPaymentTransactions(id);
     }
 
+    @PostMapping("/{businessId}/payment-transactions/{transactionId}/verify")
+    public ResponseEntity<Void> verifyPaymentTransaction(@PathVariable UUID businessId, @PathVariable UUID transactionId) {
+        platformBusinessService.verifyPaymentTransaction(currentAdminId(), businessId, transactionId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}/status")
     public PlatformBusinessSummaryResponse setStatus(@PathVariable UUID id, @RequestBody UpdateUserStatusRequest request) {
         return platformBusinessService.setActive(currentAdminId(), id, request.active());

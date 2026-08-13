@@ -10,10 +10,9 @@ import {
   ApiError,
   BookingListItem,
   CreateStaffBookingPayload,
-  Customer,
   ServiceCatalogItem,
   ServicePackage,
-  UserSummary,
+  StaffMember,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import StaffBookingForm from "@/components/StaffBookingForm";
@@ -66,8 +65,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([]);
   const [packages, setPackages] = useState<ServicePackage[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [staff, setStaff] = useState<UserSummary[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [fetching, setFetching] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -88,16 +86,14 @@ export default function BookingsPage() {
 
   const loadFormData = useCallback(async () => {
     if (!session) return;
-    const [cat, pkgs, custs, users] = await Promise.all([
+    const [cat, pkgs, members] = await Promise.all([
       api.listServiceCatalog(session.token, true),
       api.listServicePackages(session.token),
-      api.listCustomers(session.token),
-      api.listUsers(session.token),
+      api.listStaffMembers(session.token),
     ]);
     setCatalog(cat);
     setPackages(pkgs.filter((p) => p.active));
-    setCustomers(custs);
-    setStaff(users);
+    setStaff(members);
   }, [session]);
 
   useEffect(() => {
@@ -246,9 +242,9 @@ export default function BookingsPage() {
       {showAddBooking && (
         <Modal title="New booking" onClose={() => setShowAddBooking(false)}>
           <StaffBookingForm
+            token={session.token}
             catalog={catalog}
             packages={packages}
-            customers={customers}
             staff={staff}
             onSubmit={handleCreateBooking}
           />

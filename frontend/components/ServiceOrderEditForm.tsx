@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, ServiceOrder, ServiceOrderUpdatePayload, UserSummary } from "@/lib/api";
+import { ApiError, ServiceOrder, ServiceOrderUpdatePayload, StaffMember } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
 import ServiceOrderPhotoGallery from "@/components/ServiceOrderPhotoGallery";
 
 interface ServiceOrderEditFormProps {
   order: ServiceOrder;
-  staff: UserSummary[];
+  staff: StaffMember[];
   onSubmit: (payload: ServiceOrderUpdatePayload) => Promise<void>;
 }
 

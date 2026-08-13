@@ -8,15 +8,13 @@ import { useAuth } from "@/lib/auth";
 import {
   api,
   ApiError,
-  Customer,
-  CustomerPayload,
   ServiceCatalogItem,
   ServiceOrder,
   ServiceOrderPayload,
   ServiceOrderStatus,
   ServiceOrderUpdatePayload,
   ServiceType,
-  UserSummary,
+  StaffMember,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import ServiceOrderForm from "@/components/ServiceOrderForm";
@@ -65,12 +63,16 @@ const ALL_STAGES: ServiceOrderStatus[] = ["RECEIVED", "IN_PROGRESS", "COMPLETED"
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   UNPAID: "Unpaid",
+  PARTIALLY_PAID: "Partially paid",
   PAID: "Paid",
   FAILED: "Payment failed",
+  REFUNDED: "Refunded",
 };
 
 const PAYMENT_STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
   UNPAID: "neutral",
+  PARTIALLY_PAID: "info",
+  REFUNDED: "violet",
   PAID: "success",
   FAILED: "danger",
 };
@@ -83,9 +85,8 @@ export default function ServiceOrdersPage() {
 
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([]);
-  const [staff, setStaff] = useState<UserSummary[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [fetching, setFetching] = useState(true);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
 
@@ -115,13 +116,11 @@ export default function ServiceOrdersPage() {
 
   const loadSupportingData = useCallback(async () => {
     if (!session) return;
-    const [c, cat, s, gw] = await Promise.all([
-      api.listCustomers(session.token),
+    const [cat, s, gw] = await Promise.all([
       api.listServiceCatalog(session.token),
-      api.listUsers(session.token),
+      api.listStaffMembers(session.token),
       api.getPaymentGatewayStatus(session.token),
     ]);
-    setCustomers(c);
     setCatalog(cat);
     setStaff(s);
     setPaystackConfigured(gw.paystackConfigured);
@@ -148,13 +147,6 @@ export default function ServiceOrdersPage() {
     await api.createServiceOrder(session.token, payload);
     await loadOrders();
     setModal({ type: "none" });
-  }
-
-  async function handleCreateCustomer(payload: CustomerPayload): Promise<Customer> {
-    if (!session) throw new Error("Not signed in.");
-    const customer = await api.createCustomer(session.token, payload);
-    setCustomers((prev) => [...prev, customer].sort((a, b) => a.fullName.localeCompare(b.fullName)));
-    return customer;
   }
 
   async function handleUpdate(orderId: string, payload: ServiceOrderUpdatePayload) {
@@ -353,12 +345,12 @@ export default function ServiceOrdersPage() {
                         >
                           Edit
                         </button>
-                        {!o.bookingPaymentStatus && o.paymentStatus !== "PAID" && (
+                        {!o.bookingPaymentStatus && o.paymentStatus !== "REFUNDED" && (
                           <button
                             onClick={() => setCollectingPaymentOrder(o)}
                             className="text-sm font-medium text-accent-hover hover:underline"
                           >
-                            Collect payment
+                            {o.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
                           </button>
                         )}
                         {((o.bookingWhatsappLink || o.customerWhatsappLink) || canResend) && (
@@ -399,13 +391,12 @@ export default function ServiceOrdersPage() {
       {modal.type === "add" && (
         <Modal title="New service order" onClose={() => setModal({ type: "none" })}>
           <ServiceOrderForm
+            token={session.token}
             serviceTypes={serviceTypes}
-            customers={customers}
             catalog={catalog.filter((c) => c.active)}
             staff={staff}
             submitLabel="Create order"
             onSubmit={handleCreate}
-            onCreateCustomer={handleCreateCustomer}
           />
         </Modal>
       )}
@@ -428,12 +419,14 @@ export default function ServiceOrdersPage() {
           <PaymentCollectionPanel<ServiceOrder>
             id={collectingPaymentOrder.id}
             amount={collectingPaymentOrder.price}
+            balanceDue={collectingPaymentOrder.balanceDue}
             paymentStatus={collectingPaymentOrder.paymentStatus}
             paystackConfigured={paystackConfigured}
-            onStartCheckout={(id) => api.startServiceOrderPayment(session.token, id)}
             onVerifyPayment={(reference) => api.verifyServiceOrderPayment(session.token, reference)}
             onMarkPaid={(id) => api.markServiceOrderPaid(session.token, id)}
             onChargeMobileMoney={(id, phone, provider) => api.chargeServiceOrderMobileMoney(session.token, id, phone, provider)}
+            onRecordPayment={(id, payload) => api.recordServiceOrderPayment(session.token, id, payload)}
+            onRefund={(id, note) => api.refundServiceOrder(session.token, id, note)}
             onSubmitOtp={(reference, otp) => api.submitServiceOrderMobileMoneyOtp(session.token, reference, otp)}
             onChanged={handleOrderChanged}
           />

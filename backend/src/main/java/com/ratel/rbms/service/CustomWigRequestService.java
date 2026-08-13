@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
+import com.ratel.rbms.dto.CreateStaffCustomWigRequestRequest;
 import com.ratel.rbms.dto.CustomItemAttributeResponse;
 import com.ratel.rbms.dto.CustomWigRequestCreatedResponse;
 import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
@@ -205,8 +206,68 @@ public class CustomWigRequestService {
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
                 request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getEstimatedPrice(),
                 request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
-                request.getOwnerMessage(), whatsappLinkFor(request), request.getCreatedAt()
+                request.getOwnerMessage(), whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
+    }
+
+    // Staff logging a request that arrived through an informal channel
+    // (Instagram DM, WhatsApp, a phone call) — same selections/pricing
+    // resolution as the public submit(), but TenantContext-scoped, no rate
+    // limit, and customer email/WhatsApp are optional rather than required.
+    // Deliberately doesn't send the "new request" notification to the
+    // business's own contact email — staff already know, they just typed it in.
+    @Transactional
+    public CustomWigRequestResponse createByStaff(CreateStaffCustomWigRequestRequest req, MultipartFile photo) {
+        UUID businessId = TenantContext.getBusinessId();
+        planFeatureService.requireFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
+
+        if (req.customerName() == null || req.customerName().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Customer name is required.");
+        }
+        if (req.selections() == null || req.selections().isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Choose at least one option.");
+        }
+
+        List<CustomWigSelectionResponse> snapshot = req.selections().stream()
+                .map(sel -> resolveSelection(businessId, sel))
+                .toList();
+        BigDecimal estimatedPrice = snapshot.stream()
+                .map(CustomWigSelectionResponse::priceModifier)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
+
+        CustomWigRequest request = CustomWigRequest.builder()
+                .businessId(businessId)
+                .customerName(req.customerName())
+                .customerEmail(blankToNull(req.customerEmail()))
+                .customerWhatsapp(blankToNull(req.customerWhatsapp()))
+                .source(blankToNull(req.source()))
+                .selections(writeSelections(snapshot))
+                .estimatedPrice(estimatedPrice)
+                .inspirationPhotoUrl(photoUrl)
+                .notes(req.notes())
+                .test(isTestMode(businessId))
+                .build();
+        request = customWigRequestRepository.save(request);
+        customWigRequestRepository.flush(); // so request_number is readable below
+
+        activityLogService.log(
+                "Logged a custom wig request" + (request.getSource() != null ? " (" + request.getSource() + ")" : ""),
+                "CUSTOM_WIG_REQUEST", request.getId()
+        );
+
+        if (request.getCustomerEmail() != null) {
+            Business business = businessRepository.findById(businessId).orElse(null);
+            if (business != null) {
+                emailService.sendCustomWigRequestReceived(
+                        request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), business.getName(),
+                        business.getCurrency() + " " + estimatedPrice.toPlainString()
+                );
+            }
+        }
+
+        return toResponse(request);
     }
 
     @Transactional
@@ -317,8 +378,12 @@ public class CustomWigRequestService {
         return new CustomWigRequestResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
                 request.getCustomerWhatsapp(), request.getEstimatedPrice(), request.getStatus(), request.getFinalPrice(),
-                whatsappLinkFor(request), request.getCreatedAt()
+                whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
+    }
+
+    private String blankToNull(String s) {
+        return s != null && !s.isBlank() ? s : null;
     }
 
     private String whatsappLinkFor(CustomWigRequest request) {

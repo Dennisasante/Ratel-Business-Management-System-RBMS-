@@ -1,8 +1,9 @@
 package com.ratel.rbms.controller;
 
-import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
+import com.ratel.rbms.dto.RecordPaymentRequest;
+import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
 import com.ratel.rbms.dto.SubmitOtpRequest;
@@ -54,11 +55,6 @@ public class SaleController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saleService.createSale(request));
     }
 
-    @PostMapping("/{id}/checkout")
-    public CheckoutResponse startPayment(@PathVariable UUID id) {
-        return saleService.startPayment(id);
-    }
-
     @PostMapping("/{id}/charge-mobile-money")
     public MobileMoneyChargeResponse chargeMobileMoney(@PathVariable UUID id, @Valid @RequestBody MobileMoneyChargeRequest request) {
         return saleService.chargeMobileMoney(id, request);
@@ -77,6 +73,16 @@ public class SaleController {
     @PostMapping("/{id}/mark-paid")
     public SaleResponse markPaid(@PathVariable UUID id) {
         return saleService.markPaid(id);
+    }
+
+    @PostMapping("/{id}/record-payment")
+    public SaleResponse recordPayment(@PathVariable UUID id, @Valid @RequestBody RecordPaymentRequest request) {
+        return saleService.recordPayment(id, request);
+    }
+
+    @PostMapping("/{id}/refund")
+    public SaleResponse refund(@PathVariable UUID id, @RequestBody(required = false) RefundRequest request) {
+        return saleService.refund(id, request != null ? request : new RefundRequest(null));
     }
 
     @GetMapping("/{id}/receipt")

@@ -40,9 +40,13 @@ public record ServiceOrderResponse(
         // above (booking-originated orders only), this is populated for any order
         // with a customer that has a phone on file.
         String customerWhatsappLink,
-        // UNPAID/PAID/FAILED — independent of bookingPaymentStatus above, which
-        // only ever applies to booking-originated orders.
-        String paymentStatus
+        // UNPAID/PARTIALLY_PAID/PAID/FAILED/REFUNDED — independent of
+        // bookingPaymentStatus above, which only ever applies to
+        // booking-originated orders.
+        String paymentStatus,
+        BigDecimal amountPaid,
+        // Derived, never persisted — price minus amountPaid, clamped to zero.
+        BigDecimal balanceDue
 ) {
     public static ServiceOrderResponse from(
             ServiceOrder o,
@@ -56,6 +60,7 @@ public record ServiceOrderResponse(
             String bookingWhatsappLink,
             String customerWhatsappLink
     ) {
+        BigDecimal balanceDue = o.getPrice().subtract(o.getAmountPaid()).max(BigDecimal.ZERO);
         return new ServiceOrderResponse(
                 o.getId(),
                 o.getOrderNumber(),
@@ -82,7 +87,9 @@ public record ServiceOrderResponse(
                 bookingPaymentStatus,
                 bookingWhatsappLink,
                 customerWhatsappLink,
-                o.getPaymentStatus()
+                o.getPaymentStatus(),
+                o.getAmountPaid(),
+                balanceDue
         );
     }
 }

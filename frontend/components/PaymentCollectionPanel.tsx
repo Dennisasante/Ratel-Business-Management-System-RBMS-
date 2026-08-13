@@ -1,22 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Smartphone } from "lucide-react";
-import { ApiError, MobileMoneyChargeResponse, MobileMoneyProvider } from "@/lib/api";
+import { CheckCircle2, RotateCcw, Smartphone } from "lucide-react";
+import { ApiError, MobileMoneyChargeResponse, MobileMoneyProvider, PaymentMethod, RecordPaymentPayload } from "@/lib/api";
 import Badge from "@/components/ui/Badge";
-import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   UNPAID: "Unpaid",
+  PARTIALLY_PAID: "Partially paid",
   PAID: "Paid",
   FAILED: "Payment failed",
+  REFUNDED: "Refunded",
 };
 
 const PAYMENT_STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
   UNPAID: "neutral",
+  PARTIALLY_PAID: "info",
   PAID: "success",
   FAILED: "danger",
+  REFUNDED: "violet",
 };
+
+const RECORD_PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: "CASH", label: "Cash" },
+  { value: "MOBILE_MONEY_DIRECT", label: "Direct Mobile Money" },
+  { value: "MOBILE_MONEY", label: "Online Payment" },
+];
 
 const MOMO_PROVIDERS: { value: MobileMoneyProvider; label: string }[] = [
   { value: "mtn", label: "MTN Mobile Money" },
@@ -36,24 +45,28 @@ interface PaidLike {
 export default function PaymentCollectionPanel<T extends PaidLike>({
   id,
   amount,
+  balanceDue,
   paymentStatus,
   paystackConfigured,
-  onStartCheckout,
   onVerifyPayment,
   onMarkPaid,
   onChargeMobileMoney,
   onSubmitOtp,
+  onRecordPayment,
+  onRefund,
   onChanged,
 }: {
   id: string;
   amount: number;
+  balanceDue: number;
   paymentStatus: string;
   paystackConfigured: boolean;
-  onStartCheckout: (id: string) => Promise<{ accessCode: string; reference: string }>;
   onVerifyPayment: (reference: string) => Promise<T>;
   onMarkPaid: (id: string) => Promise<T>;
   onChargeMobileMoney: (id: string, phone: string, provider: MobileMoneyProvider) => Promise<MobileMoneyChargeResponse>;
   onSubmitOtp: (reference: string, otp: string) => Promise<T>;
+  onRecordPayment: (id: string, payload: RecordPaymentPayload) => Promise<T>;
+  onRefund: (id: string, note?: string) => Promise<T>;
   onChanged: (updated: T) => void;
 }) {
   const [payError, setPayError] = useState<string | null>(null);
@@ -68,6 +81,13 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
   const [otpCode, setOtpCode] = useState("");
   const [submittingOtp, setSubmittingOtp] = useState(false);
 
+  const [showRecordForm, setShowRecordForm] = useState(false);
+  const [recordAmount, setRecordAmount] = useState(() => balanceDue.toFixed(2));
+  const [recordMethod, setRecordMethod] = useState<PaymentMethod>("CASH");
+  const [recordingPayment, setRecordingPayment] = useState(false);
+
+  const [refunding, setRefunding] = useState(false);
+
   async function handleMarkPaid() {
     setMarkingPaid(true);
     setPayError(null);
@@ -78,6 +98,37 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
       setPayError(err instanceof ApiError ? err.message : "Couldn't mark this as paid.");
     } finally {
       setMarkingPaid(false);
+    }
+  }
+
+  async function handleRecordPayment(e: React.FormEvent) {
+    e.preventDefault();
+    const parsed = Number(recordAmount);
+    if (!parsed || parsed <= 0) return;
+    setRecordingPayment(true);
+    setPayError(null);
+    try {
+      const updated = await onRecordPayment(id, { amount: parsed, method: recordMethod });
+      onChanged(updated);
+      setShowRecordForm(false);
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't record that payment.");
+    } finally {
+      setRecordingPayment(false);
+    }
+  }
+
+  async function handleRefund() {
+    if (!confirm("Refund this payment? This can't be undone.")) return;
+    setRefunding(true);
+    setPayError(null);
+    try {
+      const updated = await onRefund(id);
+      onChanged(updated);
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Couldn't process this refund.");
+    } finally {
+      setRefunding(false);
     }
   }
 
@@ -155,6 +206,9 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
     }
   }
 
+  const collecting = paymentStatus === "UNPAID" || paymentStatus === "PARTIALLY_PAID" || paymentStatus === "FAILED";
+  const refundable = paymentStatus === "PAID" || paymentStatus === "PARTIALLY_PAID";
+
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2">
@@ -164,30 +218,16 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
         </Badge>
       </div>
 
-      {paymentStatus !== "PAID" && (
+      {paymentStatus === "PARTIALLY_PAID" && (
+        <p className="text-xs text-ink-500">
+          GH₵{(amount - balanceDue).toFixed(2)} collected · GH₵{balanceDue.toFixed(2)} outstanding
+        </p>
+      )}
+
+      {payError && <p className="text-xs text-danger">{payError}</p>}
+
+      {collecting && (
         <div className="flex flex-col gap-2">
-          {payError && <p className="text-xs text-danger">{payError}</p>}
-
-          {paystackConfigured && (
-            <PaystackCheckoutButton
-              planId={id}
-              buttonLabel={`Pay GH₵${amount.toFixed(2)} with Paystack`}
-              onStartCheckout={onStartCheckout}
-              onVerify={async (reference) => {
-                try {
-                  const updated = await onVerifyPayment(reference);
-                  onChanged(updated);
-                  return updated.paymentStatus === "PAID";
-                } catch (err) {
-                  setPayError(err instanceof ApiError ? err.message : "Couldn't verify this payment.");
-                  return false;
-                }
-              }}
-              onError={(msg) => setPayError(msg)}
-              className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          )}
-
           <button
             onClick={handleMarkPaid}
             disabled={markingPaid}
@@ -196,6 +236,47 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
             <CheckCircle2 size={15} />
             {markingPaid ? "Marking..." : "Mark as paid"}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowRecordForm((s) => !s)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-canvas"
+          >
+            {showRecordForm ? "Cancel" : "Record a partial payment"}
+          </button>
+
+          {showRecordForm && (
+            <form onSubmit={handleRecordPayment} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={balanceDue}
+                value={recordAmount}
+                onChange={(e) => setRecordAmount(e.target.value)}
+                placeholder="Amount received"
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+              <select
+                value={recordMethod}
+                onChange={(e) => setRecordMethod(e.target.value as PaymentMethod)}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                {RECORD_PAYMENT_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={recordingPayment || !Number(recordAmount)}
+                className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-card transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {recordingPayment ? "Recording..." : "Record payment"}
+              </button>
+            </form>
+          )}
 
           {paystackConfigured && !momoPending && (
             <button
@@ -277,6 +358,18 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
             </div>
           )}
         </div>
+      )}
+
+      {refundable && (
+        <button
+          type="button"
+          onClick={handleRefund}
+          disabled={refunding}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-danger transition hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RotateCcw size={15} />
+          {refunding ? "Refunding..." : "Refund"}
+        </button>
       )}
     </div>
   );

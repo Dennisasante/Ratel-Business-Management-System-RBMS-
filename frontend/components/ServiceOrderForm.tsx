@@ -2,28 +2,18 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import {
-  ApiError,
-  Customer,
-  CustomerPayload,
-  ServiceCatalogItem,
-  ServiceOrderPayload,
-  ServiceType,
-  UserSummary,
-} from "@/lib/api";
+import { ApiError, ServiceCatalogItem, ServiceOrderPayload, ServiceType, StaffMember } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
-import Modal from "@/components/Modal";
-import CustomerForm from "@/components/CustomerForm";
+import CustomerPicker from "@/components/CustomerPicker";
 
 interface ServiceOrderFormProps {
+  token: string;
   serviceTypes: ServiceType[];
-  customers: Customer[];
   catalog: ServiceCatalogItem[];
-  staff: UserSummary[];
+  staff: StaffMember[];
   submitLabel: string;
   onSubmit: (payload: ServiceOrderPayload) => Promise<void>;
-  onCreateCustomer: (payload: CustomerPayload) => Promise<Customer>;
 }
 
 interface CartLine {
@@ -32,21 +22,24 @@ interface CartLine {
   serviceTypeName: string;
   serviceCatalogId: string;
   serviceName: string;
+  // Set only for a custom-price line with a typed description — takes
+  // precedence over serviceName server-side. See ServiceOrderService.create().
+  customName?: string;
   price: number;
   discount: number;
 }
 
 export default function ServiceOrderForm({
+  token,
   serviceTypes,
-  customers,
   catalog,
   staff,
   submitLabel,
   onSubmit,
-  onCreateCustomer,
 }: ServiceOrderFormProps) {
   const [pickerTypeId, setPickerTypeId] = useState(serviceTypes[0]?.id ?? "");
   const [pickerCatalogId, setPickerCatalogId] = useState("");
+  const [pickerCustomName, setPickerCustomName] = useState("");
   const [pickerPrice, setPickerPrice] = useState("0");
 
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -58,18 +51,19 @@ export default function ServiceOrderForm({
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   const pickerCatalogOptions = catalog.filter((c) => c.serviceTypeId === pickerTypeId);
 
   function setPickerType(id: string) {
     setPickerTypeId(id);
     setPickerCatalogId("");
+    setPickerCustomName("");
     setPickerPrice("0");
   }
 
   function pickCatalogItem(id: string) {
     setPickerCatalogId(id);
+    setPickerCustomName("");
     const item = pickerCatalogOptions.find((c) => c.id === id);
     setPickerPrice(item ? String(item.price) : "0");
   }
@@ -78,6 +72,7 @@ export default function ServiceOrderForm({
     const type = serviceTypes.find((t) => t.id === pickerTypeId);
     if (!type) return;
     const catalogItem = pickerCatalogOptions.find((c) => c.id === pickerCatalogId);
+    const customName = !catalogItem && pickerCustomName.trim() ? pickerCustomName.trim() : undefined;
     setLines((prev) => [
       ...prev,
       {
@@ -85,12 +80,14 @@ export default function ServiceOrderForm({
         serviceTypeId: type.id,
         serviceTypeName: type.name,
         serviceCatalogId: pickerCatalogId,
-        serviceName: catalogItem ? catalogItem.name : type.name,
+        serviceName: customName ?? (catalogItem ? catalogItem.name : type.name),
+        customName,
         price: Number(pickerPrice) || 0,
         discount: 0,
       },
     ]);
     setPickerCatalogId("");
+    setPickerCustomName("");
     setPickerPrice("0");
   }
 
@@ -104,16 +101,14 @@ export default function ServiceOrderForm({
     );
   }
 
-  async function handleAddCustomer(payload: CustomerPayload) {
-    const customer = await onCreateCustomer(payload);
-    setCustomerId(customer.id);
-    setShowAddCustomer(false);
-  }
-
   const total = lines.reduce((sum, l) => sum + Math.max(l.price - l.discount, 0), 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!customerId) {
+      setError("Pick a customer first.");
+      return;
+    }
     if (lines.length === 0) {
       setError("Add at least one service.");
       return;
@@ -122,13 +117,14 @@ export default function ServiceOrderForm({
     setSubmitting(true);
     try {
       await onSubmit({
-        customerId: customerId || undefined,
+        customerId,
         notes: notes || undefined,
         assignedStaffId: assignedStaffId || undefined,
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         items: lines.map((l) => ({
           serviceTypeId: l.serviceTypeId,
           serviceCatalogId: l.serviceCatalogId || undefined,
+          customName: l.customName,
           price: l.price,
           discountAmount: l.discount,
         })),
@@ -141,31 +137,12 @@ export default function ServiceOrderForm({
   }
 
   return (
-    <>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-ink-700">Customer (optional)</label>
-            <button
-              type="button"
-              onClick={() => setShowAddCustomer(true)}
-              className="text-xs font-medium text-accent-hover hover:underline"
-            >
-              + New customer
-            </button>
-          </div>
-          <select
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          >
-            <option value="">No customer on file</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.fullName}
-              </option>
-            ))}
-          </select>
+          <label className="text-sm font-medium text-ink-700">
+            Customer <span className="text-danger">*</span>
+          </label>
+          <CustomerPicker token={token} onSelect={(c) => setCustomerId(c.id)} />
         </div>
 
         <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -195,6 +172,15 @@ export default function ServiceOrderForm({
               ))}
             </select>
           </div>
+          {!pickerCatalogId && (
+            <FormField
+              label="Description"
+              name="pickerCustomName"
+              value={pickerCustomName}
+              onChange={setPickerCustomName}
+              placeholder='e.g. "6 inches HD bone straight wig, middle part"'
+            />
+          )}
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <FormField label="Price" name="pickerPrice" type="number" value={pickerPrice} onChange={setPickerPrice} />
@@ -278,12 +264,5 @@ export default function ServiceOrderForm({
           {submitting ? "Saving..." : submitLabel}
         </Button>
       </form>
-
-      {showAddCustomer && (
-        <Modal title="Add customer" onClose={() => setShowAddCustomer(false)}>
-          <CustomerForm onSubmit={handleAddCustomer} />
-        </Modal>
-      )}
-    </>
   );
 }

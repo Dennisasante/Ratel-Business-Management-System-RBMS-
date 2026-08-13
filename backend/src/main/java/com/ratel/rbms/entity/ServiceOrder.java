@@ -100,6 +100,13 @@ public class ServiceOrder {
     @Column(name = "paystack_reference", unique = true, length = 100)
     private String paystackReference;
 
+    // How much of price has actually been collected — drives the
+    // UNPAID/PARTIALLY_PAID/PAID derivation in ServiceOrderService.recordPayment().
+    // balanceDue (price - amountPaid) is never persisted, only derived.
+    @Column(name = "amount_paid", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal amountPaid = BigDecimal.ZERO;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

@@ -7,12 +7,14 @@ import com.ratel.rbms.dto.GoogleRegisterRequest;
 import com.ratel.rbms.dto.LoginRequest;
 import com.ratel.rbms.dto.RegisterBusinessRequest;
 import com.ratel.rbms.entity.Business;
+import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.AuthProvider;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.PlatformBillingSettingsRepository;
+import com.ratel.rbms.repository.ServiceTypeRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.security.GoogleTokenVerifier;
 import com.ratel.rbms.security.JwtService;
@@ -39,6 +41,7 @@ public class AuthService {
     private final RateLimiterService rateLimiterService;
     private final PlatformBillingSettingsRepository platformBillingSettingsRepository;
     private final SlugGenerator slugGenerator;
+    private final ServiceTypeRepository serviceTypeRepository;
 
     public AuthService(
             BusinessRepository businessRepository,
@@ -49,7 +52,8 @@ public class AuthService {
             GoogleTokenVerifier googleTokenVerifier,
             RateLimiterService rateLimiterService,
             PlatformBillingSettingsRepository platformBillingSettingsRepository,
-            SlugGenerator slugGenerator
+            SlugGenerator slugGenerator,
+            ServiceTypeRepository serviceTypeRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -60,6 +64,7 @@ public class AuthService {
         this.rateLimiterService = rateLimiterService;
         this.platformBillingSettingsRepository = platformBillingSettingsRepository;
         this.slugGenerator = slugGenerator;
+        this.serviceTypeRepository = serviceTypeRepository;
     }
 
     @Transactional
@@ -155,7 +160,18 @@ public class AuthService {
                 .contactPhone(contactPhone)
                 .trialEndsAt(Instant.now().plus(trialDays, ChronoUnit.DAYS))
                 .build();
-        return businessRepository.save(business);
+        business = businessRepository.save(business);
+
+        // Every service order needs a category, and a brand-new business has
+        // none yet — seed one default so free-text order entry (see
+        // ServiceOrderService.create()) is never blocked on "create a category
+        // first." The owner can rename or add more from Services later.
+        serviceTypeRepository.save(ServiceType.builder()
+                .businessId(business.getId())
+                .name("General")
+                .build());
+
+        return business;
     }
 
     private AuthResponse completeLogin(User user) {

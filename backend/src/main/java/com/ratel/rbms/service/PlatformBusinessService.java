@@ -38,6 +38,7 @@ import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.StockMovementRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
+import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -76,6 +77,9 @@ public class PlatformBusinessService {
     private final SaleItemRepository saleItemRepository;
     private final StockMovementRepository stockMovementRepository;
     private final ActivityLogService activityLogService;
+    private final SaleService saleService;
+    private final ServiceOrderService serviceOrderService;
+    private final BookingService bookingService;
 
     public PlatformBusinessService(
             BusinessRepository businessRepository,
@@ -96,7 +100,10 @@ public class PlatformBusinessService {
             PaymentTransactionRepository paymentTransactionRepository,
             SaleItemRepository saleItemRepository,
             StockMovementRepository stockMovementRepository,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            SaleService saleService,
+            ServiceOrderService serviceOrderService,
+            BookingService bookingService
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -117,6 +124,9 @@ public class PlatformBusinessService {
         this.saleItemRepository = saleItemRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.activityLogService = activityLogService;
+        this.saleService = saleService;
+        this.serviceOrderService = serviceOrderService;
+        this.bookingService = bookingService;
     }
 
     // Full payment-event visibility for a single business — "so I'm never
@@ -126,6 +136,40 @@ public class PlatformBusinessService {
         businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
         return paymentTransactionService.search(businessId, null, null, null, null);
+    }
+
+    // Cross-checks a stuck/PENDING gateway transaction — the same mechanism as
+    // the business owner's own re-verify button on PaymentTransactionController,
+    // reused (not duplicated) here so Super Admin can confirm a payment during a
+    // support call without needing the owner to do it themselves.
+    @Transactional
+    public void verifyPaymentTransaction(UUID adminId, UUID businessId, UUID transactionId) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+
+        PaymentTransaction t = paymentTransactionRepository.findById(transactionId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Transaction not found."));
+        if (!t.getBusinessId().equals(businessId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Transaction not found.");
+        }
+        if (!"PAYSTACK".equals(t.getGateway()) || t.getGatewayReference() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing to verify — this wasn't a gateway payment.");
+        }
+
+        // Each flow's verifyPayment() reads TenantContext.getBusinessId() — normally
+        // stamped by JwtAuthenticationFilter from the caller's own JWT, but a Super
+        // Admin's platform token carries no business_id at all (see that filter's
+        // own comment). Set it here for this call so those methods resolve the
+        // right tenant instead of throwing "No business_id in tenant context."
+        TenantContext.setBusinessId(businessId);
+        switch (t.getSourceType()) {
+            case SALE -> saleService.verifyPayment(t.getGatewayReference());
+            case SERVICE_ORDER -> serviceOrderService.verifyPayment(t.getGatewayReference());
+            case BOOKING -> bookingService.verifyPayment(t.getGatewayReference());
+            case PURCHASE_ORDER -> throw new ApiException(HttpStatus.BAD_REQUEST, "Purchase orders are paid manually — there's nothing to verify.");
+        }
+
+        auditLogService.log(adminId, "Verified a payment for \"" + business.getName() + "\"", businessId, business.getName(), null);
     }
 
     // Read-only listings backing the Super Admin data-cleanup panel — "remove

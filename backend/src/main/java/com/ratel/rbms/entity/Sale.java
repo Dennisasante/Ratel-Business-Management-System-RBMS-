@@ -59,16 +59,23 @@ public class Sale {
     @Builder.Default
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
-    // UNPAID/PAID/FAILED. CASH/BANK_TRANSFER sales are assumed collected the
-    // instant they're rung up (defaults PAID, unchanged POS behavior) — only
-    // CARD/MOBILE_MONEY start as UNPAID and need an explicit gateway charge or
-    // manual mark-paid afterward. See SaleService.create().
+    // UNPAID/PAID/FAILED. CASH/MOBILE_MONEY_DIRECT sales are assumed collected
+    // the instant they're rung up (defaults PAID, unchanged POS behavior) —
+    // only MOBILE_MONEY (Online Payment) starts as UNPAID and needs an
+    // explicit gateway charge or manual mark-paid afterward. See SaleService.create().
     @Column(name = "payment_status", nullable = false, length = 20)
     @Builder.Default
     private String paymentStatus = "PAID";
 
     @Column(name = "paystack_reference", unique = true, length = 100)
     private String paystackReference;
+
+    // How much of totalAmount has actually been collected — drives the
+    // UNPAID/PARTIALLY_PAID/PAID derivation in SaleService.recordPayment().
+    // balanceDue (totalAmount - amountPaid) is never persisted, only derived.
+    @Column(name = "amount_paid", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal amountPaid = BigDecimal.ZERO;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

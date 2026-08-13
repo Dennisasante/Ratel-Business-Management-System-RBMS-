@@ -57,6 +57,23 @@ export interface UserSummary {
 
 export type StaffRole = "OWNER" | "MANAGER" | "SALES_PERSON" | "ACCOUNTANT" | "STAFF";
 
+// A name to assign work to — no login, no role. Replaced STAFF-role User
+// accounts; see StaffMemberController on the backend.
+export interface StaffMember {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface StaffMemberPayload {
+  fullName: string;
+  phone?: string;
+  notes?: string;
+}
+
 export interface CreateStaffPayload {
   fullName: string;
   email: string;
@@ -164,6 +181,9 @@ export interface Customer {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  // How this customer found the business — Walk-in/Instagram/WhatsApp/
+  // Facebook/Referral/Website/Other, free text. Null for older customers.
+  source: string | null;
   totalSpent: number;
   purchaseCount: number;
   createdAt: string;
@@ -174,9 +194,16 @@ export interface CustomerPayload {
   phone?: string;
   email?: string;
   notes?: string;
+  source?: string;
 }
 
-export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "CARD" | "BANK_TRANSFER" | "MOBILE_MONEY_DIRECT";
+export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "MOBILE_MONEY_DIRECT";
+
+export interface RecordPaymentPayload {
+  amount: number;
+  method: PaymentMethod;
+  note?: string;
+}
 
 export type SaleItemType = "PRODUCT" | "SERVICE";
 
@@ -218,9 +245,13 @@ export interface Sale {
   commissionAmount: number;
   items: SaleItem[];
   createdAt: string;
-  // UNPAID/PAID/FAILED — CASH/BANK_TRANSFER sales are PAID immediately;
-  // CARD/MOBILE_MONEY start UNPAID until charged or manually marked paid.
+  // UNPAID/PARTIALLY_PAID/PAID/FAILED/REFUNDED — CASH/MOBILE_MONEY_DIRECT
+  // sales are PAID immediately; MOBILE_MONEY (Online Payment) starts UNPAID
+  // until charged or manually marked paid.
   paymentStatus: string;
+  amountPaid: number;
+  // Derived server-side — totalAmount minus amountPaid, clamped to zero.
+  balanceDue: number;
 }
 
 export type ExpenseCategory =
@@ -458,11 +489,18 @@ export interface ServiceOrder {
   bookingWhatsappLink: string | null;
   customerWhatsappLink: string | null;
   paymentStatus: string;
+  amountPaid: number;
+  // Derived server-side — price minus amountPaid, clamped to zero.
+  balanceDue: number;
 }
 
 export interface ServiceOrderItemPayload {
   serviceTypeId: string;
   serviceCatalogId?: string;
+  // A typed description (e.g. "6 inches HD bone straight wig, middle part")
+  // for a line with no catalog item — takes precedence over the catalog/
+  // category name when present.
+  customName?: string;
   price: number;
   discountAmount?: number;
 }
@@ -852,12 +890,13 @@ export interface CustomWigRequest {
   id: string;
   requestNumber: number;
   customerName: string;
-  customerEmail: string;
-  customerWhatsapp: string;
+  customerEmail: string | null;
+  customerWhatsapp: string | null;
   estimatedPrice: number;
   status: CustomWigRequestStatus;
   finalPrice: number | null;
   whatsappLink: string | null;
+  source: string | null;
   createdAt: string;
 }
 
@@ -873,6 +912,15 @@ export interface CustomWigSelection {
 export interface CustomWigSelectionInput {
   attributeId: string;
   optionId: string;
+}
+
+export interface CreateStaffCustomWigRequestPayload {
+  customerName: string;
+  customerEmail?: string;
+  customerWhatsapp?: string;
+  source?: string;
+  selections: CustomWigSelectionInput[];
+  notes?: string;
 }
 
 export interface CustomWigRequestCreated {
@@ -907,8 +955,8 @@ export interface CustomWigRequestDetail {
   id: string;
   requestNumber: number;
   customerName: string;
-  customerEmail: string;
-  customerWhatsapp: string;
+  customerEmail: string | null;
+  customerWhatsapp: string | null;
   selections: CustomWigSelection[];
   estimatedPrice: number;
   inspirationPhotoUrl: string | null;
@@ -917,6 +965,7 @@ export interface CustomWigRequestDetail {
   finalPrice: number | null;
   ownerMessage: string | null;
   whatsappLink: string | null;
+  source: string | null;
   createdAt: string;
 }
 
@@ -1236,6 +1285,17 @@ export const api = {
 
   listUsers: (token: string) => request<UserSummary[]>("/api/users", {}, token),
 
+  listStaffMembers: (token: string) => request<StaffMember[]>("/api/staff-members", {}, token),
+
+  createStaffMember: (token: string, payload: StaffMemberPayload) =>
+    request<StaffMember>("/api/staff-members", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  updateStaffMember: (token: string, id: string, payload: StaffMemberPayload) =>
+    request<StaffMember>(`/api/staff-members/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  setStaffMemberActive: (token: string, id: string, active: boolean) =>
+    request<StaffMember>(`/api/staff-members/${id}/status`, { method: "PATCH", body: JSON.stringify({ active }) }, token),
+
   listProducts: (token: string, filters?: { search?: string; categoryId?: string; includeArchived?: boolean }) => {
     const params = new URLSearchParams();
     if (filters?.search) params.set("search", filters.search);
@@ -1337,9 +1397,6 @@ export const api = {
   resendServiceOrderReadyEmail: (token: string, id: string) =>
     request<ServiceOrder>(`/api/service-orders/${id}/resend-ready-email`, { method: "POST" }, token),
 
-  startServiceOrderPayment: (token: string, id: string) =>
-    request<CheckoutResponse>(`/api/service-orders/${id}/checkout`, { method: "POST" }, token),
-
   chargeServiceOrderMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
     request<MobileMoneyChargeResponse>(
       `/api/service-orders/${id}/charge-mobile-money`,
@@ -1359,6 +1416,12 @@ export const api = {
 
   markServiceOrderPaid: (token: string, id: string) =>
     request<ServiceOrder>(`/api/service-orders/${id}/mark-paid`, { method: "POST" }, token),
+
+  recordServiceOrderPayment: (token: string, id: string, payload: RecordPaymentPayload) =>
+    request<ServiceOrder>(`/api/service-orders/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
+
+  refundServiceOrder: (token: string, id: string, note?: string) =>
+    request<ServiceOrder>(`/api/service-orders/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
 
   listPaymentTransactions: (
     token: string,
@@ -1440,9 +1503,6 @@ export const api = {
   createSale: (token: string, payload: SalePayload) =>
     request<Sale>("/api/sales", { method: "POST", body: JSON.stringify(payload) }, token),
 
-  startSalePayment: (token: string, id: string) =>
-    request<CheckoutResponse>(`/api/sales/${id}/checkout`, { method: "POST" }, token),
-
   chargeSaleMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
     request<MobileMoneyChargeResponse>(
       `/api/sales/${id}/charge-mobile-money`,
@@ -1458,6 +1518,12 @@ export const api = {
 
   markSalePaid: (token: string, id: string) =>
     request<Sale>(`/api/sales/${id}/mark-paid`, { method: "POST" }, token),
+
+  recordSalePayment: (token: string, id: string, payload: RecordPaymentPayload) =>
+    request<Sale>(`/api/sales/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
+
+  refundSale: (token: string, id: string, note?: string) =>
+    request<Sale>(`/api/sales/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
 
   listExpenses: (token: string) => request<Expense[]>("/api/expenses", {}, token),
 
@@ -1642,6 +1708,9 @@ export const api = {
 
   getPlatformBusinessPaymentTransactions: (token: string, id: string) =>
     request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions`, {}, token),
+
+  verifyPlatformBusinessPaymentTransaction: (token: string, businessId: string, transactionId: string) =>
+    request<void>(`/api/platform/businesses/${businessId}/payment-transactions/${transactionId}/verify`, { method: "POST" }, token),
 
   getPlatformBusinessServiceOrders: (token: string, id: string) =>
     request<PlatformServiceOrderSummary[]>(`/api/platform/businesses/${id}/service-orders`, {}, token),
@@ -1859,6 +1928,29 @@ export const api = {
 
   listCustomWigRequests: (token: string) =>
     request<CustomWigRequest[]>("/api/custom-wig-requests", {}, token),
+
+  // Staff logging a request that arrived through an informal channel
+  // (Instagram DM, WhatsApp, a phone call) — same multipart shape as the
+  // public submitCustomWigRequest below, just authenticated.
+  createStaffCustomWigRequest: async (
+    token: string,
+    payload: CreateStaffCustomWigRequestPayload,
+    photo: File | null
+  ): Promise<CustomWigRequest> => {
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify(payload));
+    if (photo) formData.append("photo", photo);
+    const res = await fetch("/api/custom-wig-requests", {
+      method: "POST",
+      credentials: "same-origin",
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Couldn't log that request.");
+    }
+    return res.json();
+  },
 
   getCustomWigRequest: (token: string, id: string) =>
     request<CustomWigRequestDetail>(`/api/custom-wig-requests/${id}`, {}, token),

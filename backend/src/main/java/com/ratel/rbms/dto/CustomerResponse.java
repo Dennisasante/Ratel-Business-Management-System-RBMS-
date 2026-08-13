@@ -12,6 +12,7 @@ public record CustomerResponse(
         String phone,
         String email,
         String notes,
+        String source,
         BigDecimal totalSpent,
         int purchaseCount,
         Instant createdAt
@@ -23,6 +24,7 @@ public record CustomerResponse(
                 c.getPhone(),
                 c.getEmail(),
                 c.getNotes(),
+                c.getSource(),
                 totalSpent,
                 purchaseCount,
                 c.getCreatedAt()

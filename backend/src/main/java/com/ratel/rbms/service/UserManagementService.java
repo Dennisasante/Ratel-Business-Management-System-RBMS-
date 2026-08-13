@@ -49,6 +49,15 @@ public class UserManagementService {
         UUID businessId = TenantContext.getBusinessId();
         User currentUser = currentUser();
 
+        // STAFF is no longer a creatable account role — staff are now name-only
+        // StaffMember records (see StaffMemberService) with no login at all.
+        // Role.STAFF itself stays in the enum only so historical converted
+        // accounts (now inactive, see V34__staff_members.sql) keep deserializing.
+        if (req.role() == Role.STAFF) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Staff no longer get login accounts — add them as a Staff Member instead.");
+        }
+
         assertCanManage(currentUser, req.role());
 
         if (userRepository.findByEmail(req.email()).isPresent()) {
@@ -101,6 +110,10 @@ public class UserManagementService {
         User currentUser = currentUser();
         if (currentUser.getRole() != Role.OWNER) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Only an Owner can change someone's role.");
+        }
+        if (req.role() == Role.STAFF) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Staff no longer get login accounts — add them as a Staff Member instead.");
         }
 
         User target = getOwned(userId);

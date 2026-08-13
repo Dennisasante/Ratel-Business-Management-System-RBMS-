@@ -14,6 +14,7 @@ public record CustomWigRequestResponse(
         String status,
         BigDecimal finalPrice,
         String whatsappLink,
+        String source,
         Instant createdAt
 ) {
 }

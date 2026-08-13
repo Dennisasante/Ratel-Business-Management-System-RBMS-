@@ -72,7 +72,7 @@ export default function CustomersPage() {
 
       <Card>
         {fetching ? (
-          <TableSkeleton cols={4} />
+          <TableSkeleton cols={5} />
         ) : customers.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -96,6 +96,7 @@ export default function CustomersPage() {
               <Tr>
                 <Th>Name</Th>
                 <Th>Contact</Th>
+                <Th>Source</Th>
                 <Th>Purchases</Th>
                 <Th className="text-right">Total spent</Th>
               </Tr>
@@ -109,6 +110,7 @@ export default function CustomersPage() {
                     </Link>
                   </Td>
                   <Td className="text-ink-500">{c.phone ?? c.email ?? "—"}</Td>
+                  <Td className="text-ink-500">{c.source ?? "—"}</Td>
                   <Td className="tabular text-ink-500">{c.purchaseCount}</Td>
                   <Td className="tabular text-right font-medium">GH₵{c.totalSpent.toFixed(2)}</Td>
                 </Tr>

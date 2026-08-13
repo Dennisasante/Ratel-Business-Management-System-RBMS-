@@ -1,8 +1,9 @@
 package com.ratel.rbms.service;
 
-import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
+import com.ratel.rbms.dto.RecordPaymentRequest;
+import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SaleItemRequest;
 import com.ratel.rbms.dto.SaleItemResponse;
 import com.ratel.rbms.dto.SaleRequest;
@@ -91,11 +92,10 @@ public class SaleService {
             customer = customerService.getOwned(req.customerId());
         }
 
-        // CASH/BANK_TRANSFER/MOBILE_MONEY_DIRECT are assumed collected the instant
-        // the sale is rung up — only CARD/MOBILE_MONEY (the Paystack-gateway one)
-        // defer to a real gateway charge or manual mark-paid afterward.
+        // CASH/MOBILE_MONEY_DIRECT are assumed collected the instant the sale
+        // is rung up — only MOBILE_MONEY (the Paystack-gateway one) defers to
+        // a real gateway charge or manual mark-paid afterward.
         boolean collectedInPerson = req.paymentMethod() == PaymentMethod.CASH
-                || req.paymentMethod() == PaymentMethod.BANK_TRANSFER
                 || req.paymentMethod() == PaymentMethod.MOBILE_MONEY_DIRECT;
 
         Sale sale = Sale.builder()
@@ -180,6 +180,7 @@ public class SaleService {
         }
 
         sale.setTotalAmount(runningTotal);
+        sale.setAmountPaid(collectedInPerson ? runningTotal : BigDecimal.ZERO);
 
         // Snapshotted now, from the cashier's rate at this exact moment — see
         // the comment on Sale.commissionAmount for why this isn't recalculated later.
@@ -213,34 +214,6 @@ public class SaleService {
         return toResponseWithItems(sale);
     }
 
-    public CheckoutResponse startPayment(UUID id) {
-        Sale sale = getOwned(id);
-        if ("PAID".equals(sale.getPaymentStatus())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already paid.");
-        }
-        Customer customer = customerService.getOrNull(sale.getCustomerId());
-        String customerEmail = resolveCustomerEmail(customer, sale.getBusinessId(), sale.getId());
-
-        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(sale.getBusinessId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
-        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
-        }
-
-        long amountMinorUnits = sale.getTotalAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
-        String reference = "SALE-" + sale.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
-
-        PaystackService.InitResult init = paystackService.initializeTransaction(
-                integrations.getPaystackSecretKey(), customerEmail, amountMinorUnits, reference,
-                Map.of("saleId", sale.getId().toString())
-        );
-
-        sale.setPaystackReference(init.reference());
-        saleRepository.save(sale);
-
-        return new CheckoutResponse(init.accessCode(), init.reference());
-    }
-
     // Charges the customer's mobile money wallet directly by phone number —
     // same "input the number, they get a prompt" flow as ServiceOrderService's
     // equivalent method.
@@ -268,6 +241,7 @@ public class SaleService {
         sale.setPaystackReference(result.reference());
         if (result.success()) {
             sale.setPaymentStatus("PAID");
+            sale.setAmountPaid(sale.getTotalAmount());
             activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
         }
         saleRepository.save(sale);
@@ -299,6 +273,7 @@ public class SaleService {
 
         if (result.success()) {
             sale.setPaymentStatus("PAID");
+            sale.setAmountPaid(sale.getTotalAmount());
             sale = saleRepository.save(sale);
             activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
             paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "SUCCESS");
@@ -328,6 +303,9 @@ public class SaleService {
         PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
 
         sale.setPaymentStatus(verify.success() ? "PAID" : "FAILED");
+        if (verify.success()) {
+            sale.setAmountPaid(sale.getTotalAmount());
+        }
         sale = saleRepository.save(sale);
 
         if (verify.success()) {
@@ -336,7 +314,7 @@ public class SaleService {
 
         paymentTransactionService.record(
                 sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
-                sale.getId(), "PAYSTACK", "CARD", sale.getTotalAmount(), verify.success() ? "SUCCESS" : "FAILED",
+                sale.getId(), "PAYSTACK", "MOBILE_MONEY", sale.getTotalAmount(), verify.success() ? "SUCCESS" : "FAILED",
                 reference, sale.getCustomerId(), null, null, TenantContext.getUserId()
         );
 
@@ -344,22 +322,79 @@ public class SaleService {
     }
 
     // A plain manual action (no Paystack) for cash/other payment collected
-    // after the fact — mirrors ServiceOrderService.markPaid().
+    // after the fact — mirrors ServiceOrderService.markPaid(). Thin wrapper
+    // over recordPayment(): "mark paid" just means "the whole remaining
+    // balance came in, in cash."
     @Transactional
     public SaleResponse markPaid(UUID id) {
         Sale sale = getOwned(id);
-        sale.setPaymentStatus("PAID");
+        BigDecimal balanceDue = sale.getTotalAmount().subtract(sale.getAmountPaid()).max(BigDecimal.ZERO);
+        return recordPayment(id, new RecordPaymentRequest(balanceDue, PaymentMethod.CASH, "Marked paid manually"));
+    }
+
+    // Records a payment against a sale's outstanding balance — the manual
+    // "type in what came in" counterpart to the gateway flows above, and the
+    // only path that can produce PARTIALLY_PAID.
+    @Transactional
+    public SaleResponse recordPayment(UUID id, RecordPaymentRequest req) {
+        Sale sale = getOwned(id);
+        BigDecimal balanceDue = sale.getTotalAmount().subtract(sale.getAmountPaid()).max(BigDecimal.ZERO);
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This sale is already fully paid.");
+        }
+        if (req.amount().compareTo(balanceDue) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "That's more than the outstanding balance of GH₵" + balanceDue + ".");
+        }
+
+        BigDecimal newAmountPaid = sale.getAmountPaid().add(req.amount());
+        sale.setAmountPaid(newAmountPaid);
+        sale.setPaymentStatus(derivePaymentStatus(newAmountPaid, sale.getTotalAmount()));
         sale = saleRepository.save(sale);
 
-        activityLogService.log("Marked sale #" + sale.getSaleNumber() + " as paid", "SALE", sale.getId());
+        activityLogService.log(
+                "Recorded a GH₵" + req.amount() + " payment on sale #" + sale.getSaleNumber(), "SALE", sale.getId());
 
         paymentTransactionService.record(
                 sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
-                sale.getId(), "MANUAL", null, sale.getTotalAmount(), "SUCCESS",
-                null, sale.getCustomerId(), null, "Marked paid manually", TenantContext.getUserId()
+                sale.getId(), "MANUAL", req.method().name(), req.amount(), "SUCCESS",
+                null, sale.getCustomerId(), null, req.note(), TenantContext.getUserId()
         );
 
         return toResponseWithItems(sale);
+    }
+
+    // Full refund only — no partial-refund reconciliation. amountPaid is left
+    // as-is (a record of what was actually collected); REFUNDED overrides
+    // paymentStatus so the ledger's OUTGOING row is the source of truth for
+    // the refund event itself.
+    @Transactional
+    public SaleResponse refund(UUID id, RefundRequest req) {
+        Sale sale = getOwned(id);
+        if (sale.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this sale to refund.");
+        }
+
+        BigDecimal refundedAmount = sale.getAmountPaid();
+        sale.setPaymentStatus("REFUNDED");
+        sale = saleRepository.save(sale);
+
+        activityLogService.log("Refunded GH₵" + refundedAmount + " on sale #" + sale.getSaleNumber(), "SALE", sale.getId());
+
+        paymentTransactionService.record(
+                sale.getBusinessId(), PaymentTransaction.Direction.OUTGOING, PaymentTransaction.SourceType.SALE,
+                sale.getId(), "MANUAL", null, refundedAmount, "SUCCESS",
+                null, sale.getCustomerId(), null, req.note() != null && !req.note().isBlank() ? req.note() : "Refunded",
+                TenantContext.getUserId()
+        );
+
+        return toResponseWithItems(sale);
+    }
+
+    private static String derivePaymentStatus(BigDecimal amountPaid, BigDecimal total) {
+        if (amountPaid.compareTo(BigDecimal.ZERO) <= 0) return "UNPAID";
+        if (amountPaid.compareTo(total) >= 0) return "PAID";
+        return "PARTIALLY_PAID";
     }
 
     private Sale getOwned(UUID id) {

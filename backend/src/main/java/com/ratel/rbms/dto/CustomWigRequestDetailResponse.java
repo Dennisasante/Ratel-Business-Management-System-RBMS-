@@ -19,6 +19,7 @@ public record CustomWigRequestDetailResponse(
         BigDecimal finalPrice,
         String ownerMessage,
         String whatsappLink,
+        String source,
         Instant createdAt
 ) {
 }

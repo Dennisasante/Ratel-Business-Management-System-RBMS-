@@ -5,17 +5,16 @@ import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServicePackage;
+import com.ratel.rbms.entity.StaffMember;
 import com.ratel.rbms.entity.User;
-import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
-import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
+import com.ratel.rbms.repository.StaffMemberRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -37,6 +36,7 @@ public class BookingListService {
     private final ServiceOrderRepository serviceOrderRepository;
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServicePackageRepository servicePackageRepository;
+    private final StaffMemberRepository staffMemberRepository;
     private final UserRepository userRepository;
 
     public BookingListService(
@@ -44,20 +44,19 @@ public class BookingListService {
             ServiceOrderRepository serviceOrderRepository,
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServicePackageRepository servicePackageRepository,
+            StaffMemberRepository staffMemberRepository,
             UserRepository userRepository
     ) {
         this.bookingRepository = bookingRepository;
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.servicePackageRepository = servicePackageRepository;
+        this.staffMemberRepository = staffMemberRepository;
         this.userRepository = userRepository;
     }
 
     public List<BookingListResponse> list(ServiceOrderStatus status) {
         UUID businessId = TenantContext.getBusinessId();
-        User currentUser = userRepository.findById(TenantContext.getUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
-        UUID staffScope = currentUser.getRole() == Role.STAFF ? currentUser.getId() : null;
 
         List<Booking> bookings = bookingRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
 
@@ -72,19 +71,17 @@ public class BookingListService {
 
         return bookings.stream()
                 .map(booking -> new BookingOrderPair(booking, ordersById.get(booking.getServiceOrderId())))
-                .filter(pair -> {
-                    if (staffScope != null && (pair.order == null || !staffScope.equals(pair.order.getAssignedStaffId()))) {
-                        return false;
-                    }
-                    return status == null || (pair.order != null && pair.order.getStatus() == status);
-                })
+                .filter(pair -> status == null || (pair.order != null && pair.order.getStatus() == status))
                 .map(pair -> {
                     String serviceName = pair.order == null ? null
                             : pair.order.getServicePackageId() != null
                                     ? packageNames.get(pair.order.getServicePackageId())
                                     : catalogNames.get(pair.order.getServiceCatalogId());
+                    // StaffMember first — that's what assignedStaffId points at now.
+                    // Falls back to User only for a pre-migration edge case.
                     String assignedStaffName = pair.order != null && pair.order.getAssignedStaffId() != null
-                            ? userRepository.findById(pair.order.getAssignedStaffId()).map(User::getFullName).orElse(null)
+                            ? staffMemberRepository.findById(pair.order.getAssignedStaffId()).map(StaffMember::getFullName)
+                                    .orElseGet(() -> userRepository.findById(pair.order.getAssignedStaffId()).map(User::getFullName).orElse(null))
                             : null;
                     return BookingListResponse.from(pair.booking, pair.order, serviceName, assignedStaffName);
                 })

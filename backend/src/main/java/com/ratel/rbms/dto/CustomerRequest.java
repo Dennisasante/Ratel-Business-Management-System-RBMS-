@@ -10,6 +10,10 @@ public record CustomerRequest(
 
         String email,
 
-        String notes
+        String notes,
+
+        // Walk-in/Instagram/WhatsApp/Facebook/Referral/Website/Other — free
+        // text, optional.
+        String source
 ) {
 }

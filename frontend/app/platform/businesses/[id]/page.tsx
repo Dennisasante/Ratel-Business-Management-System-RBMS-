@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil } from "lucide-react";
+import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil, RotateCw } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 import {
   api,
@@ -67,6 +67,8 @@ export default function PlatformBusinessDetailPage() {
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
 
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
+  const [verifyingTransactionId, setVerifyingTransactionId] = useState<string | null>(null);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
 
   const [cleanupTab, setCleanupTab] = useState<"orders" | "sales" | "customers">("orders");
   const [cleanupOrders, setCleanupOrders] = useState<PlatformServiceOrderSummary[]>([]);
@@ -98,10 +100,28 @@ export default function PlatformBusinessDetailPage() {
     api.listPlatformSubscriptionPlans(session.token).then(setPlans);
   }, [session]);
 
-  useEffect(() => {
+  const loadTransactions = useCallback(async () => {
     if (!session || !params.id) return;
-    api.getPlatformBusinessPaymentTransactions(session.token, params.id).then(setTransactions);
+    setTransactions(await api.getPlatformBusinessPaymentTransactions(session.token, params.id));
   }, [session, params.id]);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  async function handleVerifyTransaction(transactionId: string) {
+    if (!session || !params.id) return;
+    setVerifyingTransactionId(transactionId);
+    setTransactionsError(null);
+    try {
+      await api.verifyPlatformBusinessPaymentTransaction(session.token, params.id, transactionId);
+      await loadTransactions();
+    } catch (err) {
+      setTransactionsError(err instanceof ApiError ? err.message : "Couldn't verify that payment.");
+    } finally {
+      setVerifyingTransactionId(null);
+    }
+  }
 
   const loadCleanupLists = useCallback(async () => {
     if (!session || !params.id) return;
@@ -421,6 +441,7 @@ export default function PlatformBusinessDetailPage() {
               <Card className="p-5">
                 <h2 className="text-base font-semibold text-ink-900">Payment Transactions</h2>
                 <p className="text-xs text-ink-500">Every payment event recorded for this business — online and manual.</p>
+                {transactionsError && <p className="mt-2 text-sm text-danger">{transactionsError}</p>}
                 {transactions.length === 0 ? (
                   <p className="mt-3 text-sm text-ink-500">No payment transactions yet.</p>
                 ) : (
@@ -434,6 +455,7 @@ export default function PlatformBusinessDetailPage() {
                           <Th>Type</Th>
                           <Th>Status</Th>
                           <Th className="text-right">Amount</Th>
+                          <Th className="text-right">Actions</Th>
                         </Tr>
                       </THead>
                       <TBody>
@@ -450,6 +472,19 @@ export default function PlatformBusinessDetailPage() {
                             </Td>
                             <Td className="tabular text-right font-medium">
                               {t.direction === "OUTGOING" ? "-" : ""}GH₵{t.amount.toFixed(2)}
+                            </Td>
+                            <Td className="text-right">
+                              {t.status === "PENDING" && t.gateway === "PAYSTACK" && (
+                                <button
+                                  onClick={() => handleVerifyTransaction(t.id)}
+                                  disabled={verifyingTransactionId === t.id}
+                                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-ink-700 hover:bg-canvas disabled:opacity-50"
+                                  title="Cross-check with Paystack directly"
+                                >
+                                  <RotateCw size={12} className={verifyingTransactionId === t.id ? "animate-spin" : ""} />
+                                  {verifyingTransactionId === t.id ? "Checking..." : "Verify"}
+                                </button>
+                              )}
                             </Td>
                           </Tr>
                         ))}

@@ -13,6 +13,12 @@ public record ServiceOrderItemRequest(
         // Nullable: a custom/freeform-priced line has no catalog item behind it.
         UUID serviceCatalogId,
 
+        // Nullable: a free-text description for a line with no catalog item —
+        // e.g. "6 inches HD bone straight wig, middle part" typed straight
+        // from an Instagram/WhatsApp order. Takes precedence over the catalog/
+        // category name when present. See ServiceOrderService.create().
+        String customName,
+
         // Required: the frontend always resolves a concrete price client-side
         // before submit (from the catalog pick, or typed manually for a
         // custom line) — same "not falls back server-side" behavior the

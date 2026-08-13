@@ -435,6 +435,17 @@ public class BookingService {
                             .build()));
             resolvedCustomerId = customer.getId();
             resolvedCustomerName = req.customerName() != null && !req.customerName().isBlank() ? req.customerName() : customer.getFullName();
+        } else if (req.customerName() != null && !req.customerName().isBlank()) {
+            // Name-only call-in with no phone on file — the customer picker's
+            // quick-create always attaches a real customerId before this point,
+            // so this only covers older/edge clients. Still create a bare
+            // Customer so resolvedCustomerId is never left null.
+            Customer customer = customerRepository.save(Customer.builder()
+                    .businessId(businessId)
+                    .fullName(req.customerName())
+                    .email(req.customerEmail())
+                    .build());
+            resolvedCustomerId = customer.getId();
         }
 
         if (resolvedCustomerName == null || resolvedCustomerName.isBlank()) {

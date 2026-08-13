@@ -7,19 +7,22 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
 
+// A name to assign work to — no login, no password, no role. Existing
+// STAFF-role User accounts were converted into these (same id, see
+// V34__staff_members.sql) and had their login disabled; this is now the only
+// way to add staff going forward. See ServiceOrder.assignedStaffId.
 @Entity
-@Table(name = "customers")
+@Table(name = "staff_members")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Customer {
+public class StaffMember {
 
     @Id
     @GeneratedValue
@@ -34,23 +37,14 @@ public class Customer {
     @Column(length = 50)
     private String phone;
 
-    @Column(length = 150)
-    private String email;
-
     @Column(columnDefinition = "TEXT")
     private String notes;
 
-    // How this customer found the business — Walk-in/Instagram/WhatsApp/
-    // Facebook/Referral/Website/Other, free text like CustomWigRequest.source.
-    // Null for customers created before this field existed.
-    @Column(length = 30)
-    private String source;
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean active = true;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private Instant updatedAt;
 }

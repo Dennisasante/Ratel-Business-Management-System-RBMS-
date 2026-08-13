@@ -3,9 +3,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, MessageCircle, Settings, CheckCircle2 } from "lucide-react";
+import { Sparkles, MessageCircle, Settings, CheckCircle2, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, ApiError, CustomWigRequest, CustomWigRequestDetail, CustomWigRequestStatus } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  CreateStaffCustomWigRequestPayload,
+  CustomItemAttribute,
+  CustomWigRequest,
+  CustomWigRequestDetail,
+  CustomWigRequestStatus,
+  CustomWigSelectionInput,
+} from "@/lib/api";
 import Modal from "@/components/Modal";
 import UpsellBanner from "@/components/UpsellBanner";
 import PageHeader from "@/components/ui/PageHeader";
@@ -35,11 +44,13 @@ export default function CustomWigRequestsPage() {
   const router = useRouter();
 
   const [requests, setRequests] = useState<CustomWigRequest[]>([]);
+  const [attributes, setAttributes] = useState<CustomItemAttribute[]>([]);
   const [fetching, setFetching] = useState(true);
   const [upsellMessage, setUpsellMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CustomWigRequestStatus | "">("");
   const [detail, setDetail] = useState<CustomWigRequestDetail | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showNewRequest, setShowNewRequest] = useState(false);
 
   const loadRequests = useCallback(async () => {
     if (!session) return;
@@ -67,7 +78,9 @@ export default function CustomWigRequestsPage() {
   useEffect(() => {
     if (!session) return;
     setFetching(true);
-    loadRequests().finally(() => setFetching(false));
+    Promise.all([loadRequests(), api.listCustomWigAttributes(session.token).then(setAttributes).catch(() => {})]).finally(() =>
+      setFetching(false)
+    );
   }, [session, loadRequests]);
 
   async function openDetail(id: string) {
@@ -84,6 +97,13 @@ export default function CustomWigRequestsPage() {
     await loadRequests();
   }
 
+  async function handleCreate(payload: CreateStaffCustomWigRequestPayload, photo: File | null) {
+    if (!session) return;
+    await api.createStaffCustomWigRequest(session.token, payload, photo);
+    setShowNewRequest(false);
+    await loadRequests();
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -93,12 +113,19 @@ export default function CustomWigRequestsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <PageHeader title="Custom Wig Requests" subtitle="Requests submitted through your custom configurator." />
-        <Link href="/dashboard/custom-wig-requests/attributes">
-          <Button variant="secondary">
-            <Settings size={15} className="mr-1.5" /> Pricing rules
-          </Button>
-        </Link>
+        <PageHeader title="Custom Wig Requests" subtitle="Requests submitted through your custom configurator — or logged by you." />
+        <div className="flex items-center gap-2">
+          {attributes.length > 0 && (
+            <Button onClick={() => setShowNewRequest(true)}>
+              <Plus size={15} className="mr-1.5" /> New request
+            </Button>
+          )}
+          <Link href="/dashboard/custom-wig-requests/attributes">
+            <Button variant="secondary">
+              <Settings size={15} className="mr-1.5" /> Pricing rules
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {upsellMessage && <UpsellBanner message={upsellMessage} />}
@@ -141,7 +168,10 @@ export default function CustomWigRequestsPage() {
                           #{r.requestNumber}
                         </button>
                       </Td>
-                      <Td className="text-ink-500">{r.customerName}</Td>
+                      <Td className="text-ink-500">
+                        {r.customerName}
+                        {r.source && <span className="ml-1.5 text-xs text-ink-400">via {r.source}</span>}
+                      </Td>
                       <Td className="tabular font-medium">GHS {r.estimatedPrice.toFixed(2)}</Td>
                       <Td>
                         <Badge tone={STATUS_TONES[r.status]}>{STATUS_LABELS[r.status]}</Badge>
@@ -174,6 +204,10 @@ export default function CustomWigRequestsPage() {
           error={actionError}
           setError={setActionError}
         />
+      )}
+
+      {showNewRequest && (
+        <NewRequestModal attributes={attributes} onClose={() => setShowNewRequest(false)} onSubmit={handleCreate} />
       )}
     </div>
   );
@@ -250,8 +284,9 @@ function RequestDetailModal({
 
         <div className="flex flex-col gap-1 text-sm">
           <p className="font-medium text-ink-900">{detail.customerName}</p>
-          <p className="text-ink-500">{detail.customerEmail}</p>
-          <p className="text-ink-500">{detail.customerWhatsapp}</p>
+          {detail.customerEmail && <p className="text-ink-500">{detail.customerEmail}</p>}
+          {detail.customerWhatsapp && <p className="text-ink-500">{detail.customerWhatsapp}</p>}
+          {detail.source && <p className="text-xs text-ink-400">via {detail.source}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
@@ -366,6 +401,197 @@ function RequestDetailModal({
           </a>
         )}
       </div>
+    </Modal>
+  );
+}
+
+function NewRequestModal({
+  attributes,
+  onClose,
+  onSubmit,
+}: {
+  attributes: CustomItemAttribute[];
+  onClose: () => void;
+  onSubmit: (payload: CreateStaffCustomWigRequestPayload, photo: File | null) => Promise<void>;
+}) {
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerWhatsapp, setCustomerWhatsapp] = useState("");
+  const [source, setSource] = useState("");
+  const [notes, setNotes] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  // attributeId -> selected optionIds. Deliberately starts empty (unlike the
+  // customer-facing wizard, which defaults SINGLE attributes to their first
+  // option) — a manually-logged request should only reflect what the
+  // customer actually said, not a guess staff forgot to change.
+  const [selections, setSelections] = useState<Record<string, string[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const optionById = new Map(attributes.flatMap((a) => a.options.map((o) => [o.id, o] as const)));
+  const estimatedPrice = Object.values(selections)
+    .flat()
+    .reduce((sum, optionId) => sum + (optionById.get(optionId)?.priceModifier ?? 0), 0);
+
+  function setSingle(attributeId: string, optionId: string) {
+    setSelections((prev) => ({ ...prev, [attributeId]: optionId ? [optionId] : [] }));
+  }
+
+  function toggleMultiple(attributeId: string, optionId: string, checked: boolean) {
+    setSelections((prev) => {
+      const current = prev[attributeId] ?? [];
+      return {
+        ...prev,
+        [attributeId]: checked ? [...current, optionId] : current.filter((id) => id !== optionId),
+      };
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!customerName.trim()) {
+      setError("Customer name is required.");
+      return;
+    }
+    const flatSelections: CustomWigSelectionInput[] = Object.entries(selections).flatMap(([attributeId, optionIds]) =>
+      optionIds.map((optionId) => ({ attributeId, optionId }))
+    );
+    if (flatSelections.length === 0) {
+      setError("Choose at least one option the customer asked for.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await onSubmit(
+        {
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim() || undefined,
+          customerWhatsapp: customerWhatsapp.trim() || undefined,
+          source: source.trim() || undefined,
+          notes: notes.trim() || undefined,
+          selections: flatSelections,
+        },
+        photo
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't log that request.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Log a custom wig request" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <p className="text-sm text-ink-500">For a request that came in outside the site — Instagram, WhatsApp, a phone call.</p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Customer name *</label>
+            <input
+              required
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Where it came from</label>
+            <input
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="e.g. Instagram DM"
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Email (optional)</label>
+            <input
+              type="email"
+              value={customerEmail}
+              onChange={(e) => setCustomerEmail(e.target.value)}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">WhatsApp / phone (optional)</label>
+            <input
+              value={customerWhatsapp}
+              onChange={(e) => setCustomerWhatsapp(e.target.value)}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+          {attributes.map((attr) => (
+            <div key={attr.id}>
+              <p className="mb-1.5 text-sm font-medium text-ink-900">{attr.name}</p>
+              {attr.selectionType === "SINGLE" ? (
+                <select
+                  value={selections[attr.id]?.[0] ?? ""}
+                  onChange={(e) => setSingle(attr.id, e.target.value)}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                >
+                  <option value="">Not specified</option>
+                  {attr.options.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label} (+{o.priceModifier.toFixed(2)})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {attr.options.map((o) => (
+                    <label key={o.id} className="flex items-center gap-1.5 text-sm text-ink-700">
+                      <input
+                        type="checkbox"
+                        checked={selections[attr.id]?.includes(o.id) ?? false}
+                        onChange={(e) => toggleMultiple(attr.id, o.id, e.target.checked)}
+                        className="rounded border-border text-accent focus:ring-accent/20"
+                      />
+                      {o.label} (+{o.priceModifier.toFixed(2)})
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+            <span>Estimated</span>
+            <span className="tabular">GHS {estimatedPrice.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-ink-700">Notes (optional)</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Anything else the customer mentioned"
+            className="min-h-16 rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-ink-700">Inspiration photo (optional)</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+            className="text-sm text-ink-700"
+          />
+        </div>
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+
+        <Button type="submit" disabled={busy}>
+          {busy ? "Logging..." : "Log request"}
+        </Button>
+      </form>
     </Modal>
   );
 }

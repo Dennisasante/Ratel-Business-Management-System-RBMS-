@@ -1,22 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ApiError,
-  CreateStaffBookingPayload,
-  Customer,
-  ServiceCatalogItem,
-  ServicePackage,
-  UserSummary,
-} from "@/lib/api";
+import { ApiError, CreateStaffBookingPayload, ServiceCatalogItem, ServicePackage, StaffMember } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
+import CustomerPicker from "@/components/CustomerPicker";
 
 interface StaffBookingFormProps {
+  token: string;
   catalog: ServiceCatalogItem[];
   packages: ServicePackage[];
-  customers: Customer[];
-  staff: UserSummary[];
+  staff: StaffMember[];
   onSubmit: (payload: CreateStaffBookingPayload) => Promise<void>;
 }
 
@@ -27,13 +21,10 @@ function parseServiceKey(key: string): { serviceCatalogId?: string; packageId?: 
   return kind === "package" ? { packageId: id } : { serviceCatalogId: id };
 }
 
-export default function StaffBookingForm({ catalog, packages, customers, staff, onSubmit }: StaffBookingFormProps) {
+export default function StaffBookingForm({ token, catalog, packages, staff, onSubmit }: StaffBookingFormProps) {
   const firstKey = catalog[0] ? `catalog:${catalog[0].id}` : packages[0] ? `package:${packages[0].id}` : "";
   const [serviceKey, setServiceKey] = useState(firstKey);
   const [customerId, setCustomerId] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
-  const [customerWhatsapp, setCustomerWhatsapp] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [customerLocation, setCustomerLocation] = useState("");
   const [assignedStaffId, setAssignedStaffId] = useState("");
@@ -50,6 +41,10 @@ export default function StaffBookingForm({ catalog, packages, customers, staff, 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!customerId) {
+      setError("Pick a customer first.");
+      return;
+    }
     if (!serviceKey) {
       setError("Add a service first.");
       return;
@@ -62,10 +57,7 @@ export default function StaffBookingForm({ catalog, packages, customers, staff, 
     try {
       await onSubmit({
         ...parseServiceKey(serviceKey),
-        customerId: customerId || undefined,
-        customerName: customerId ? undefined : customerName || undefined,
-        customerEmail: customerId ? undefined : customerEmail || undefined,
-        customerWhatsapp: customerId ? undefined : customerWhatsapp || undefined,
+        customerId,
         scheduledAt: new Date(scheduledAt).toISOString(),
         notes: notes || undefined,
         customerLocation: requiresLocation ? customerLocation || undefined : undefined,
@@ -104,28 +96,11 @@ export default function StaffBookingForm({ catalog, packages, customers, staff, 
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-ink-700">Customer</label>
-        <select
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-        >
-          <option value="">New / phone-in customer</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.fullName}
-            </option>
-          ))}
-        </select>
+        <label className="text-sm font-medium text-ink-700">
+          Customer <span className="text-danger">*</span>
+        </label>
+        <CustomerPicker token={token} onSelect={(c) => setCustomerId(c.id)} />
       </div>
-
-      {!customerId && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Name" name="customerName" value={customerName} onChange={setCustomerName} placeholder="Optional if calling in" />
-          <FormField label="WhatsApp / phone" name="customerWhatsapp" value={customerWhatsapp} onChange={setCustomerWhatsapp} />
-          <FormField label="Email (optional)" name="customerEmail" type="email" value={customerEmail} onChange={setCustomerEmail} />
-        </div>
-      )}
 
       <FormField
         label="Date & time"

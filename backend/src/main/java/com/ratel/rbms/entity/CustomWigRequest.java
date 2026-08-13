@@ -45,11 +45,20 @@ public class CustomWigRequest {
     @Column(name = "customer_name", nullable = false, length = 150)
     private String customerName;
 
-    @Column(name = "customer_email", nullable = false)
+    // Nullable: a staff-entered request (Instagram DM, walk-in) may have only
+    // a name and no email on hand. Always set for the public widget, which
+    // requires both.
+    @Column(name = "customer_email")
     private String customerEmail;
 
-    @Column(name = "customer_whatsapp", nullable = false, length = 20)
+    @Column(name = "customer_whatsapp", length = 20)
     private String customerWhatsapp;
+
+    // Free text — "Instagram DM", "Walk-in", "Phone call". Null for requests
+    // submitted through the public widget, where the channel is implicitly
+    // "website" and not worth asking the customer to state.
+    @Column(length = 60)
+    private String source;
 
     @Column(nullable = false, columnDefinition = "text")
     private String selections;

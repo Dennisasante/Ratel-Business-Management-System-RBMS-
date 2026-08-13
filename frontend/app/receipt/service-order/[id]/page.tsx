@@ -84,13 +84,15 @@ export default function ServiceOrderReceiptPage() {
           <PaymentCollectionPanel<ServiceOrder>
             id={order.id}
             amount={order.price}
+            balanceDue={order.balanceDue}
             paymentStatus={order.paymentStatus}
             paystackConfigured={paystackConfigured}
-            onStartCheckout={(id) => api.startServiceOrderPayment(session.token, id)}
             onVerifyPayment={(reference) => api.verifyServiceOrderPayment(session.token, reference)}
             onMarkPaid={(id) => api.markServiceOrderPaid(session.token, id)}
             onChargeMobileMoney={(id, phone, provider) => api.chargeServiceOrderMobileMoney(session.token, id, phone, provider)}
             onSubmitOtp={(reference, otp) => api.submitServiceOrderMobileMoneyOtp(session.token, reference, otp)}
+            onRecordPayment={(id, payload) => api.recordServiceOrderPayment(session.token, id, payload)}
+            onRefund={(id, note) => api.refundServiceOrder(session.token, id, note)}
             onChanged={setOrder}
           />
         </div>
