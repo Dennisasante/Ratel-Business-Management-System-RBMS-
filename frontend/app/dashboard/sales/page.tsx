@@ -35,6 +35,7 @@ interface ProductCartLine {
   product: Product;
   quantity: number;
   discount: string; // controlled input text, parsed to a number on submit
+  gift: boolean;
 }
 
 interface ServiceCartLine {
@@ -42,6 +43,7 @@ interface ServiceCartLine {
   service: ServiceCatalogItem;
   quantity: number;
   discount: string;
+  gift: boolean;
 }
 
 type CartLine = ProductCartLine | ServiceCartLine;
@@ -60,7 +62,8 @@ function cartLineUnitPrice(l: CartLine): number {
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "CASH", label: "Cash" },
-  { value: "MOBILE_MONEY", label: "Mobile Money" },
+  { value: "MOBILE_MONEY", label: "Mobile Money (online)" },
+  { value: "MOBILE_MONEY_DIRECT", label: "Mobile Money (direct)" },
   { value: "CARD", label: "Card" },
   { value: "BANK_TRANSFER", label: "Bank Transfer" },
 ];
@@ -159,7 +162,7 @@ export default function SalesPage() {
           l.kind === "product" && l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l
         );
       }
-      return [...prev, { kind: "product", product, quantity: 1, discount: "0" }];
+      return [...prev, { kind: "product", product, quantity: 1, discount: "0", gift: false }];
     });
   }
 
@@ -171,7 +174,7 @@ export default function SalesPage() {
           l.kind === "service" && l.service.id === service.id ? { ...l, quantity: l.quantity + 1 } : l
         );
       }
-      return [...prev, { kind: "service", service, quantity: 1, discount: "0" }];
+      return [...prev, { kind: "service", service, quantity: 1, discount: "0", gift: false }];
     });
   }
 
@@ -187,18 +190,26 @@ export default function SalesPage() {
     setCart((prev) => prev.map((l) => (cartLineKey(l) === key ? { ...l, discount } : l)));
   }
 
+  function toggleGift(key: string, gift: boolean) {
+    setCart((prev) => prev.map((l) => (cartLineKey(l) === key ? { ...l, gift } : l)));
+  }
+
   function removeFromCart(key: string) {
     setCart((prev) => prev.filter((l) => cartLineKey(l) !== key));
   }
 
+  function lineDiscount(l: CartLine): number {
+    const gross = cartLineUnitPrice(l) * l.quantity;
+    return l.gift ? gross : Math.min(Number(l.discount) || 0, gross);
+  }
+
   function lineTotal(l: CartLine): number {
     const gross = cartLineUnitPrice(l) * l.quantity;
-    const discount = Math.min(Number(l.discount) || 0, gross);
-    return gross - discount;
+    return gross - lineDiscount(l);
   }
 
   const total = cart.reduce((sum, l) => sum + lineTotal(l), 0);
-  const totalDiscount = cart.reduce((sum, l) => sum + Math.min(Number(l.discount) || 0, cartLineUnitPrice(l) * l.quantity), 0);
+  const totalDiscount = cart.reduce((sum, l) => sum + lineDiscount(l), 0);
 
   async function completeSale() {
     if (!session || cart.length === 0) return;
@@ -210,8 +221,8 @@ export default function SalesPage() {
         paymentMethod,
         items: cart.map((l) =>
           l.kind === "product"
-            ? { productId: l.product.id, quantity: l.quantity, discountAmount: Number(l.discount) || 0 }
-            : { serviceCatalogId: l.service.id, quantity: l.quantity, discountAmount: Number(l.discount) || 0 }
+            ? { productId: l.product.id, quantity: l.quantity, discountAmount: Number(l.discount) || 0, gift: l.gift }
+            : { serviceCatalogId: l.service.id, quantity: l.quantity, discountAmount: Number(l.discount) || 0, gift: l.gift }
         ),
       });
       setCart([]);
@@ -459,18 +470,32 @@ export default function SalesPage() {
                       </div>
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-xs text-ink-500">Discount</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={l.discount}
-                          onChange={(e) => updateDiscount(key, e.target.value)}
-                          className="tabular w-20 rounded-md border border-border px-2 py-1 text-center text-xs focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                        />
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs text-ink-500">Discount</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={l.discount}
+                            disabled={l.gift}
+                            onChange={(e) => updateDiscount(key, e.target.value)}
+                            className="tabular w-20 rounded-md border border-border px-2 py-1 text-center text-xs focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
+                          />
+                        </div>
+                        <label className="flex items-center gap-1.5 text-xs text-ink-500">
+                          <input
+                            type="checkbox"
+                            checked={l.gift}
+                            onChange={(e) => toggleGift(key, e.target.checked)}
+                            className="rounded border-border text-accent focus:ring-accent/20"
+                          />
+                          Gift
+                        </label>
                       </div>
-                      <span className="tabular text-xs font-medium text-ink-700">GH₵{lineTotal(l).toFixed(2)}</span>
+                      <span className="tabular text-xs font-medium text-ink-700">
+                        {l.gift ? <Badge tone="violet">Gift</Badge> : `GH₵${lineTotal(l).toFixed(2)}`}
+                      </span>
                     </div>
                   </li>
                   );
@@ -585,10 +610,10 @@ export default function SalesPage() {
                     <Td className="tabular font-medium">#{s.saleNumber}</Td>
                     <Td className="text-ink-500">{s.customerName ?? "Walk-in"}</Td>
                     <Td className="text-ink-500">
-                      {s.items.map((i) => `${i.productName} ×${i.quantity}`).join(", ")}
+                      {s.items.map((i) => `${i.productName} ×${i.quantity}${i.gift ? " (gift)" : ""}`).join(", ")}
                     </Td>
                     <Td className="text-ink-500">
-                      <span className="block">{s.paymentMethod.replace("_", " ")}</span>
+                      <span className="block">{s.paymentMethod.replaceAll("_", " ")}</span>
                       {s.paymentStatus !== "PAID" && (
                         <Badge tone={s.paymentStatus === "FAILED" ? "danger" : "neutral"}>
                           {s.paymentStatus === "FAILED" ? "Payment failed" : "Unpaid"}

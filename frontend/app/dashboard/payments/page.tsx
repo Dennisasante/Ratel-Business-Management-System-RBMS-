@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet, Banknote, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { Wallet, Banknote, ArrowDownCircle, ArrowUpCircle, RotateCw } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, PaymentTransaction } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
@@ -48,6 +48,7 @@ export default function PaymentsPage() {
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -75,6 +76,20 @@ export default function PaymentsPage() {
     load().finally(() => setFetching(false));
   }, [session, load]);
 
+  async function handleVerify(id: string) {
+    if (!session) return;
+    setVerifyingId(id);
+    setError(null);
+    try {
+      await api.verifyPaymentTransaction(session.token, id);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't verify that payment.");
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -97,7 +112,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Payments" subtitle="Every payment transaction across the system — gateway and manual." />
+      <PageHeader title="Payments" subtitle="Every payment transaction across the system — online and manual." />
 
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <div className="flex flex-col gap-1.5">
@@ -131,14 +146,14 @@ export default function PaymentsPage() {
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Gateway</label>
+          <label className="text-sm font-medium text-ink-700">Type</label>
           <select
             value={gateway}
             onChange={(e) => setGateway(e.target.value as "" | "PAYSTACK" | "MANUAL")}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           >
             <option value="">All</option>
-            <option value="PAYSTACK">Paystack</option>
+            <option value="PAYSTACK">Online payments</option>
             <option value="MANUAL">Manual / cash</option>
           </select>
         </div>
@@ -151,9 +166,9 @@ export default function PaymentsPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          label="Gateway revenue"
+          label="Online payments revenue"
           value={`GH₵${gatewayRevenue.toFixed(2)}`}
-          hint="Real money settled through Paystack"
+          hint="Real money collected online, settled through Paystack"
           icon={Wallet}
           tone="success"
         />
@@ -175,7 +190,7 @@ export default function PaymentsPage() {
 
       <Card>
         {fetching ? (
-          <TableSkeleton cols={6} />
+          <TableSkeleton cols={7} />
         ) : transactions.length === 0 ? (
           <EmptyState
             icon={Wallet}
@@ -192,6 +207,7 @@ export default function PaymentsPage() {
                 <Th>Method</Th>
                 <Th>Status</Th>
                 <Th className="text-right">Amount</Th>
+                <Th className="text-right">Actions</Th>
               </Tr>
             </THead>
             <TBody>
@@ -206,7 +222,7 @@ export default function PaymentsPage() {
                     </span>
                   </Td>
                   <Td className="text-ink-500">{t.customerName ?? t.customerPhone ?? "—"}</Td>
-                  <Td className="text-ink-500">{t.method ? t.method.replace("_", " ") : "—"}</Td>
+                  <Td className="text-ink-500">{t.method ? t.method.replaceAll("_", " ") : "—"}</Td>
                   <Td>
                     <Badge tone={STATUS_TONES[t.status] ?? "neutral"}>{t.status}</Badge>
                   </Td>
@@ -219,6 +235,19 @@ export default function PaymentsPage() {
                       )}
                       GH₵{t.amount.toFixed(2)}
                     </span>
+                  </Td>
+                  <Td className="text-right">
+                    {t.status === "PENDING" && t.gateway === "PAYSTACK" && (
+                      <button
+                        onClick={() => handleVerify(t.id)}
+                        disabled={verifyingId === t.id}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-ink-700 hover:bg-canvas disabled:opacity-50"
+                        title="Cross-check with Paystack directly"
+                      >
+                        <RotateCw size={12} className={verifyingId === t.id ? "animate-spin" : ""} />
+                        {verifyingId === t.id ? "Checking..." : "Verify"}
+                      </button>
+                    )}
                   </Td>
                 </Tr>
               ))}

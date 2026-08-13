@@ -95,9 +95,10 @@ export default function SaleReceiptPage() {
           unitPrice: i.unitPrice,
           discountAmount: i.discountAmount,
           subtotal: i.subtotal,
+          gift: i.gift,
         }))}
         total={sale.totalAmount}
-        footerLines={[`Payment: ${sale.paymentMethod.replace("_", " ")}`]}
+        footerLines={[`Payment: ${sale.paymentMethod.replaceAll("_", " ")}`]}
       />
     </div>
   );

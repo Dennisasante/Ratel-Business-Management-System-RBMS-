@@ -17,6 +17,7 @@ interface ReceiptLineItem {
   unitPrice: number;
   discountAmount?: number;
   subtotal: number;
+  gift?: boolean;
 }
 
 interface ReceiptViewProps {
@@ -86,6 +87,10 @@ export default function ReceiptView({
         style={{ width: PAPER_PX[width], padding: "12px 10px" }}
       >
         <div className="flex flex-col items-center text-center">
+          {/* Platform credit — quiet and small, above the business's own
+              identity below, which stays the most prominent thing here. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/branding/tallia-logo-mono.svg" alt="" className="mb-1.5 h-3.5 w-auto opacity-50" />
           {businessLogoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={businessLogoUrl} alt="" className="mb-1.5 h-10 w-10 rounded object-cover" />
@@ -108,7 +113,10 @@ export default function ReceiptView({
         {items.map((item, i) => (
           <div key={i} className="mb-1">
             <div className="flex justify-between">
-              <span>{item.name}</span>
+              <span>
+                {item.name}
+                {item.gift && " (Gift)"}
+              </span>
             </div>
             <div className="flex justify-between text-black/70">
               <span>
@@ -122,7 +130,7 @@ export default function ReceiptView({
             </div>
             {!!item.discountAmount && item.discountAmount > 0 && (
               <div className="flex justify-between text-black/70">
-                <span>Discount</span>
+                <span>{item.gift ? "Gift" : "Discount"}</span>
                 <span>
                   -{currencySymbol}
                   {item.discountAmount.toFixed(2)}

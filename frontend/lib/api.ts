@@ -176,7 +176,7 @@ export interface CustomerPayload {
   notes?: string;
 }
 
-export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "CARD" | "BANK_TRANSFER";
+export type PaymentMethod = "CASH" | "MOBILE_MONEY" | "CARD" | "BANK_TRANSFER" | "MOBILE_MONEY_DIRECT";
 
 export type SaleItemType = "PRODUCT" | "SERVICE";
 
@@ -186,6 +186,7 @@ export interface SaleItemPayload {
   serviceCatalogId?: string;
   quantity: number;
   discountAmount?: number;
+  gift?: boolean;
 }
 
 export interface SalePayload {
@@ -203,6 +204,7 @@ export interface SaleItem {
   quantity: number;
   discountAmount: number;
   subtotal: number;
+  gift: boolean;
 }
 
 export interface Sale {
@@ -718,6 +720,7 @@ export interface BookingSettingsPayload {
 }
 
 export interface BookingListItem {
+  id: string;
   bookingNumber: number;
   customerName: string;
   // Nullable: a staff-entered booking may have only a name on hand — the
@@ -731,6 +734,7 @@ export interface BookingListItem {
   price: number | null;
   paymentStatus: string;
   assignedStaffName: string | null;
+  arrivedAt: string | null;
   createdAt: string;
 }
 
@@ -1369,6 +1373,9 @@ export const api = {
     return request<PaymentTransaction[]>(`/api/payment-transactions${qs ? `?${qs}` : ""}`, {}, token);
   },
 
+  verifyPaymentTransaction: (token: string, id: string) =>
+    request<void>(`/api/payment-transactions/${id}/verify`, { method: "POST" }, token),
+
   listServiceOrderPhotos: (token: string, orderId: string) =>
     request<ServiceOrderPhoto[]>(`/api/service-orders/${orderId}/photos`, {}, token),
 
@@ -1564,6 +1571,12 @@ export const api = {
   // Staff creating a booking on a customer's behalf (e.g. a phone-in request).
   createStaffBooking: (token: string, payload: CreateStaffBookingPayload) =>
     request<BookingCreated>("/api/bookings", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  rescheduleBookingById: (token: string, id: string, scheduledAt: string) =>
+    request<void>(`/api/bookings/${id}/reschedule`, { method: "PATCH", body: JSON.stringify({ scheduledAt }) }, token),
+
+  markBookingArrived: (token: string, id: string) =>
+    request<void>(`/api/bookings/${id}/mark-arrived`, { method: "POST" }, token),
 
   getBookingSettings: (token: string) => request<BookingSettings>("/api/bookings/settings", {}, token),
 

@@ -79,6 +79,11 @@ public class Booking {
     @Builder.Default
     private boolean test = false;
 
+    // Null = hasn't shown up (yet, or a no-show) — set by staff via mark-arrived,
+    // independent of the underlying ServiceOrder's own work-progress status.
+    @Column(name = "arrived_at")
+    private Instant arrivedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

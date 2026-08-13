@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ShieldCheck, LayoutDashboard, Building2, History, ShieldAlert, Users, KeyRound, LogOut, Layers, CreditCard, LifeBuoy } from "lucide-react";
+import { LayoutDashboard, Building2, History, ShieldAlert, Users, KeyRound, LogOut, Layers, CreditCard, LifeBuoy } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 
 const NAV_ITEMS = [
@@ -40,24 +40,25 @@ export default function PlatformShell({ children }: { children: React.ReactNode 
 
   return (
     <div className="min-h-screen bg-canvas">
-      <header className="bg-sidebar">
+      <header className="bg-accent">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2 text-sidebar-text-active">
-            <ShieldCheck size={18} />
-            <span className="text-sm font-semibold tracking-wide">RATEL PLATFORM</span>
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/branding/tallia-logo-reversed.svg" alt="Tallia" className="h-5 w-auto" />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-white/70">by Ratel Systems</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-sidebar-text sm:inline">{session.fullName}</span>
+            <span className="hidden text-sm text-white/80 sm:inline">{session.fullName}</span>
             <Link
               href="/platform/change-password"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white"
             >
               <KeyRound size={15} />
               <span className="hidden sm:inline">Password</span>
             </Link>
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-active"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white"
             >
               <LogOut size={15} />
               Log out
@@ -74,8 +75,8 @@ export default function PlatformShell({ children }: { children: React.ReactNode 
                 href={item.href}
                 className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
                   active
-                    ? "border-accent text-sidebar-text-active"
-                    : "border-transparent text-sidebar-text hover:text-sidebar-text-active"
+                    ? "border-white text-white"
+                    : "border-transparent text-white/70 hover:text-white"
                 }`}
               >
                 <Icon size={15} />

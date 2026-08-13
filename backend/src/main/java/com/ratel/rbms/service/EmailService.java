@@ -35,8 +35,8 @@ public class EmailService {
     }
 
     public void sendPasswordReset(String toEmail, String resetLink) {
-        String subject = "Reset your Ratel password";
-        String body = "We received a request to reset your Ratel password.\n\n"
+        String subject = "Reset your Tallia password";
+        String body = "We received a request to reset your Tallia password.\n\n"
                 + "Reset it here: " + resetLink + "\n\n"
                 + "This link expires in 30 minutes. If you didn't request this, you can ignore this email — "
                 + "your password won't be changed.";
@@ -51,7 +51,7 @@ public class EmailService {
         String daysLabel = daysRemaining + " day" + (daysRemaining == 1 ? "" : "s");
         String subject = businessName + ": your " + periodLabel + " ends in " + daysLabel;
         String body = "Hi,\n\n"
-                + "Your " + periodLabel + " for " + businessName + " on Ratel ends in " + daysLabel + ".\n\n"
+                + "Your " + periodLabel + " for " + businessName + " on Tallia ends in " + daysLabel + ".\n\n"
                 + "Renew anytime from your Billing page to keep creating and editing without interruption.\n\n"
                 + "Already renewed? You can ignore this email.";
         send(toEmail, subject, body);
@@ -64,7 +64,7 @@ public class EmailService {
     public void sendAutoChargeFailed(String toEmail, String businessName) {
         String subject = businessName + ": we couldn't renew your subscription automatically";
         String body = "Hi,\n\n"
-                + "We tried to renew " + businessName + "'s subscription on Ratel using your saved card, but the charge "
+                + "We tried to renew " + businessName + "'s subscription on Tallia using your saved card, but the charge "
                 + "didn't go through.\n\n"
                 + "Your account is still fully usable for now, but please renew manually or update your card from the "
                 + "Billing page soon to avoid interruption.";
@@ -78,7 +78,7 @@ public class EmailService {
         String daysLabel = graceDaysRemaining + " day" + (graceDaysRemaining == 1 ? "" : "s");
         String subject = businessName + ": renew within " + daysLabel + " to avoid interruption";
         String body = "Hi,\n\n"
-                + "Your subscription for " + businessName + " on Ratel has ended, but you're still fully set up — "
+                + "Your subscription for " + businessName + " on Tallia has ended, but you're still fully set up — "
                 + "you have " + daysLabel + " left to renew before your account goes read-only.\n\n"
                 + "Renew anytime from your Billing page to keep creating and editing without interruption.\n\n"
                 + "Already renewed? You can ignore this email.";
@@ -128,7 +128,7 @@ public class EmailService {
         String subject = "New booking: " + customerName + " — " + serviceName;
         String body = customerName + " just booked " + serviceName + " for " + whenLabel + ".\n\n"
                 + (whatsappLink != null ? "Message them on WhatsApp: " + whatsappLink + "\n\n" : "")
-                + "Full details are in your Ratel dashboard under Service Orders.";
+                + "Full details are in your Tallia dashboard under Service Orders.";
         send(toEmail, subject, body);
     }
 
@@ -136,7 +136,7 @@ public class EmailService {
         String subject = "New custom wig request from " + customerName;
         String body = customerName + " just submitted a custom wig request, estimated at " + estimateLabel + ".\n\n"
                 + (whatsappLink != null ? "Message them on WhatsApp: " + whatsappLink + "\n\n" : "")
-                + "Review it and send a quote from your Ratel dashboard under Custom Wig Requests.";
+                + "Review it and send a quote from your Tallia dashboard under Custom Wig Requests.";
         send(toEmail, subject, body);
     }
 

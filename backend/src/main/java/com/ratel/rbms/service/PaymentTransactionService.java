@@ -7,12 +7,14 @@ import com.ratel.rbms.entity.PurchaseOrder;
 import com.ratel.rbms.entity.Sale;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.User;
+import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.PurchaseOrderRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -101,6 +103,19 @@ public class PaymentTransactionService {
                     }
                     paymentTransactionRepository.save(t);
                 });
+    }
+
+    // Read-only lookup for the controller-side verify dispatcher (see
+    // PaymentTransactionController.verify) — kept here rather than pulling
+    // SaleService/ServiceOrderService/BookingService into this service, which
+    // would create a circular dependency (they already call record() on us).
+    public PaymentTransaction getOwned(UUID businessId, UUID id) {
+        PaymentTransaction t = paymentTransactionRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Transaction not found."));
+        if (!t.getBusinessId().equals(businessId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Transaction not found.");
+        }
+        return t;
     }
 
     public List<PaymentTransactionResponse> search(UUID businessId, PaymentTransaction.Direction direction, String gateway, Instant from, Instant to) {

@@ -88,6 +88,7 @@ public class BookingService {
     private final WhatsAppLinkService whatsAppLinkService;
     private final RateLimiterService rateLimiterService;
     private final PaymentTransactionService paymentTransactionService;
+    private final ActivityLogService activityLogService;
     private final String frontendUrl;
 
     public BookingService(
@@ -109,6 +110,7 @@ public class BookingService {
             WhatsAppLinkService whatsAppLinkService,
             RateLimiterService rateLimiterService,
             PaymentTransactionService paymentTransactionService,
+            ActivityLogService activityLogService,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -129,6 +131,7 @@ public class BookingService {
         this.whatsAppLinkService = whatsAppLinkService;
         this.rateLimiterService = rateLimiterService;
         this.paymentTransactionService = paymentTransactionService;
+        this.activityLogService = activityLogService;
         this.frontendUrl = frontendUrl;
     }
 
@@ -706,6 +709,51 @@ public class BookingService {
             emailService.sendBookingCancelled(booking.getCustomerEmail(), booking.getCustomerName(), business.getName(),
                     serviceName != null ? serviceName : "your service");
         }
+    }
+
+    // Staff-authenticated counterpart to reschedule(manageToken, ...) above —
+    // looked up by id + TenantContext instead of a customer's manage token, and
+    // deliberately skips enforceCancellationCutoff: that guard protects the
+    // business from last-minute CUSTOMER changes, not from staff accommodating
+    // one themselves.
+    @Transactional
+    public void rescheduleById(UUID bookingId, Instant newScheduledAt) {
+        UUID businessId = TenantContext.getBusinessId();
+        Booking booking = bookingRepository.findById(bookingId)
+                .filter(b -> b.getBusinessId().equals(businessId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
+        ServiceOrder order = serviceOrderRepository.findByIdAndBusinessId(booking.getServiceOrderId(), businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
+
+        if (order.getStatus() == ServiceOrderStatus.CANCELLED || order.getStatus() == ServiceOrderStatus.PICKED_UP) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This booking can no longer be rescheduled.");
+        }
+
+        order.setScheduledAt(newScheduledAt);
+        serviceOrderRepository.save(order);
+        activityLogService.log("Rescheduled booking #" + booking.getBookingNumber(), "BOOKING", booking.getId());
+
+        Business business = businessRepository.findById(businessId).orElse(null);
+        String serviceName = resolveServiceName(order, businessId);
+        if (business != null && booking.getCustomerEmail() != null && !booking.getCustomerEmail().isBlank()) {
+            emailService.sendBookingRescheduled(booking.getCustomerEmail(), booking.getCustomerName(), business.getName(),
+                    serviceName != null ? serviceName : "your service", WHEN_FORMAT.format(newScheduledAt));
+        }
+    }
+
+    // A plain timestamp stamp — independent of the underlying ServiceOrder's
+    // own work-progress status, since a booking can sit at RECEIVED for hours
+    // before the customer is actually in the shop.
+    @Transactional
+    public void markArrived(UUID bookingId) {
+        UUID businessId = TenantContext.getBusinessId();
+        Booking booking = bookingRepository.findById(bookingId)
+                .filter(b -> b.getBusinessId().equals(businessId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Booking not found."));
+
+        booking.setArrivedAt(Instant.now());
+        bookingRepository.save(booking);
+        activityLogService.log("Marked booking #" + booking.getBookingNumber() + " as arrived", "BOOKING", booking.getId());
     }
 
     // Owner sets a rule like "no cancellation/reschedule within 1-2 hours of

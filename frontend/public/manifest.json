@@ -1,6 +1,6 @@
 {
-  "name": "Ratel — Business Management System",
-  "short_name": "Ratel",
+  "name": "Tallia — Business Management System",
+  "short_name": "Tallia",
   "description": "One platform for every business you run.",
   "start_url": "/dashboard",
   "scope": "/",

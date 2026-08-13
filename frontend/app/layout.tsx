@@ -8,7 +8,7 @@ import { AuthProvider } from "@/lib/auth";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
-  title: "Ratel — Business Management System",
+  title: "Tallia — Business Management System",
   description: "One platform for every business you run.",
   manifest: "/manifest.json",
   icons: {
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Ratel",
+    title: "Tallia",
   },
 };
 

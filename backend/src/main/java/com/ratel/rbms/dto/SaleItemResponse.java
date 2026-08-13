@@ -14,7 +14,8 @@ public record SaleItemResponse(
         BigDecimal unitPrice,
         int quantity,
         BigDecimal discountAmount,
-        BigDecimal subtotal
+        BigDecimal subtotal,
+        boolean gift
 ) {
     public static SaleItemResponse from(SaleItem item) {
         return new SaleItemResponse(
@@ -25,7 +26,8 @@ public record SaleItemResponse(
                 item.getUnitPrice(),
                 item.getQuantity(),
                 item.getDiscountAmount(),
-                item.getSubtotal()
+                item.getSubtotal(),
+                item.isGift()
         );
     }
 }

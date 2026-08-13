@@ -420,7 +420,7 @@ export default function PlatformBusinessDetailPage() {
 
               <Card className="p-5">
                 <h2 className="text-base font-semibold text-ink-900">Payment Transactions</h2>
-                <p className="text-xs text-ink-500">Every payment event recorded for this business — gateway and manual.</p>
+                <p className="text-xs text-ink-500">Every payment event recorded for this business — online and manual.</p>
                 {transactions.length === 0 ? (
                   <p className="mt-3 text-sm text-ink-500">No payment transactions yet.</p>
                 ) : (
@@ -431,7 +431,7 @@ export default function PlatformBusinessDetailPage() {
                           <Th>When</Th>
                           <Th>For</Th>
                           <Th>Customer</Th>
-                          <Th>Gateway</Th>
+                          <Th>Type</Th>
                           <Th>Status</Th>
                           <Th className="text-right">Amount</Th>
                         </Tr>

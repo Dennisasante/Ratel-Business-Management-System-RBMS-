@@ -24,10 +24,10 @@ export default function AuthShell({
       </div>
 
       <div className={`reveal is-visible w-full ${maxWidth === "md" ? "max-w-md" : "max-w-sm"}`}>
-        <Link href="/" className="mb-6 flex items-center justify-center gap-2">
+        <Link href="/" className="mb-6 flex flex-col items-center gap-1 rounded-2xl bg-accent px-6 py-4 shadow-card">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/branding/ratel-icon.png" alt="" width={26} height={26} />
-          <span className="text-base font-semibold tracking-tight text-ink-900">Ratel Systems</span>
+          <img src="/branding/tallia-logo-reversed.svg" alt="Tallia" className="h-7 w-auto" />
+          <span className="text-[11px] font-medium text-white/70">by Ratel Systems</span>
         </Link>
 
         <div className="rounded-2xl border border-border bg-surface p-8 shadow-panel">

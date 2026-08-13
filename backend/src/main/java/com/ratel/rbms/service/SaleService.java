@@ -91,10 +91,12 @@ public class SaleService {
             customer = customerService.getOwned(req.customerId());
         }
 
-        // CASH/BANK_TRANSFER are assumed collected the instant the sale is rung
-        // up (today's exact behavior, unchanged) — only CARD/MOBILE_MONEY defer
-        // to a real gateway charge or manual mark-paid afterward.
-        boolean collectedInPerson = req.paymentMethod() == PaymentMethod.CASH || req.paymentMethod() == PaymentMethod.BANK_TRANSFER;
+        // CASH/BANK_TRANSFER/MOBILE_MONEY_DIRECT are assumed collected the instant
+        // the sale is rung up — only CARD/MOBILE_MONEY (the Paystack-gateway one)
+        // defer to a real gateway charge or manual mark-paid afterward.
+        boolean collectedInPerson = req.paymentMethod() == PaymentMethod.CASH
+                || req.paymentMethod() == PaymentMethod.BANK_TRANSFER
+                || req.paymentMethod() == PaymentMethod.MOBILE_MONEY_DIRECT;
 
         Sale sale = Sale.builder()
                 .businessId(businessId)
@@ -147,7 +149,12 @@ public class SaleService {
             }
 
             BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.quantity()));
-            BigDecimal discount = itemReq.discountAmount() != null ? itemReq.discountAmount() : BigDecimal.ZERO;
+            boolean gift = Boolean.TRUE.equals(itemReq.gift());
+            // A gift line always nets to zero — force the discount to the full
+            // line price rather than trusting whatever discountAmount was sent,
+            // so it can never end up mismatched (e.g. a stale value from before
+            // quantity changed).
+            BigDecimal discount = gift ? lineTotal : (itemReq.discountAmount() != null ? itemReq.discountAmount() : BigDecimal.ZERO);
             if (discount.compareTo(lineTotal) > 0) {
                 throw new ApiException(HttpStatus.BAD_REQUEST,
                         "Discount on \"" + itemName + "\" can't exceed its line total.");
@@ -166,6 +173,7 @@ public class SaleService {
                     .quantity(itemReq.quantity())
                     .discountAmount(discount)
                     .subtotal(subtotal)
+                    .gift(gift)
                     .build();
             saleItem = saleItemRepository.save(saleItem);
             itemResponses.add(SaleItemResponse.from(saleItem));

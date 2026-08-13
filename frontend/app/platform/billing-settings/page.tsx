@@ -131,7 +131,7 @@ export default function PlatformBillingSettingsPage() {
           <Card className="max-w-lg p-5">
             <h2 className="text-base font-semibold text-ink-900">Paystack (platform billing)</h2>
             <p className="mt-1 text-sm text-ink-500">
-              RBMS&apos;s own Paystack account — what businesses pay <em>you</em> through when they subscribe.
+              Tallia&apos;s own Paystack account — what businesses pay <em>you</em> through when they subscribe.
               Separate from each business&apos;s own Paystack keys, which they set themselves under their own
               Bookings/Integrations settings.
             </p>

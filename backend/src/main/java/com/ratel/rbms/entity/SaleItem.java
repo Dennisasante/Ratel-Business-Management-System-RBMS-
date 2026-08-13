@@ -61,4 +61,12 @@ public class SaleItem {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal;
+
+    // Property name is "gift" (Lombok generates isGift()) — when true,
+    // SaleService forces discountAmount to the full line price regardless of
+    // what was sent, so a gift line always nets to zero and can't drift out
+    // of sync with a manually-typed discount.
+    @Column(name = "is_gift", nullable = false)
+    @Builder.Default
+    private boolean gift = false;
 }

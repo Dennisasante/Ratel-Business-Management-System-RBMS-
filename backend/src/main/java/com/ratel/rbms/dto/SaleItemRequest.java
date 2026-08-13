@@ -21,6 +21,10 @@ public record SaleItemRequest(
 
         // Nullable: no discount is the common case. At the attendant's/owner's discretion.
         @DecimalMin(value = "0", message = "Discount can't be negative")
-        BigDecimal discountAmount
+        BigDecimal discountAmount,
+
+        // When true, SaleService ignores discountAmount and forces this line to
+        // GH₵0.00 itself — can't be typed incorrectly like a manual discount can.
+        Boolean gift
 ) {
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, TrendingDown, Wallet, Download, Percent, Receipt, Tag } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Download, Percent, Receipt, Tag, Gift } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, Expense, ExpenseCategory, ReportSummary, Sale, ServiceOrder, StaffCommission } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
@@ -109,6 +109,17 @@ export default function ReportsPage() {
     [serviceOrders, from, to]
   );
   const totalDiscounts = salesDiscountTotal + serviceDiscountTotal;
+
+  // Gifts are a subset of sales discounts (SaleService forces a gift line's
+  // discount to its full price) — broken out separately so "gifts given away"
+  // doesn't blend into ordinary at-checkout discounting.
+  const giftsTotal = useMemo(
+    () =>
+      sales
+        .filter((s) => s.createdAt.slice(0, 10) >= from && s.createdAt.slice(0, 10) <= to)
+        .reduce((sum, s) => sum + s.items.filter((i) => i.gift).reduce((iSum, i) => iSum + i.discountAmount, 0), 0),
+    [sales, from, to]
+  );
 
   async function handleExport() {
     if (!session) return;
@@ -222,6 +233,15 @@ export default function ReportsPage() {
                   hint="At staff/owner discretion"
                   icon={Tag}
                   tone="info"
+                />
+              )}
+              {(view === "all" || view === "sales") && giftsTotal > 0 && (
+                <StatCard
+                  label="Gifts given"
+                  value={`GH₵${giftsTotal.toFixed(2)}`}
+                  hint="Products/services given away free"
+                  icon={Gift}
+                  tone="accent"
                 />
               )}
             </div>
