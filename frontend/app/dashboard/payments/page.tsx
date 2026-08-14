@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, Banknote, ArrowDownCircle, ArrowUpCircle, RotateCw } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -90,6 +90,32 @@ export default function PaymentsPage() {
     }
   }
 
+  // Daily granularity for the common case (the page defaults to "this
+  // month"); a wider pick (a quarter, a year) collapses to monthly rows so
+  // the breakdown table stays readable instead of growing to 90+ rows.
+  // Computed above the loading/session early return — like every other hook
+  // in this component — so useMemo below is never skipped on some renders
+  // and not others (React's hooks must run in the same order every render).
+  const rangeDays = Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1;
+  const granularity: "day" | "month" = rangeDays <= 45 ? "day" : "month";
+  const rangeTooWide = rangeDays > 366;
+
+  const breakdown = useMemo(() => {
+    const buckets = new Map<string, { cash: number; online: number }>();
+    for (const t of transactions) {
+      if (t.direction !== "INCOMING" || t.status !== "SUCCESS") continue;
+      if (t.gateway !== "PAYSTACK" && t.gateway !== "MANUAL") continue;
+      const key = (t.paidAt ?? t.createdAt).slice(0, granularity === "day" ? 10 : 7);
+      const bucket = buckets.get(key) ?? { cash: 0, online: 0 };
+      if (t.gateway === "MANUAL") bucket.cash += t.amount;
+      else bucket.online += t.amount;
+      buckets.set(key, bucket);
+    }
+    return Array.from(buckets.entries())
+      .map(([date, b]) => ({ date, ...b, total: b.cash + b.online }))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [transactions, granularity]);
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -109,6 +135,17 @@ export default function PaymentsPage() {
   const outgoing = transactions
     .filter((t) => t.direction === "OUTGOING" && t.status === "SUCCESS")
     .reduce((sum, t) => sum + t.amount, 0);
+
+  const breakdownTotals = breakdown.reduce(
+    (acc, row) => ({ cash: acc.cash + row.cash, online: acc.online + row.online, total: acc.total + row.total }),
+    { cash: 0, online: 0, total: 0 }
+  );
+
+  function formatBucketDate(key: string): string {
+    return granularity === "day"
+      ? new Date(`${key}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : new Date(`${key}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -187,6 +224,47 @@ export default function PaymentsPage() {
           tone="info"
         />
       </div>
+
+      {!fetching && breakdown.length > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-2 p-5 pb-0">
+            <h2 className="text-base font-semibold text-ink-900">
+              Revenue by {granularity === "day" ? "day" : "month"}
+            </h2>
+            {rangeTooWide && (
+              <p className="text-xs text-ink-500">Narrow the date range for a faster breakdown.</p>
+            )}
+          </div>
+          <div className="mt-3">
+            <Table>
+              <THead>
+                <Tr>
+                  <Th>{granularity === "day" ? "Date" : "Month"}</Th>
+                  <Th className="text-right">Cash</Th>
+                  <Th className="text-right">Online</Th>
+                  <Th className="text-right">Total</Th>
+                </Tr>
+              </THead>
+              <TBody>
+                {breakdown.map((row) => (
+                  <Tr key={row.date}>
+                    <Td className="text-ink-700">{formatBucketDate(row.date)}</Td>
+                    <Td className="tabular text-right text-ink-500">GH₵{row.cash.toFixed(2)}</Td>
+                    <Td className="tabular text-right text-ink-500">GH₵{row.online.toFixed(2)}</Td>
+                    <Td className="tabular text-right font-medium text-ink-900">GH₵{row.total.toFixed(2)}</Td>
+                  </Tr>
+                ))}
+                <Tr>
+                  <Td className="font-semibold text-ink-900">Total</Td>
+                  <Td className="tabular text-right font-semibold text-ink-900">GH₵{breakdownTotals.cash.toFixed(2)}</Td>
+                  <Td className="tabular text-right font-semibold text-ink-900">GH₵{breakdownTotals.online.toFixed(2)}</Td>
+                  <Td className="tabular text-right font-semibold text-ink-900">GH₵{breakdownTotals.total.toFixed(2)}</Td>
+                </Tr>
+              </TBody>
+            </Table>
+          </div>
+        </Card>
+      )}
 
       <Card>
         {fetching ? (

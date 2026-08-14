@@ -87,7 +87,7 @@ public class BillingService {
     }
 
     @Transactional
-    public CheckoutResponse startCheckout(UUID planId, boolean saveCard) {
+    public CheckoutResponse startCheckout(UUID planId, int months, boolean saveCard) {
         Business business = getOwnBusiness();
 
         SubscriptionPlan plan = subscriptionPlanRepository.findById(planId)
@@ -97,7 +97,8 @@ public class BillingService {
         User owner = userRepository.findById(TenantContext.getUserId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
 
-        BigDecimal effectivePrice = business.getPriceOverride() != null ? business.getPriceOverride() : plan.getPrice();
+        BigDecimal monthlyRate = business.getPriceOverride() != null ? business.getPriceOverride() : plan.getPrice();
+        BigDecimal effectivePrice = computeTotal(monthlyRate, months);
 
         String reference = "RATEL-" + business.getId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
         long amountMinorUnits = effectivePrice.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
@@ -107,7 +108,7 @@ public class BillingService {
                 owner.getEmail(),
                 amountMinorUnits,
                 reference,
-                Map.of("businessId", business.getId().toString(), "planId", plan.getId().toString())
+                Map.of("businessId", business.getId().toString(), "planId", plan.getId().toString(), "months", String.valueOf(months))
         );
 
         SubscriptionPayment payment = SubscriptionPayment.builder()
@@ -115,6 +116,7 @@ public class BillingService {
                 .subscriptionPlanId(plan.getId())
                 .amount(effectivePrice)
                 .currency(plan.getCurrency())
+                .months(months)
                 .paystackReference(init.reference())
                 .status("PENDING")
                 .saveCardRequested(saveCard)
@@ -122,6 +124,33 @@ public class BillingService {
         subscriptionPaymentRepository.save(payment);
 
         return new CheckoutResponse(init.accessCode(), init.reference());
+    }
+
+    // 1/3/6/12 months only. Mirrored in frontend/app/dashboard/billing/page.tsx's
+    // MONTH_OPTIONS for pre-checkout price display — keep both in sync if these
+    // tiers ever change.
+    private static final Map<Integer, BigDecimal> DISCOUNT_BY_MONTHS = Map.of(
+            1, BigDecimal.ZERO,
+            3, new BigDecimal("0.05"),
+            6, new BigDecimal("0.10"),
+            12, new BigDecimal("0.20")
+    );
+
+    private static BigDecimal discountForMonths(int months) {
+        BigDecimal discount = DISCOUNT_BY_MONTHS.get(months);
+        if (discount == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Choose 1, 3, 6, or 12 months.");
+        }
+        return discount;
+    }
+
+    // effectiveMonthlyRate x months x (1 - discount), rounded to cents.
+    private static BigDecimal computeTotal(BigDecimal effectiveMonthlyRate, int months) {
+        BigDecimal discount = discountForMonths(months);
+        return effectiveMonthlyRate
+                .multiply(BigDecimal.valueOf(months))
+                .multiply(BigDecimal.ONE.subtract(discount))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     // Auto-renewal via a saved card — a separate transactional path from
@@ -150,7 +179,12 @@ public class BillingService {
             return;
         }
 
-        BigDecimal effectivePrice = business.getPriceOverride() != null ? business.getPriceOverride() : plan.getPrice();
+        // Repeats whatever cycle length the business last checked out with —
+        // see verifyPayment()'s billingCycleMonths comment — so a saved-card
+        // renewal keeps the same discount tier instead of collapsing to 1 month.
+        int months = business.getBillingCycleMonths();
+        BigDecimal monthlyRate = business.getPriceOverride() != null ? business.getPriceOverride() : plan.getPrice();
+        BigDecimal effectivePrice = computeTotal(monthlyRate, months);
         long amountMinorUnits = effectivePrice.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
         String reference = "RATEL-AUTO-" + business.getId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
 
@@ -161,6 +195,7 @@ public class BillingService {
                 .subscriptionPlanId(plan.getId())
                 .amount(effectivePrice)
                 .currency(plan.getCurrency())
+                .months(months)
                 .paystackReference(reference)
                 .status("PENDING")
                 .build();
@@ -236,7 +271,11 @@ public class BillingService {
         Instant periodStart = (business.getCurrentPeriodEndsAt() != null && business.getCurrentPeriodEndsAt().isAfter(now))
                 ? business.getCurrentPeriodEndsAt()
                 : now;
-        Instant periodEnd = periodStart.plus(plan.getBillingPeriodDays(), ChronoUnit.DAYS);
+        // payment.getMonths() is safe to read here (same reasoning as
+        // payment.isSaveCardRequested() below) — set once at checkout/
+        // attemptAutoCharge time and untouched by markSuccessIfNotAlready()'s
+        // bulk update.
+        Instant periodEnd = periodStart.plus((long) plan.getBillingPeriodDays() * payment.getMonths(), ChronoUnit.DAYS);
 
         int updated = subscriptionPaymentRepository.markSuccessIfNotAlready(reference, now, periodStart, periodEnd);
         if (updated == 0) {
@@ -264,6 +303,10 @@ public class BillingService {
 
         business.setCurrentPeriodEndsAt(periodEnd);
         business.setSubscriptionPlanId(plan.getId());
+        // Recorded so a saved-card renewal (attemptAutoCharge()) repeats the
+        // same cycle length/discount this payment was for, instead of
+        // collapsing every renewal to a single month.
+        business.setBillingCycleMonths(payment.getMonths());
         business.setBillingStatus(BillingStatus.ACTIVE);
         // Clears whatever grace window this business may have been in — a
         // renewal always supersedes it, whether or not it was actually GRACE.
@@ -324,6 +367,10 @@ public class BillingService {
                 : business.getCurrentPeriodEndsAt();
         long daysRemaining = deadline != null ? ChronoUnit.DAYS.between(Instant.now(), deadline) : 0;
 
+        BigDecimal effectiveMonthlyRate = business.getPriceOverride() != null
+                ? business.getPriceOverride()
+                : (plan != null ? plan.price() : null);
+
         return new BillingStatusResponse(
                 business.getBillingStatus().name(),
                 plan,
@@ -334,7 +381,8 @@ public class BillingService {
                 business.getCardLast4(),
                 business.getCardBrand(),
                 business.isAutoRenewEnabled(),
-                platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc().getUsdDisplayRate()
+                platformBillingSettingsRepository.findFirstByOrderByUpdatedAtDesc().getUsdDisplayRate(),
+                effectiveMonthlyRate
         );
     }
 }

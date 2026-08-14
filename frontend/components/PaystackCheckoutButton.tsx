@@ -48,6 +48,7 @@ function loadPaystackScript(): Promise<void> {
  */
 export default function PaystackCheckoutButton({
   planId,
+  months,
   className,
   buttonLabel,
   onStartCheckout,
@@ -55,9 +56,10 @@ export default function PaystackCheckoutButton({
   onError,
 }: {
   planId: string;
+  months: number;
   className?: string;
   buttonLabel: React.ReactNode;
-  onStartCheckout: (planId: string) => Promise<{ accessCode: string; reference: string }>;
+  onStartCheckout: (planId: string, months: number) => Promise<{ accessCode: string; reference: string }>;
   onVerify: (reference: string) => Promise<boolean>;
   onError: (message: string) => void;
 }) {
@@ -70,7 +72,7 @@ export default function PaystackCheckoutButton({
     setStarting(true);
     try {
       await loadPaystackScript();
-      const result = await onStartCheckout(planId);
+      const result = await onStartCheckout(planId, months);
       if (!window.PaystackPop) {
         throw new Error("Paystack didn't load correctly. Please try again.");
       }

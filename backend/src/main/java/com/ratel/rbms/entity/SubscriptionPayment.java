@@ -37,6 +37,13 @@ public class SubscriptionPayment {
     @Column(nullable = false, length = 10)
     private String currency;
 
+    // How many months this payment covers (1/3/6/12) — pure record-keeping
+    // for receipts/history display. periodStart/periodEnd remain the source
+    // of truth for the actual span; this is just "why" they're that far apart.
+    @Column(nullable = false)
+    @Builder.Default
+    private int months = 1;
+
     // Idempotency key — a webhook and a client-triggered verify for the same
     // payment resolve to the same row instead of double-extending the period.
     @Column(name = "paystack_reference", nullable = false, unique = true, length = 100)

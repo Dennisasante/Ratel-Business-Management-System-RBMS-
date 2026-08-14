@@ -26,6 +26,16 @@ const STATUS_LABELS: Record<string, string> = {
   READ_ONLY: "Read-only",
 };
 
+// Mirrors BillingService.DISCOUNT_BY_MONTHS exactly — keep both in sync if
+// these tiers ever change. Used only for pre-checkout price display; the
+// backend recomputes the actual charge and is the source of truth.
+const MONTH_OPTIONS: { months: 1 | 3 | 6 | 12; discountPct: number }[] = [
+  { months: 1, discountPct: 0 },
+  { months: 3, discountPct: 5 },
+  { months: 6, discountPct: 10 },
+  { months: 12, discountPct: 20 },
+];
+
 export default function BillingPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -39,6 +49,7 @@ export default function BillingPage() {
   const [showUsd, setShowUsd] = useState(false);
   const [saveCard, setSaveCard] = useState(false);
   const [savingCardPref, setSavingCardPref] = useState(false);
+  const [monthsByPlan, setMonthsByPlan] = useState<Record<string, 1 | 3 | 6 | 12>>({});
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -193,13 +204,37 @@ export default function BillingPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activePlans.map((plan) => {
               const isCurrent = status.plan?.id === plan.id && status.billingStatus === "ACTIVE";
-              const usdPrice = status.usdDisplayRate ? plan.price / status.usdDisplayRate : null;
+              const months = monthsByPlan[plan.id] ?? 1;
+              // Their real rate (custom override, if any) only applies to the
+              // plan they're actually on — every other plan card shows its own
+              // list price, since a negotiated rate is tied to a specific plan.
+              const monthlyRate = isCurrent && status.effectiveMonthlyRate != null ? status.effectiveMonthlyRate : plan.price;
+              const discountPct = MONTH_OPTIONS.find((o) => o.months === months)?.discountPct ?? 0;
+              const fullPriceNoDiscount = monthlyRate * months;
+              const total = fullPriceNoDiscount * (1 - discountPct / 100);
+              const savings = fullPriceNoDiscount - total;
+              const usdPrice = status.usdDisplayRate ? total / status.usdDisplayRate : null;
               return (
                 <Card key={plan.id} className={`flex flex-col gap-3 p-5 ${isCurrent ? "border-accent ring-1 ring-accent" : ""}`}>
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-ink-900">{plan.name}</h3>
                     {isCurrent && <Badge tone="accent">Current plan</Badge>}
                   </div>
+
+                  <div className="flex items-center gap-1 rounded-lg border border-border bg-canvas p-0.5 text-xs font-medium">
+                    {MONTH_OPTIONS.map((o) => (
+                      <button
+                        key={o.months}
+                        onClick={() => setMonthsByPlan((prev) => ({ ...prev, [plan.id]: o.months }))}
+                        className={`flex-1 rounded-md px-2 py-1 transition ${
+                          months === o.months ? "bg-accent text-white" : "text-ink-500 hover:text-ink-900"
+                        }`}
+                      >
+                        {o.months}mo
+                      </button>
+                    ))}
+                  </div>
+
                   <div>
                     <p className="text-2xl font-semibold text-ink-900">
                       {showUsd && usdPrice != null ? (
@@ -208,22 +243,32 @@ export default function BillingPage() {
                         </>
                       ) : (
                         <>
-                          {plan.currency} {plan.price.toFixed(2)}
+                          {plan.currency} {total.toFixed(2)}
                         </>
                       )}
                     </p>
-                    <p className="text-xs text-ink-500">every {plan.billingPeriodDays} days</p>
+                    <p className="text-xs text-ink-500">
+                      {months === 1
+                        ? `every ${plan.billingPeriodDays} days`
+                        : `${months} months (${plan.billingPeriodDays * months} days)`}
+                    </p>
+                    {discountPct > 0 && (
+                      <p className="mt-1 text-xs text-success">
+                        {plan.currency} {fullPriceNoDiscount.toFixed(2)} — save {plan.currency} {savings.toFixed(2)} ({discountPct}% off)
+                      </p>
+                    )}
                     {showUsd && usdPrice != null && (
                       <p className="mt-1 text-xs text-ink-500">
-                        Display only — checkout always charges {plan.currency} {plan.price.toFixed(2)}.
+                        Display only — checkout always charges {plan.currency} {total.toFixed(2)}.
                       </p>
                     )}
                   </div>
                   <PaystackCheckoutButton
                     planId={plan.id}
+                    months={months}
                     buttonLabel="Pay with Paystack"
                     className="mt-1 w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    onStartCheckout={(planId) => api.startBillingCheckout(session.token, planId, saveCard)}
+                    onStartCheckout={(planId, checkoutMonths) => api.startBillingCheckout(session.token, planId, checkoutMonths, saveCard)}
                     onVerify={handleVerify}
                     onError={setError}
                   />
@@ -280,6 +325,7 @@ export default function BillingPage() {
                     <Tr>
                       <Th>Date</Th>
                       <Th>Plan</Th>
+                      <Th>Months</Th>
                       <Th>Status</Th>
                       <Th className="text-right">Amount</Th>
                     </Tr>
@@ -289,6 +335,7 @@ export default function BillingPage() {
                       <Tr key={h.id}>
                         <Td className="tabular text-ink-500">{new Date(h.createdAt).toLocaleDateString()}</Td>
                         <Td className="font-medium">{h.planName ?? "—"}</Td>
+                        <Td className="tabular text-ink-500">{h.months}</Td>
                         <Td>
                           <Badge tone={h.status === "SUCCESS" ? "success" : h.status === "FAILED" ? "danger" : "neutral"}>
                             {h.status}

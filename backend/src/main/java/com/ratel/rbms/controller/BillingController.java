@@ -47,7 +47,8 @@ public class BillingController {
 
     @PostMapping("/checkout")
     public CheckoutResponse checkout(@Valid @RequestBody CheckoutRequest request) {
-        return billingService.startCheckout(request.planId(), Boolean.TRUE.equals(request.saveCard()));
+        int months = request.months() != null ? request.months() : 1;
+        return billingService.startCheckout(request.planId(), months, Boolean.TRUE.equals(request.saveCard()));
     }
 
     @PostMapping("/verify")

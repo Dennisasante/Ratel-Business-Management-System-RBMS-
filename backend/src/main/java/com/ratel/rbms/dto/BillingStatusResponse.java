@@ -19,6 +19,11 @@ public record BillingStatusResponse(
         // Billing page entirely. Riding along on /billing/status rather than a
         // dedicated endpoint since it's the one business-facing read businesses
         // are allowed to see of platform_billing_settings.
-        BigDecimal usdDisplayRate
+        BigDecimal usdDisplayRate,
+        // The monthly rate this business's checkouts actually use — plan.price
+        // unless a Super Admin has set a custom rate (Business.priceOverride).
+        // Without this, the Billing page had no way to show a business its own
+        // real rate; it always showed the plan's raw list price instead.
+        BigDecimal effectiveMonthlyRate
 ) {
 }

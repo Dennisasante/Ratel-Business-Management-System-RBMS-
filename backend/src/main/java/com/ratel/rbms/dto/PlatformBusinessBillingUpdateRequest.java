@@ -9,6 +9,10 @@ import java.util.UUID;
  * partial-update DTOs. clearPlan/clearPriceOverride exist because "set back
  * to no plan / no override" can't be expressed by a null field under that
  * convention — they're the explicit escape hatch for it.
+ *
+ * priceOverride is interpreted downstream (BillingService) as the business's
+ * negotiated MONTHLY rate, not a flat total — multi-month discount tiers
+ * still apply on top of it.
  */
 public record PlatformBusinessBillingUpdateRequest(
         UUID subscriptionPlanId,

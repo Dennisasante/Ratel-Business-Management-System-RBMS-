@@ -100,10 +100,21 @@ public class Business {
     @Builder.Default
     private boolean autoRenewEnabled = false;
 
-    // Null = charge the plan's list price. Set = charge this business exactly
-    // this amount instead — a negotiated rate, not a separate plan.
+    // Null = use the plan's list price as the monthly rate. Set = use this as
+    // the negotiated monthly rate instead — the multi-month discount tiers in
+    // BillingService.discountForMonths() still apply on top of whichever rate
+    // is in effect, so this isn't a flat total, just the per-month base.
     @Column(name = "price_override", precision = 12, scale = 2)
     private BigDecimal priceOverride;
+
+    // How many months the business most recently checked out for — set on
+    // every successful BillingService.verifyPayment() (manual or auto-charge)
+    // to payment.getMonths(). attemptAutoCharge() reads this back so a
+    // saved-card renewal repeats the same cycle length/discount the business
+    // originally chose. Defaults to 1 (pre-existing single-cycle behavior).
+    @Column(name = "billing_cycle_months", nullable = false)
+    @Builder.Default
+    private int billingCycleMonths = 1;
 
     // Last time the "renew soon" reminder email went out, so the scheduled job
     // doesn't re-send it every day during the 3-day warning window.

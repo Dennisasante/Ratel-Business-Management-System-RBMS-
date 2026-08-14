@@ -339,7 +339,7 @@ export default function PlatformBusinessDetailPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium text-ink-700">Price override (GH₵)</label>
+                      <label className="text-xs font-medium text-ink-700">Custom monthly rate (GH₵)</label>
                       <input
                         type="number"
                         min={0}
@@ -349,7 +349,10 @@ export default function PlatformBusinessDetailPage() {
                         placeholder="Plan default"
                         className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                       />
-                      <p className="text-xs text-ink-500">Leave blank to charge this business the plan&apos;s normal price.</p>
+                      <p className="text-xs text-ink-500">
+                        Leave blank to use the plan&apos;s normal monthly rate. Multi-month discounts (5/10/20% for 3/6/12
+                        months) still apply on top of this rate.
+                      </p>
                     </div>
 
                     {billingError && <p className="text-sm text-danger">{billingError}</p>}
@@ -384,7 +387,7 @@ export default function PlatformBusinessDetailPage() {
                       </dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-ink-500">Price override</dt>
+                      <dt className="text-ink-500">Custom monthly rate</dt>
                       <dd className="font-medium text-ink-900">
                         {business.priceOverride != null ? `GH₵${business.priceOverride.toFixed(2)}` : "Plan default"}
                       </dd>

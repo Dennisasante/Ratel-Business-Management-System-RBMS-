@@ -632,6 +632,10 @@ export interface BillingStatus {
   cardBrand: string | null;
   autoRenewEnabled: boolean;
   usdDisplayRate: number | null;
+  // This business's real monthly rate — plan.price unless a Super Admin has
+  // set a custom rate. Multi-month discounts apply on top of this, not on
+  // top of plan.price, whenever the two differ.
+  effectiveMonthlyRate: number | null;
 }
 
 export interface CheckoutResponse {
@@ -1037,6 +1041,7 @@ export interface SubscriptionPaymentSummary {
   planName: string | null;
   amount: number;
   currency: string;
+  months: number;
   status: "PENDING" | "SUCCESS" | "FAILED";
   periodStart: string | null;
   periodEnd: string | null;
@@ -1615,8 +1620,8 @@ export const api = {
 
   getBillingHistory: (token: string) => request<SubscriptionPaymentSummary[]>("/api/billing/history", {}, token),
 
-  startBillingCheckout: (token: string, planId: string, saveCard: boolean) =>
-    request<CheckoutResponse>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ planId, saveCard }) }, token),
+  startBillingCheckout: (token: string, planId: string, months: number, saveCard: boolean) =>
+    request<CheckoutResponse>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ planId, months, saveCard }) }, token),
 
   verifyBillingPayment: (token: string, reference: string) =>
     request<VerifyPaymentResponse>("/api/billing/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),

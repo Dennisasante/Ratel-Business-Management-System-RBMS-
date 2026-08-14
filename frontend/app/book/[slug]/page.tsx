@@ -554,6 +554,7 @@ export default function HostedBookingPage() {
                         {payError && <p className="mt-3 rounded-lg bg-[#fdf1ee] px-3 py-2 text-sm text-[#b1432e]">{payError}</p>}
                         <PaystackCheckoutButton
                           planId={created.manageToken}
+                          months={1}
                           buttonLabel={`${formatMoney(created.amountDue, config.currency)} · Pay to confirm`}
                           onStartCheckout={() => api.startBookingPayment(created.manageToken)}
                           onVerify={async (reference) => {

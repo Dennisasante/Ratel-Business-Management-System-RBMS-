@@ -11,6 +11,7 @@ public record SubscriptionPaymentResponse(
         String planName,
         BigDecimal amount,
         String currency,
+        int months,
         String status,
         Instant periodStart,
         Instant periodEnd,
@@ -19,7 +20,7 @@ public record SubscriptionPaymentResponse(
 ) {
     public static SubscriptionPaymentResponse from(SubscriptionPayment payment, String planName) {
         return new SubscriptionPaymentResponse(
-                payment.getId(), planName, payment.getAmount(), payment.getCurrency(), payment.getStatus(),
+                payment.getId(), planName, payment.getAmount(), payment.getCurrency(), payment.getMonths(), payment.getStatus(),
                 payment.getPeriodStart(), payment.getPeriodEnd(), payment.getPaidAt(), payment.getCreatedAt()
         );
     }
