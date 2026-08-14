@@ -9,14 +9,13 @@ import {
   api,
   ApiError,
   CreateStaffCustomWigRequestPayload,
-  CustomItemAttribute,
   CustomWigRequest,
   CustomWigRequestDetail,
   CustomWigRequestStatus,
-  CustomWigSelectionInput,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import UpsellBanner from "@/components/UpsellBanner";
+import PaymentCollectionPanel from "@/components/PaymentCollectionPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -39,18 +38,35 @@ const STATUS_TONES: Record<CustomWigRequestStatus, "neutral" | "accent" | "succe
   DECLINED: "danger",
 };
 
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: "Unpaid",
+  PARTIALLY_PAID: "Partially paid",
+  PAID: "Paid",
+  FAILED: "Payment failed",
+  REFUNDED: "Refunded",
+};
+
+const PAYMENT_STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
+  UNPAID: "neutral",
+  PARTIALLY_PAID: "info",
+  PAID: "success",
+  FAILED: "danger",
+  REFUNDED: "violet",
+};
+
 export default function CustomWigRequestsPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
 
   const [requests, setRequests] = useState<CustomWigRequest[]>([]);
-  const [attributes, setAttributes] = useState<CustomItemAttribute[]>([]);
   const [fetching, setFetching] = useState(true);
   const [upsellMessage, setUpsellMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CustomWigRequestStatus | "">("");
   const [detail, setDetail] = useState<CustomWigRequestDetail | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showNewRequest, setShowNewRequest] = useState(false);
+  const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [collectingPaymentRequest, setCollectingPaymentRequest] = useState<CustomWigRequest | null>(null);
 
   const loadRequests = useCallback(async () => {
     if (!session) return;
@@ -78,8 +94,8 @@ export default function CustomWigRequestsPage() {
   useEffect(() => {
     if (!session) return;
     setFetching(true);
-    Promise.all([loadRequests(), api.listCustomWigAttributes(session.token).then(setAttributes).catch(() => {})]).finally(() =>
-      setFetching(false)
+    Promise.all([loadRequests(), api.getPaymentGatewayStatus(session.token).then((gw) => setPaystackConfigured(gw.paystackConfigured))]).finally(
+      () => setFetching(false)
     );
   }, [session, loadRequests]);
 
@@ -95,6 +111,14 @@ export default function CustomWigRequestsPage() {
     const full = await api.getCustomWigRequest(session.token, id);
     setDetail(full);
     await loadRequests();
+  }
+
+  function handleRequestPaymentChanged(updated: CustomWigRequest) {
+    setCollectingPaymentRequest(updated);
+    setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    if (updated.paymentStatus === "PAID") {
+      setCollectingPaymentRequest(null);
+    }
   }
 
   async function handleCreate(payload: CreateStaffCustomWigRequestPayload, photo: File | null) {
@@ -115,11 +139,9 @@ export default function CustomWigRequestsPage() {
       <div className="flex items-center justify-between">
         <PageHeader title="Custom Wig Requests" subtitle="Requests submitted through your custom configurator — or logged by you." />
         <div className="flex items-center gap-2">
-          {attributes.length > 0 && (
-            <Button onClick={() => setShowNewRequest(true)}>
-              <Plus size={15} className="mr-1.5" /> New request
-            </Button>
-          )}
+          <Button onClick={() => setShowNewRequest(true)}>
+            <Plus size={15} className="mr-1.5" /> New request
+          </Button>
           <Link href="/dashboard/custom-wig-requests/attributes">
             <Button variant="secondary">
               <Settings size={15} className="mr-1.5" /> Pricing rules
@@ -174,12 +196,29 @@ export default function CustomWigRequestsPage() {
                       </Td>
                       <Td className="tabular font-medium">GHS {r.estimatedPrice.toFixed(2)}</Td>
                       <Td>
-                        <Badge tone={STATUS_TONES[r.status]}>{STATUS_LABELS[r.status]}</Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge tone={STATUS_TONES[r.status]}>{STATUS_LABELS[r.status]}</Badge>
+                          {r.finalPrice != null && (
+                            <Badge tone={PAYMENT_STATUS_TONES[r.paymentStatus] ?? "neutral"}>
+                              {PAYMENT_STATUS_LABELS[r.paymentStatus] ?? r.paymentStatus}
+                            </Badge>
+                          )}
+                        </div>
                       </Td>
                       <Td className="tabular text-ink-500">{new Date(r.createdAt).toLocaleDateString()}</Td>
                       <Td className="text-right">
                         {r.finalPrice != null ? (
-                          <span className="tabular font-medium">GHS {r.finalPrice.toFixed(2)}</span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="tabular font-medium">GHS {r.finalPrice.toFixed(2)}</span>
+                            {r.paymentStatus !== "REFUNDED" && (
+                              <button
+                                onClick={() => setCollectingPaymentRequest(r)}
+                                className="text-xs font-medium text-accent-hover hover:underline"
+                              >
+                                {r.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <button onClick={() => openDetail(r.id)} className="text-sm font-medium text-accent-hover hover:underline">
                             Review
@@ -206,8 +245,28 @@ export default function CustomWigRequestsPage() {
         />
       )}
 
-      {showNewRequest && (
-        <NewRequestModal attributes={attributes} onClose={() => setShowNewRequest(false)} onSubmit={handleCreate} />
+      {showNewRequest && <NewRequestModal onClose={() => setShowNewRequest(false)} onSubmit={handleCreate} />}
+
+      {collectingPaymentRequest && session && (
+        <Modal
+          title={`Collect payment — Request #${collectingPaymentRequest.requestNumber}`}
+          onClose={() => setCollectingPaymentRequest(null)}
+        >
+          <PaymentCollectionPanel<CustomWigRequest>
+            id={collectingPaymentRequest.id}
+            amount={collectingPaymentRequest.finalPrice ?? 0}
+            balanceDue={collectingPaymentRequest.balanceDue ?? 0}
+            paymentStatus={collectingPaymentRequest.paymentStatus}
+            paystackConfigured={paystackConfigured}
+            onVerifyPayment={(reference) => api.verifyCustomWigRequestPayment(session.token, reference)}
+            onMarkPaid={(id) => api.markCustomWigRequestPaid(session.token, id)}
+            onChargeMobileMoney={(id, phone, provider) => api.chargeCustomWigRequestMobileMoney(session.token, id, phone, provider)}
+            onSubmitOtp={(reference, otp) => api.submitCustomWigRequestMobileMoneyOtp(session.token, reference, otp)}
+            onRecordPayment={(id, payload) => api.recordCustomWigRequestPayment(session.token, id, payload)}
+            onRefund={(id, note) => api.refundCustomWigRequest(session.token, id, note)}
+            onChanged={handleRequestPaymentChanged}
+          />
+        </Modal>
       )}
     </div>
   );
@@ -406,11 +465,9 @@ function RequestDetailModal({
 }
 
 function NewRequestModal({
-  attributes,
   onClose,
   onSubmit,
 }: {
-  attributes: CustomItemAttribute[];
   onClose: () => void;
   onSubmit: (payload: CreateStaffCustomWigRequestPayload, photo: File | null) => Promise<void>;
 }) {
@@ -418,34 +475,12 @@ function NewRequestModal({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerWhatsapp, setCustomerWhatsapp] = useState("");
   const [source, setSource] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
-  // attributeId -> selected optionIds. Deliberately starts empty (unlike the
-  // customer-facing wizard, which defaults SINGLE attributes to their first
-  // option) — a manually-logged request should only reflect what the
-  // customer actually said, not a guess staff forgot to change.
-  const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const optionById = new Map(attributes.flatMap((a) => a.options.map((o) => [o.id, o] as const)));
-  const estimatedPrice = Object.values(selections)
-    .flat()
-    .reduce((sum, optionId) => sum + (optionById.get(optionId)?.priceModifier ?? 0), 0);
-
-  function setSingle(attributeId: string, optionId: string) {
-    setSelections((prev) => ({ ...prev, [attributeId]: optionId ? [optionId] : [] }));
-  }
-
-  function toggleMultiple(attributeId: string, optionId: string, checked: boolean) {
-    setSelections((prev) => {
-      const current = prev[attributeId] ?? [];
-      return {
-        ...prev,
-        [attributeId]: checked ? [...current, optionId] : current.filter((id) => id !== optionId),
-      };
-    });
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -455,11 +490,13 @@ function NewRequestModal({
       setError("Customer name is required.");
       return;
     }
-    const flatSelections: CustomWigSelectionInput[] = Object.entries(selections).flatMap(([attributeId, optionIds]) =>
-      optionIds.map((optionId) => ({ attributeId, optionId }))
-    );
-    if (flatSelections.length === 0) {
-      setError("Choose at least one option the customer asked for.");
+    if (!description.trim()) {
+      setError("Describe what the customer wants.");
+      return;
+    }
+    const parsedPrice = Number(price);
+    if (!parsedPrice || parsedPrice <= 0) {
+      setError("Enter a price greater than zero.");
       return;
     }
 
@@ -471,8 +508,9 @@ function NewRequestModal({
           customerEmail: customerEmail.trim() || undefined,
           customerWhatsapp: customerWhatsapp.trim() || undefined,
           source: source.trim() || undefined,
+          description: description.trim(),
+          price: parsedPrice,
           notes: notes.trim() || undefined,
-          selections: flatSelections,
         },
         photo
       );
@@ -526,44 +564,29 @@ function NewRequestModal({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-          {attributes.map((attr) => (
-            <div key={attr.id}>
-              <p className="mb-1.5 text-sm font-medium text-ink-900">{attr.name}</p>
-              {attr.selectionType === "SINGLE" ? (
-                <select
-                  value={selections[attr.id]?.[0] ?? ""}
-                  onChange={(e) => setSingle(attr.id, e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                >
-                  <option value="">Not specified</option>
-                  {attr.options.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label} (+{o.priceModifier.toFixed(2)})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                  {attr.options.map((o) => (
-                    <label key={o.id} className="flex items-center gap-1.5 text-sm text-ink-700">
-                      <input
-                        type="checkbox"
-                        checked={selections[attr.id]?.includes(o.id) ?? false}
-                        onChange={(e) => toggleMultiple(attr.id, o.id, e.target.checked)}
-                        className="rounded border-border text-accent focus:ring-accent/20"
-                      />
-                      {o.label} (+{o.priceModifier.toFixed(2)})
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-          <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
-            <span>Estimated</span>
-            <span className="tabular">GHS {estimatedPrice.toFixed(2)}</span>
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-ink-700">What do they want? *</label>
+          <textarea
+            required
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder='e.g. "24 inches HD lace wig, bone straight, natural black"'
+            className="min-h-20 rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-ink-700">Price *</label>
+          <input
+            required
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="0.00"
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">

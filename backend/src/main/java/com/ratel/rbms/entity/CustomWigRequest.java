@@ -63,6 +63,12 @@ public class CustomWigRequest {
     @Column(nullable = false, columnDefinition = "text")
     private String selections;
 
+    // Free text ("24 inches HD wig") — the staff manual-entry path always
+    // uses this instead of `selections`; null for anything submitted through
+    // the public configurator widget.
+    @Column(columnDefinition = "text")
+    private String description;
+
     @Column(name = "estimated_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal estimatedPrice;
 
@@ -85,6 +91,21 @@ public class CustomWigRequest {
     @Column(name = "is_test", nullable = false)
     @Builder.Default
     private boolean test = false;
+
+    // Same payment-status/amount-paid/paystack-reference model as Sale and
+    // ServiceOrder — see SaleService's recordPayment()/chargeMobileMoney()
+    // for the shared derivation logic (small deliberate duplication, cross-
+    // referenced rather than shared, matching this codebase's convention).
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private String paymentStatus = "UNPAID"; // UNPAID, PARTIALLY_PAID, PAID, FAILED, REFUNDED
+
+    @Column(name = "amount_paid", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal amountPaid = BigDecimal.ZERO;
+
+    @Column(name = "paystack_reference", length = 100)
+    private String paystackReference;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

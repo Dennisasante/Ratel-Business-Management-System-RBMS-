@@ -897,9 +897,14 @@ export interface CustomWigRequest {
   customerName: string;
   customerEmail: string | null;
   customerWhatsapp: string | null;
+  description: string | null;
   estimatedPrice: number;
   status: CustomWigRequestStatus;
   finalPrice: number | null;
+  // UNPAID/PARTIALLY_PAID/PAID/FAILED/REFUNDED — same model as Sale/ServiceOrder.
+  paymentStatus: string;
+  amountPaid: number;
+  balanceDue: number | null;
   whatsappLink: string | null;
   source: string | null;
   createdAt: string;
@@ -919,12 +924,15 @@ export interface CustomWigSelectionInput {
   optionId: string;
 }
 
+// Always free text + a staff-entered price — never the public widget's
+// attribute/option picker. See CreateStaffCustomWigRequestRequest.java.
 export interface CreateStaffCustomWigRequestPayload {
   customerName: string;
   customerEmail?: string;
   customerWhatsapp?: string;
   source?: string;
-  selections: CustomWigSelectionInput[];
+  description: string;
+  price: number;
   notes?: string;
 }
 
@@ -963,12 +971,16 @@ export interface CustomWigRequestDetail {
   customerEmail: string | null;
   customerWhatsapp: string | null;
   selections: CustomWigSelection[];
+  description: string | null;
   estimatedPrice: number;
   inspirationPhotoUrl: string | null;
   notes: string | null;
   status: CustomWigRequestStatus;
   finalPrice: number | null;
   ownerMessage: string | null;
+  paymentStatus: string;
+  amountPaid: number;
+  balanceDue: number | null;
   whatsappLink: string | null;
   source: string | null;
   createdAt: string;
@@ -1976,6 +1988,32 @@ export const api = {
 
   acceptCustomWigRequest: (token: string, id: string) =>
     request<CustomWigRequest>(`/api/custom-wig-requests/${id}/accept`, { method: "PATCH" }, token),
+
+  chargeCustomWigRequestMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
+    request<MobileMoneyChargeResponse>(
+      `/api/custom-wig-requests/${id}/charge-mobile-money`,
+      { method: "POST", body: JSON.stringify({ phone, provider }) },
+      token
+    ),
+
+  verifyCustomWigRequestPayment: (token: string, reference: string) =>
+    request<CustomWigRequest>("/api/custom-wig-requests/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  submitCustomWigRequestMobileMoneyOtp: (token: string, reference: string, otp: string) =>
+    request<CustomWigRequest>(
+      "/api/custom-wig-requests/submit-mobile-money-otp",
+      { method: "POST", body: JSON.stringify({ reference, otp }) },
+      token
+    ),
+
+  markCustomWigRequestPaid: (token: string, id: string) =>
+    request<CustomWigRequest>(`/api/custom-wig-requests/${id}/mark-paid`, { method: "POST" }, token),
+
+  recordCustomWigRequestPayment: (token: string, id: string, payload: RecordPaymentPayload) =>
+    request<CustomWigRequest>(`/api/custom-wig-requests/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
+
+  refundCustomWigRequest: (token: string, id: string, note?: string) =>
+    request<CustomWigRequest>(`/api/custom-wig-requests/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
 
   getOnboardingStatus: (token: string) =>
     request<OnboardingStatus>("/api/users/me/onboarding-status", {}, token),

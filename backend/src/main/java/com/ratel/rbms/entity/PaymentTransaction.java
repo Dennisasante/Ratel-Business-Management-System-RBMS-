@@ -86,5 +86,5 @@ public class PaymentTransaction {
 
     public enum Direction { INCOMING, OUTGOING }
 
-    public enum SourceType { SERVICE_ORDER, SALE, BOOKING, PURCHASE_ORDER }
+    public enum SourceType { SERVICE_ORDER, SALE, BOOKING, PURCHASE_ORDER, CUSTOM_WIG_REQUEST }
 }

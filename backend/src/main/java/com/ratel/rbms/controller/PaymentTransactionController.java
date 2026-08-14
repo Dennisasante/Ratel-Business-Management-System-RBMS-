@@ -4,6 +4,7 @@ import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.service.BookingService;
+import com.ratel.rbms.service.CustomWigRequestService;
 import com.ratel.rbms.service.PaymentTransactionService;
 import com.ratel.rbms.service.SaleService;
 import com.ratel.rbms.service.ServiceOrderService;
@@ -32,17 +33,20 @@ public class PaymentTransactionController {
     private final SaleService saleService;
     private final ServiceOrderService serviceOrderService;
     private final BookingService bookingService;
+    private final CustomWigRequestService customWigRequestService;
 
     public PaymentTransactionController(
             PaymentTransactionService paymentTransactionService,
             SaleService saleService,
             ServiceOrderService serviceOrderService,
-            BookingService bookingService
+            BookingService bookingService,
+            CustomWigRequestService customWigRequestService
     ) {
         this.paymentTransactionService = paymentTransactionService;
         this.saleService = saleService;
         this.serviceOrderService = serviceOrderService;
         this.bookingService = bookingService;
+        this.customWigRequestService = customWigRequestService;
     }
 
     @GetMapping
@@ -75,6 +79,7 @@ public class PaymentTransactionController {
             case SERVICE_ORDER -> serviceOrderService.verifyPayment(t.getGatewayReference());
             case BOOKING -> bookingService.verifyPayment(t.getGatewayReference());
             case PURCHASE_ORDER -> throw new ApiException(HttpStatus.BAD_REQUEST, "Purchase orders are paid manually — there's nothing to verify.");
+            case CUSTOM_WIG_REQUEST -> customWigRequestService.verifyPayment(t.getGatewayReference());
         }
 
         return ResponseEntity.noContent().build();

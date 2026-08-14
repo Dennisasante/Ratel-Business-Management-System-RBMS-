@@ -80,6 +80,7 @@ public class PlatformBusinessService {
     private final SaleService saleService;
     private final ServiceOrderService serviceOrderService;
     private final BookingService bookingService;
+    private final CustomWigRequestService customWigRequestService;
 
     public PlatformBusinessService(
             BusinessRepository businessRepository,
@@ -103,7 +104,8 @@ public class PlatformBusinessService {
             ActivityLogService activityLogService,
             SaleService saleService,
             ServiceOrderService serviceOrderService,
-            BookingService bookingService
+            BookingService bookingService,
+            CustomWigRequestService customWigRequestService
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -127,6 +129,7 @@ public class PlatformBusinessService {
         this.saleService = saleService;
         this.serviceOrderService = serviceOrderService;
         this.bookingService = bookingService;
+        this.customWigRequestService = customWigRequestService;
     }
 
     // Full payment-event visibility for a single business — "so I'm never
@@ -167,6 +170,7 @@ public class PlatformBusinessService {
             case SERVICE_ORDER -> serviceOrderService.verifyPayment(t.getGatewayReference());
             case BOOKING -> bookingService.verifyPayment(t.getGatewayReference());
             case PURCHASE_ORDER -> throw new ApiException(HttpStatus.BAD_REQUEST, "Purchase orders are paid manually — there's nothing to verify.");
+            case CUSTOM_WIG_REQUEST -> customWigRequestService.verifyPayment(t.getGatewayReference());
         }
 
         auditLogService.log(adminId, "Verified a payment for \"" + business.getName() + "\"", businessId, business.getName(), null);

@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.entity.Booking;
+import com.ratel.rbms.entity.CustomWigRequest;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.PurchaseOrder;
 import com.ratel.rbms.entity.Sale;
@@ -9,6 +10,7 @@ import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
+import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.PurchaseOrderRepository;
 import com.ratel.rbms.repository.SaleRepository;
@@ -38,6 +40,7 @@ public class PaymentTransactionService {
     private final SaleRepository saleRepository;
     private final BookingRepository bookingRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final CustomWigRequestRepository customWigRequestRepository;
 
     public PaymentTransactionService(
             PaymentTransactionRepository paymentTransactionRepository,
@@ -46,7 +49,8 @@ public class PaymentTransactionService {
             ServiceOrderRepository serviceOrderRepository,
             SaleRepository saleRepository,
             BookingRepository bookingRepository,
-            PurchaseOrderRepository purchaseOrderRepository
+            PurchaseOrderRepository purchaseOrderRepository,
+            CustomWigRequestRepository customWigRequestRepository
     ) {
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.customerService = customerService;
@@ -55,6 +59,7 @@ public class PaymentTransactionService {
         this.saleRepository = saleRepository;
         this.bookingRepository = bookingRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
+        this.customWigRequestRepository = customWigRequestRepository;
     }
 
     public void record(
@@ -149,6 +154,8 @@ public class PaymentTransactionService {
                     .map(Booking::getBookingNumber).map(n -> "Booking #" + n).orElse(null);
             case PURCHASE_ORDER -> purchaseOrderRepository.findById(sourceId)
                     .map(PurchaseOrder::getPoNumber).map(n -> "Purchase Order #" + n).orElse(null);
+            case CUSTOM_WIG_REQUEST -> customWigRequestRepository.findById(sourceId)
+                    .map(CustomWigRequest::getRequestNumber).map(n -> "Custom Wig Request #" + n).orElse(null);
         };
     }
 }

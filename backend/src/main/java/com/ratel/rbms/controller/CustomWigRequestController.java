@@ -5,7 +5,13 @@ import com.ratel.rbms.dto.CreateStaffCustomWigRequestRequest;
 import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
 import com.ratel.rbms.dto.CustomWigRequestResponse;
 import com.ratel.rbms.dto.DeclineCustomWigRequestRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.QuoteCustomWigRequestRequest;
+import com.ratel.rbms.dto.RecordPaymentRequest;
+import com.ratel.rbms.dto.RefundRequest;
+import com.ratel.rbms.dto.SubmitOtpRequest;
+import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.service.CustomWigRequestService;
 import jakarta.validation.Valid;
@@ -73,5 +79,35 @@ public class CustomWigRequestController {
     @PatchMapping("/{id}/accept")
     public CustomWigRequestResponse accept(@PathVariable UUID id) {
         return customWigRequestService.accept(id);
+    }
+
+    @PostMapping("/{id}/charge-mobile-money")
+    public MobileMoneyChargeResponse chargeMobileMoney(@PathVariable UUID id, @Valid @RequestBody MobileMoneyChargeRequest request) {
+        return customWigRequestService.chargeMobileMoney(id, request);
+    }
+
+    @PostMapping("/submit-mobile-money-otp")
+    public CustomWigRequestResponse submitMobileMoneyOtp(@Valid @RequestBody SubmitOtpRequest request) {
+        return customWigRequestService.submitMobileMoneyOtp(request.reference(), request.otp());
+    }
+
+    @PostMapping("/verify")
+    public CustomWigRequestResponse verifyPayment(@Valid @RequestBody VerifyPaymentRequest request) {
+        return customWigRequestService.verifyPayment(request.reference());
+    }
+
+    @PostMapping("/{id}/mark-paid")
+    public CustomWigRequestResponse markPaid(@PathVariable UUID id) {
+        return customWigRequestService.markPaid(id);
+    }
+
+    @PostMapping("/{id}/record-payment")
+    public CustomWigRequestResponse recordPayment(@PathVariable UUID id, @Valid @RequestBody RecordPaymentRequest request) {
+        return customWigRequestService.recordPayment(id, request);
+    }
+
+    @PostMapping("/{id}/refund")
+    public CustomWigRequestResponse refund(@PathVariable UUID id, @RequestBody(required = false) RefundRequest request) {
+        return customWigRequestService.refund(id, request != null ? request : new RefundRequest(null));
     }
 }

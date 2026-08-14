@@ -9,13 +9,18 @@ import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
 import com.ratel.rbms.dto.CustomWigRequestResponse;
 import com.ratel.rbms.dto.CustomWigSelectionInput;
 import com.ratel.rbms.dto.CustomWigSelectionResponse;
+import com.ratel.rbms.dto.MobileMoneyChargeRequest;
+import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.PublicCustomWigConfigResponse;
+import com.ratel.rbms.dto.RecordPaymentRequest;
+import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SubmitCustomWigRequestRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.CustomItemAttribute;
 import com.ratel.rbms.entity.CustomItemAttributeOption;
 import com.ratel.rbms.entity.CustomWigRequest;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
@@ -32,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -64,6 +70,8 @@ public class CustomWigRequestService {
     private final ActivityLogService activityLogService;
     private final ObjectMapper objectMapper;
     private final String uploadDir;
+    private final PaymentTransactionService paymentTransactionService;
+    private final PaystackService paystackService;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -77,7 +85,9 @@ public class CustomWigRequestService {
             WhatsAppLinkService whatsAppLinkService,
             ActivityLogService activityLogService,
             ObjectMapper objectMapper,
-            @Value("${app.upload-dir}") String uploadDir
+            @Value("${app.upload-dir}") String uploadDir,
+            PaymentTransactionService paymentTransactionService,
+            PaystackService paystackService
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -91,6 +101,8 @@ public class CustomWigRequestService {
         this.activityLogService = activityLogService;
         this.objectMapper = objectMapper;
         this.uploadDir = uploadDir;
+        this.paymentTransactionService = paymentTransactionService;
+        this.paystackService = paystackService;
     }
 
     // ---- Public side ----
@@ -204,16 +216,21 @@ public class CustomWigRequestService {
         CustomWigRequest request = getOwned(id);
         return new CustomWigRequestDetailResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
-                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getEstimatedPrice(),
+                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), request.getEstimatedPrice(),
                 request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
-                request.getOwnerMessage(), whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
+                request.getOwnerMessage(), request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
+                whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
     }
 
     // Staff logging a request that arrived through an informal channel
-    // (Instagram DM, WhatsApp, a phone call) — same selections/pricing
-    // resolution as the public submit(), but TenantContext-scoped, no rate
-    // limit, and customer email/WhatsApp are optional rather than required.
+    // (Instagram DM, WhatsApp, a phone call) — free text + a price staff
+    // types in directly, never the public widget's attribute/option picker
+    // (that's still exactly how the customer-facing configurator works;
+    // this is a separate, deliberately simpler path). Lands as ACCEPTED
+    // immediately rather than starting the SUBMITTED->QUOTED review pipeline
+    // — the price is already agreed the moment staff typed it in, same
+    // spirit as a Sale or Service Order being recorded already-priced.
     // Deliberately doesn't send the "new request" notification to the
     // business's own contact email — staff already know, they just typed it in.
     @Transactional
@@ -224,16 +241,12 @@ public class CustomWigRequestService {
         if (req.customerName() == null || req.customerName().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Customer name is required.");
         }
-        if (req.selections() == null || req.selections().isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Choose at least one option.");
+        if (req.description() == null || req.description().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Describe what the customer wants.");
         }
-
-        List<CustomWigSelectionResponse> snapshot = req.selections().stream()
-                .map(sel -> resolveSelection(businessId, sel))
-                .toList();
-        BigDecimal estimatedPrice = snapshot.stream()
-                .map(CustomWigSelectionResponse::priceModifier)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (req.price() == null || req.price().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a price greater than zero.");
+        }
 
         String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
 
@@ -243,8 +256,11 @@ public class CustomWigRequestService {
                 .customerEmail(blankToNull(req.customerEmail()))
                 .customerWhatsapp(blankToNull(req.customerWhatsapp()))
                 .source(blankToNull(req.source()))
-                .selections(writeSelections(snapshot))
-                .estimatedPrice(estimatedPrice)
+                .selections(writeSelections(List.of()))
+                .description(req.description().trim())
+                .estimatedPrice(req.price())
+                .finalPrice(req.price())
+                .status("ACCEPTED")
                 .inspirationPhotoUrl(photoUrl)
                 .notes(req.notes())
                 .test(isTestMode(businessId))
@@ -262,7 +278,7 @@ public class CustomWigRequestService {
             if (business != null) {
                 emailService.sendCustomWigRequestReceived(
                         request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), business.getName(),
-                        business.getCurrency() + " " + estimatedPrice.toPlainString()
+                        business.getCurrency() + " " + req.price().toPlainString()
                 );
             }
         }
@@ -325,6 +341,213 @@ public class CustomWigRequestService {
         return toResponse(request);
     }
 
+    // ---- Payment collection (same model as SaleService/ServiceOrderService —
+    // see their comments for the shared derivation logic, deliberately
+    // duplicated rather than shared). Only makes sense once a finalPrice
+    // exists (quoted-and-accepted, or logged already-priced by staff) — a
+    // still-SUBMITTED request has nothing to collect against yet. ----
+
+    private BigDecimal balanceDue(CustomWigRequest request) {
+        if (request.getFinalPrice() == null) return null;
+        return request.getFinalPrice().subtract(request.getAmountPaid()).max(BigDecimal.ZERO);
+    }
+
+    private void requireFinalPrice(CustomWigRequest request) {
+        if (request.getFinalPrice() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This request doesn't have a final price yet — send a quote first.");
+        }
+    }
+
+    // "Mark as paid" just means "the whole remaining balance came in, in cash."
+    @Transactional
+    public CustomWigRequestResponse markPaid(UUID id) {
+        CustomWigRequest request = getOwned(id);
+        requireFinalPrice(request);
+        BigDecimal balanceDue = balanceDue(request);
+        return recordPayment(id, new RecordPaymentRequest(balanceDue, com.ratel.rbms.entity.enums.PaymentMethod.CASH, "Marked paid manually"));
+    }
+
+    @Transactional
+    public CustomWigRequestResponse recordPayment(UUID id, RecordPaymentRequest req) {
+        CustomWigRequest request = getOwned(id);
+        requireFinalPrice(request);
+        BigDecimal balanceDue = balanceDue(request);
+        if (balanceDue.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This request is already fully paid.");
+        }
+        if (req.amount().compareTo(balanceDue) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That's more than the outstanding balance of GH₵" + balanceDue + ".");
+        }
+
+        BigDecimal newAmountPaid = request.getAmountPaid().add(req.amount());
+        request.setAmountPaid(newAmountPaid);
+        request.setPaymentStatus(derivePaymentStatus(newAmountPaid, request.getFinalPrice()));
+        request = customWigRequestRepository.save(request);
+
+        activityLogService.log(
+                "Recorded a GH₵" + req.amount() + " payment on custom wig request #" + request.getRequestNumber(),
+                "CUSTOM_WIG_REQUEST", request.getId()
+        );
+
+        paymentTransactionService.record(
+                request.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST,
+                request.getId(), "MANUAL", req.method().name(), req.amount(), "SUCCESS",
+                null, null, request.getCustomerWhatsapp(), req.note(), TenantContext.getUserId()
+        );
+
+        return toResponse(request);
+    }
+
+    @Transactional
+    public CustomWigRequestResponse refund(UUID id, RefundRequest req) {
+        CustomWigRequest request = getOwned(id);
+        if (request.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this request to refund.");
+        }
+
+        BigDecimal refundedAmount = request.getAmountPaid();
+        request.setPaymentStatus("REFUNDED");
+        request = customWigRequestRepository.save(request);
+
+        activityLogService.log("Refunded GH₵" + refundedAmount + " on custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
+
+        paymentTransactionService.record(
+                request.getBusinessId(), PaymentTransaction.Direction.OUTGOING, PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST,
+                request.getId(), "MANUAL", null, refundedAmount, "SUCCESS",
+                null, null, request.getCustomerWhatsapp(), req.note() != null && !req.note().isBlank() ? req.note() : "Refunded",
+                TenantContext.getUserId()
+        );
+
+        return toResponse(request);
+    }
+
+    // Charges the customer's mobile money wallet directly by phone number —
+    // same flow as SaleService/ServiceOrderService's equivalent methods.
+    public MobileMoneyChargeResponse chargeMobileMoney(UUID id, MobileMoneyChargeRequest req) {
+        CustomWigRequest request = getOwned(id);
+        requireFinalPrice(request);
+        if ("PAID".equals(request.getPaymentStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This request is already paid.");
+        }
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(request.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet."));
+        if (integrations.getPaystackSecretKey() == null || integrations.getPaystackSecretKey().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment yet.");
+        }
+
+        String customerEmail = resolveCustomerEmail(request);
+        long amountMinorUnits = request.getFinalPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        String reference = "WIGREQ-MOMO-" + request.getBusinessId().toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        PaystackService.MobileMoneyChargeResult result = paystackService.chargeMobileMoney(
+                integrations.getPaystackSecretKey(), customerEmail, amountMinorUnits, req.phone(), req.provider(), reference
+        );
+
+        request.setPaystackReference(result.reference());
+        if (result.success()) {
+            request.setPaymentStatus("PAID");
+            request.setAmountPaid(request.getFinalPrice());
+            activityLogService.log("Charged mobile money for custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
+        }
+        customWigRequestRepository.save(request);
+
+        paymentTransactionService.record(
+                request.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST,
+                request.getId(), "PAYSTACK", "MOBILE_MONEY", request.getFinalPrice(),
+                result.success() ? "SUCCESS" : ("failed".equalsIgnoreCase(result.status()) ? "FAILED" : "PENDING"),
+                result.reference(), null, req.phone(), null, TenantContext.getUserId()
+        );
+
+        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText(), result.message());
+    }
+
+    // Completes a charge that came back "send_otp" — same "customer reads back
+    // the SMS code" flow as SaleService/ServiceOrderService's equivalent.
+    @Transactional
+    public CustomWigRequestResponse submitMobileMoneyOtp(String reference, String otp) {
+        CustomWigRequest request = customWigRequestRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(request.getPaymentStatus())) {
+            return toResponse(request);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(request.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.ChargeResult result = paystackService.submitOtp(integrations.getPaystackSecretKey(), otp, reference);
+
+        if (result.success()) {
+            request.setPaymentStatus("PAID");
+            request.setAmountPaid(request.getFinalPrice());
+            request = customWigRequestRepository.save(request);
+            activityLogService.log("Charged mobile money for custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
+            paymentTransactionService.updateStatusByReference(request.getBusinessId(), reference, "SUCCESS");
+            return toResponse(request);
+        }
+
+        if ("failed".equalsIgnoreCase(result.status())) {
+            request.setPaymentStatus("FAILED");
+            request = customWigRequestRepository.save(request);
+            paymentTransactionService.updateStatusByReference(request.getBusinessId(), reference, "FAILED");
+        }
+
+        throw new ApiException(HttpStatus.BAD_REQUEST,
+                result.message() != null && !result.message().isBlank()
+                        ? result.message()
+                        : "That code didn't work. If the customer got an approval prompt in their mobile money app instead of a code, use Verify once they've approved it there.");
+    }
+
+    @Transactional
+    public CustomWigRequestResponse verifyPayment(String reference) {
+        CustomWigRequest request = customWigRequestRepository.findByPaystackReferenceAndBusinessId(reference, TenantContext.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unknown payment reference."));
+
+        if ("PAID".equals(request.getPaymentStatus())) {
+            return toResponse(request);
+        }
+
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(request.getBusinessId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "This business hasn't set up online payment."));
+
+        PaystackService.VerifyResult verify = paystackService.verifyTransaction(integrations.getPaystackSecretKey(), reference);
+
+        request.setPaymentStatus(verify.success() ? "PAID" : "FAILED");
+        if (verify.success()) {
+            request.setAmountPaid(request.getFinalPrice());
+        }
+        request = customWigRequestRepository.save(request);
+
+        if (verify.success()) {
+            activityLogService.log("Confirmed payment for custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
+        }
+
+        paymentTransactionService.record(
+                request.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST,
+                request.getId(), "PAYSTACK", "MOBILE_MONEY", request.getFinalPrice(), verify.success() ? "SUCCESS" : "FAILED",
+                reference, null, null, null, TenantContext.getUserId()
+        );
+
+        return toResponse(request);
+    }
+
+    private static String derivePaymentStatus(BigDecimal amountPaid, BigDecimal total) {
+        if (amountPaid.compareTo(BigDecimal.ZERO) <= 0) return "UNPAID";
+        if (amountPaid.compareTo(total) >= 0) return "PAID";
+        return "PARTIALLY_PAID";
+    }
+
+    private String resolveCustomerEmail(CustomWigRequest request) {
+        if (request.getCustomerEmail() != null && !request.getCustomerEmail().isBlank()) {
+            return request.getCustomerEmail();
+        }
+        Business business = businessRepository.findById(request.getBusinessId()).orElse(null);
+        String slug = business != null && business.getSlug() != null && !business.getSlug().isBlank()
+                ? business.getSlug()
+                : request.getBusinessId().toString().substring(0, 8);
+        return "wigreq-" + request.getId().toString().substring(0, 8) + "@" + slug + ".ratelsystems.tech";
+    }
+
     // ---- Shared helpers ----
 
     private CustomWigSelectionResponse resolveSelection(UUID businessId, CustomWigSelectionInput sel) {
@@ -377,7 +600,8 @@ public class CustomWigRequestService {
     private CustomWigRequestResponse toResponse(CustomWigRequest request) {
         return new CustomWigRequestResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
-                request.getCustomerWhatsapp(), request.getEstimatedPrice(), request.getStatus(), request.getFinalPrice(),
+                request.getCustomerWhatsapp(), request.getDescription(), request.getEstimatedPrice(), request.getStatus(), request.getFinalPrice(),
+                request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
                 whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
     }
