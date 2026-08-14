@@ -692,6 +692,11 @@ export interface MobileMoneyChargeResponse {
   reference: string;
   status: string;
   displayText: string | null;
+  // Paystack's own explanation of the outcome — most important on an outright
+  // rejection ("failed" status), where it's the only clue as to why nothing
+  // was sent to the customer's phone (e.g. a first-time payer needing
+  // identification on their mobile money account).
+  message: string | null;
 }
 
 export type MobileMoneyProvider = "mtn" | "atl" | "vod";

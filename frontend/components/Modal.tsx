@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -9,8 +10,14 @@ interface ModalProps {
   children: ReactNode;
 }
 
+// Portaled to document.body rather than rendered inline — a modal opened from
+// inside a <form> (e.g. CustomerPicker's quick-add, used inside
+// ServiceOrderForm/StaffBookingForm/the Sales cart) would otherwise nest its
+// own <form> (CustomerForm) inside that outer <form>, which is invalid HTML.
+// Browsers collapse that nesting unpredictably, so submitting the inner form
+// can also trigger the outer form's submit — closing everything at once.
 export default function Modal({ title, onClose, children }: ModalProps) {
-  return (
+  return createPortal(
     <div
       className="animate-overlay-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
       onClick={onClose}
@@ -31,6 +38,7 @@ export default function Modal({ title, onClose, children }: ModalProps) {
         </div>
         <div className="mt-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

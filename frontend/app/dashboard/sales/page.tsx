@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShoppingCart, Plus, X, Receipt, Search } from "lucide-react";
+import { ShoppingCart, Plus, X, Receipt, Search, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -75,11 +75,16 @@ export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [fetching, setFetching] = useState(true);
 
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogTab, setCatalogTab] = useState<"products" | "services">("products");
   const [productSearch, setProductSearch] = useState("");
   const [productCategoryId, setProductCategoryId] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
   const [salesSearch, setSalesSearch] = useState("");
+  const [salesMonthFilter, setSalesMonthFilter] = useState("");
+  const [salesPaymentFilter, setSalesPaymentFilter] = useState<PaymentMethod | "">("");
+  const [salesPage, setSalesPage] = useState(0);
+  const SALES_PAGE_SIZE = 10;
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerId, setCustomerId] = useState<string>("");
@@ -128,7 +133,18 @@ export default function SalesPage() {
     return true;
   });
 
+  function saleMonthKey(createdAt: string): string {
+    const d = new Date(createdAt);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  // Newest-first, distinct months actually present in the sales history — so
+  // the filter never offers a month with nothing in it.
+  const saleMonths = Array.from(new Set(sales.map((s) => saleMonthKey(s.createdAt)))).sort().reverse();
+
   const visibleSales = sales.filter((s) => {
+    if (salesMonthFilter && saleMonthKey(s.createdAt) !== salesMonthFilter) return false;
+    if (salesPaymentFilter && s.paymentMethod !== salesPaymentFilter) return false;
     if (!salesSearch) return true;
     const q = salesSearch.toLowerCase();
     return (
@@ -138,6 +154,9 @@ export default function SalesPage() {
     );
   });
 
+  const salesPageCount = Math.max(1, Math.ceil(visibleSales.length / SALES_PAGE_SIZE));
+  const pagedSales = visibleSales.slice(salesPage * SALES_PAGE_SIZE, salesPage * SALES_PAGE_SIZE + SALES_PAGE_SIZE);
+
   useEffect(() => {
     if (!loading && !session) router.push("/login");
   }, [loading, session, router]);
@@ -146,6 +165,14 @@ export default function SalesPage() {
     if (!session) return;
     loadAll().finally(() => setFetching(false));
   }, [session, loadAll]);
+
+  useEffect(() => {
+    setSalesPage(0);
+  }, [salesSearch, salesMonthFilter, salesPaymentFilter]);
+
+  useEffect(() => {
+    setSalesPage((p) => Math.min(p, salesPageCount - 1));
+  }, [salesPageCount]);
 
   function addProductToCart(product: Product) {
     setCart((prev) => {
@@ -283,6 +310,23 @@ export default function SalesPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Product / service catalog */}
           <Card className="p-5 lg:col-span-2">
+            <button
+              type="button"
+              onClick={() => setCatalogOpen((o) => !o)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div>
+                <h2 className="text-base font-semibold text-ink-900">Products &amp; services</h2>
+                <p className="text-xs text-ink-500">{catalogOpen ? "Tap to collapse" : "Tap to add items to the cart"}</p>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`shrink-0 text-ink-400 transition-transform ${catalogOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {catalogOpen && (
+            <div className="mt-4">
             <div className="flex items-center justify-between">
               <div className="flex gap-1 rounded-lg bg-canvas p-1">
                 <button
@@ -419,6 +463,8 @@ export default function SalesPage() {
                 )}
               </>
             )}
+            </div>
+            )}
           </Card>
 
           {/* Cart / checkout */}
@@ -548,14 +594,40 @@ export default function SalesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-0">
           <h2 className="text-base font-semibold text-ink-900">Recent sales</h2>
           {sales.length > 0 && (
-            <div className="relative min-w-[200px]">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
-              <input
-                value={salesSearch}
-                onChange={(e) => setSalesSearch(e.target.value)}
-                placeholder="Search sale #, customer, item"
-                className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-3 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={salesMonthFilter}
+                onChange={(e) => setSalesMonthFilter(e.target.value)}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="">All months</option>
+                {saleMonths.map((m) => (
+                  <option key={m} value={m}>
+                    {new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={salesPaymentFilter}
+                onChange={(e) => setSalesPaymentFilter(e.target.value as PaymentMethod | "")}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="">All payment methods</option>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <div className="relative min-w-[200px]">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+                <input
+                  value={salesSearch}
+                  onChange={(e) => setSalesSearch(e.target.value)}
+                  placeholder="Search sale #, customer, item"
+                  className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-3 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -583,7 +655,7 @@ export default function SalesPage() {
                 </Tr>
               </THead>
               <TBody>
-                {visibleSales.map((s) => (
+                {pagedSales.map((s) => (
                   <Tr key={s.id}>
                     <Td className="tabular font-medium">#{s.saleNumber}</Td>
                     <Td className="text-ink-500">{s.customerName ?? "Walk-in"}</Td>
@@ -645,6 +717,34 @@ export default function SalesPage() {
                 ))}
               </TBody>
             </Table>
+            <div className="flex items-center justify-between gap-3 p-5 pt-4">
+              <p className="text-xs text-ink-500">
+                Showing {salesPage * SALES_PAGE_SIZE + 1}–{Math.min(visibleSales.length, (salesPage + 1) * SALES_PAGE_SIZE)} of {visibleSales.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSalesPage((p) => Math.max(0, p - 1))}
+                  disabled={salesPage === 0}
+                  className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-ink-700 transition hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft size={14} />
+                  Previous
+                </button>
+                <span className="text-xs text-ink-500">
+                  Page {salesPage + 1} of {salesPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSalesPage((p) => Math.min(salesPageCount - 1, p + 1))}
+                  disabled={salesPage >= salesPageCount - 1}
+                  className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-ink-700 transition hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </Card>

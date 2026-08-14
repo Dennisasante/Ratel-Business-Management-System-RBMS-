@@ -146,12 +146,22 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
         // expects a full entity, so ask it to reload via a verify call.
         const updated = await onVerifyPayment(result.reference);
         onChanged(updated);
+      } else if (result.status.toLowerCase() === "failed" || !result.reference) {
+        // Paystack rejected the charge outright (most often a first-time payer
+        // whose mobile money account needs identification/verification before
+        // any charge is even attempted) — there's no reference to verify
+        // against later, so this isn't "still in progress." Show Paystack's
+        // own reason instead of a dead-end "waiting for approval" state.
+        setPayError(
+          result.message || "Paystack couldn't start this charge. Try again, or ask the customer to check their mobile money app."
+        );
       } else {
         setMomoPending({
           reference: result.reference,
           status: result.status,
           message:
             result.displayText ||
+            result.message ||
             (result.status.toLowerCase() === "send_otp"
               ? "A code was texted to the customer's phone."
               : "Ask the customer to check their phone and approve the payment."),

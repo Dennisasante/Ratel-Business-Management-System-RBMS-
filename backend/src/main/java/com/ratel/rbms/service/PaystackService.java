@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -204,6 +205,15 @@ public class PaystackService {
      * reference once they've approved it." Only a genuine HTTP/communication
      * failure throws; call verifyTransaction(reference) afterward to resolve
      * the final PAID/FAILED outcome, same as the card checkout flow.
+     *
+     * Paystack can also reject a charge outright — most commonly a first-time
+     * payer on a given phone/provider needing identification/verification on
+     * their mobile money account before any charge attempt is even accepted —
+     * with a non-2xx HTTP status and no `data` object, just a top-level
+     * `message` explaining why. onStatus() below stops that from being thrown
+     * away as a generic connectivity failure: it's a real, actionable, and
+     * customer-specific reason (e.g. "go check your provider's app"), not
+     * "we couldn't reach Paystack."
      */
     public MobileMoneyChargeResult chargeMobileMoney(String secretKey, String email, long amountMinorUnits, String phone, String provider, String reference) {
         if (secretKey == null || secretKey.isBlank()) {
@@ -225,19 +235,24 @@ public class PaystackService {
                     .uri("/charge")
                     .body(body)
                     .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(ChargeResponse.class);
         } catch (RestClientException e) {
             log.error("Paystack chargeMobileMoney call failed", e);
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to start the mobile money charge.");
         }
 
-        if (response == null || response.data() == null) {
+        if (response == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to start the mobile money charge.");
+        }
+
+        if (response.data() == null) {
+            return new MobileMoneyChargeResult(false, "failed", null, null, response.message());
         }
 
         ChargeData data = response.data();
         boolean success = response.status() && "success".equalsIgnoreCase(data.status());
-        return new MobileMoneyChargeResult(success, data.status(), data.reference(), data.displayText());
+        return new MobileMoneyChargeResult(success, data.status(), data.reference(), data.displayText(), response.message());
     }
 
     /**
@@ -264,14 +279,19 @@ public class PaystackService {
                     .uri("/charge/submit_otp")
                     .body(body)
                     .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(ChargeAuthorizationResponse.class);
         } catch (RestClientException e) {
             log.error("Paystack submitOtp call failed", e);
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to submit that code.");
         }
 
-        if (response == null || response.data() == null) {
+        if (response == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to submit that code.");
+        }
+
+        if (response.data() == null) {
+            return new ChargeResult(false, "failed", null, response.message());
         }
 
         ChargeAuthorizationData data = response.data();
@@ -332,11 +352,14 @@ public class PaystackService {
     }
 
     // status is Paystack's raw charge status (e.g. "success", "pending",
-    // "send_otp", "pay_offline") — success is only true for "success" itself;
-    // anything else needs a follow-up verifyTransaction(reference) once the
-    // customer has acted on their phone. displayText is Paystack's own
-    // customer-facing instruction text when present (e.g. a USSD code to dial).
-    public record MobileMoneyChargeResult(boolean success, String status, String reference, String displayText) {
+    // "send_otp", "pay_offline", or "failed" for an outright rejection) —
+    // success is only true for "success" itself; anything else needs a
+    // follow-up verifyTransaction(reference) once the customer has acted on
+    // their phone. displayText is Paystack's own customer-facing instruction
+    // text when present (e.g. a USSD code to dial). message is Paystack's own
+    // explanation of the outcome — surfaced separately from displayText since
+    // it's meant for whoever's behind the till, not the customer.
+    public record MobileMoneyChargeResult(boolean success, String status, String reference, String displayText, String message) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -52,17 +52,22 @@ public class ServiceOrderService {
 
     private static final int PAGE_SIZE = 50;
 
-    // The fixed line is RECEIVED -> IN_PROGRESS -> COMPLETED -> PICKED_UP; CANCELLED is a
-    // branch off any non-terminal status. Each forward edge also has its one-step-back
-    // reverse (IN_PROGRESS->RECEIVED, COMPLETED->IN_PROGRESS, PICKED_UP->COMPLETED) plus
-    // CANCELLED->RECEIVED as a "reopen" — so a mistaken status change is always correctable
-    // without allowing an arbitrary jump (e.g. RECEIVED straight to PICKED_UP), which would
-    // make the pipeline meaningless. Every change here (forward or back) is already logged
-    // unconditionally below, so a correction is automatically an audit trail entry.
+    // The fixed line is RECEIVED -> COMPLETED -> PICKED_UP; CANCELLED is a branch off any
+    // non-terminal status. Each forward edge also has its one-step-back reverse
+    // (COMPLETED->RECEIVED, PICKED_UP->COMPLETED) plus CANCELLED->RECEIVED as a "reopen" —
+    // so a mistaken status change is always correctable without allowing an arbitrary jump
+    // (e.g. RECEIVED straight to PICKED_UP), which would make the pipeline meaningless.
+    // Every change here (forward or back) is already logged unconditionally below, so a
+    // correction is automatically an audit trail entry.
+    //
+    // IN_PROGRESS was dropped from the pipeline (the enum constant itself is kept, not
+    // removed, so any historical row still sitting in that status keeps deserializing —
+    // there's no migration backfilling it away). It's kept here as a legacy exit-only node:
+    // nothing transitions into it anymore, but an order already there can still move on.
     private static final Map<ServiceOrderStatus, Set<ServiceOrderStatus>> ALLOWED_TRANSITIONS = Map.of(
-            ServiceOrderStatus.RECEIVED, EnumSet.of(ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.CANCELLED),
+            ServiceOrderStatus.RECEIVED, EnumSet.of(ServiceOrderStatus.COMPLETED, ServiceOrderStatus.CANCELLED),
             ServiceOrderStatus.IN_PROGRESS, EnumSet.of(ServiceOrderStatus.RECEIVED, ServiceOrderStatus.COMPLETED, ServiceOrderStatus.CANCELLED),
-            ServiceOrderStatus.COMPLETED, EnumSet.of(ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.PICKED_UP, ServiceOrderStatus.CANCELLED),
+            ServiceOrderStatus.COMPLETED, EnumSet.of(ServiceOrderStatus.RECEIVED, ServiceOrderStatus.PICKED_UP, ServiceOrderStatus.CANCELLED),
             ServiceOrderStatus.PICKED_UP, EnumSet.of(ServiceOrderStatus.COMPLETED),
             ServiceOrderStatus.CANCELLED, EnumSet.of(ServiceOrderStatus.RECEIVED)
     );
@@ -331,13 +336,18 @@ public class ServiceOrderService {
         }
         serviceOrderRepository.save(order);
 
+        // An outright rejection (Paystack never even started a charge attempt —
+        // see chargeMobileMoney()'s javadoc) is logged as FAILED, not PENDING —
+        // there's no reference to later verify against, so it would otherwise
+        // sit "pending" in the ledger forever.
         paymentTransactionService.record(
                 order.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SERVICE_ORDER,
-                order.getId(), "PAYSTACK", "MOBILE_MONEY", order.getPrice(), result.success() ? "SUCCESS" : "PENDING",
+                order.getId(), "PAYSTACK", "MOBILE_MONEY", order.getPrice(),
+                result.success() ? "SUCCESS" : ("failed".equalsIgnoreCase(result.status()) ? "FAILED" : "PENDING"),
                 result.reference(), order.getCustomerId(), req.phone(), null, TenantContext.getUserId()
         );
 
-        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
+        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText(), result.message());
     }
 
     // Completes a mobile-money charge that came back "send_otp" — the customer

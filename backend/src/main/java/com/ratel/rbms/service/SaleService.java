@@ -191,6 +191,19 @@ public class SaleService {
 
         sale = saleRepository.save(sale);
 
+        // Cash/direct-MoMo sales are marked PAID above the instant they're rung
+        // up — without this, they'd never get a PaymentTransaction row at all,
+        // making them invisible on the Payments ledger (unlike the deferred
+        // MOBILE_MONEY gateway path and the later recordPayment()/markPaid()
+        // flows, which already log via paymentTransactionService.record()).
+        if (collectedInPerson) {
+            paymentTransactionService.record(
+                    businessId, PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
+                    sale.getId(), "MANUAL", req.paymentMethod().name(), runningTotal, "SUCCESS",
+                    null, req.customerId(), null, null, cashierId
+            );
+        }
+
         activityLogService.log(
                 "Recorded sale #" + sale.getSaleNumber() + " for GH₵" + runningTotal
                         + (customer != null ? " (" + customer.getFullName() + ")" : " (walk-in)"),
@@ -246,13 +259,18 @@ public class SaleService {
         }
         saleRepository.save(sale);
 
+        // An outright rejection (Paystack never even started a charge attempt —
+        // see PaystackService.chargeMobileMoney()'s javadoc) is logged as
+        // FAILED, not PENDING — there's no reference to later verify against,
+        // so it would otherwise sit "pending" in the ledger forever.
         paymentTransactionService.record(
                 sale.getBusinessId(), PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.SALE,
-                sale.getId(), "PAYSTACK", "MOBILE_MONEY", sale.getTotalAmount(), result.success() ? "SUCCESS" : "PENDING",
+                sale.getId(), "PAYSTACK", "MOBILE_MONEY", sale.getTotalAmount(),
+                result.success() ? "SUCCESS" : ("failed".equalsIgnoreCase(result.status()) ? "FAILED" : "PENDING"),
                 result.reference(), sale.getCustomerId(), req.phone(), null, TenantContext.getUserId()
         );
 
-        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText());
+        return new MobileMoneyChargeResponse(result.reference(), result.status(), result.displayText(), result.message());
     }
 
     // Same "customer reads back the SMS code" completion step as

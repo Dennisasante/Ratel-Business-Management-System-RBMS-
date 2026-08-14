@@ -47,19 +47,24 @@ const STATUS_TONES: Record<ServiceOrderStatus, "neutral" | "accent" | "success" 
 // Mirrors ServiceOrderService.ALLOWED_TRANSITIONS exactly — every destination
 // the backend actually accepts from a given status (no skipping a stage in
 // either direction, e.g. Received can't jump straight to Picked up). Keep in
-// sync if the backend graph ever changes.
+// sync if the backend graph ever changes. IN_PROGRESS is kept as a legacy
+// exit-only node — nothing transitions into it anymore, but any order still
+// sitting there from before the pipeline was simplified can still move on.
 const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
-  RECEIVED: ["IN_PROGRESS", "CANCELLED"],
+  RECEIVED: ["COMPLETED", "CANCELLED"],
   IN_PROGRESS: ["RECEIVED", "COMPLETED", "CANCELLED"],
-  COMPLETED: ["IN_PROGRESS", "PICKED_UP", "CANCELLED"],
+  COMPLETED: ["RECEIVED", "PICKED_UP", "CANCELLED"],
   PICKED_UP: ["COMPLETED"],
   CANCELLED: ["RECEIVED"],
 };
 
-// Display order for the "Move to stage" list — every stage is always shown
-// (minus whichever one is current) so staff can see the whole pipeline, even
-// though only the backend-allowed ones are actually clickable.
-const ALL_STAGES: ServiceOrderStatus[] = ["RECEIVED", "IN_PROGRESS", "COMPLETED", "PICKED_UP", "CANCELLED"];
+// Display order for the "Move to stage" list and the status filter chips —
+// every stage is always shown (minus whichever one is current) so staff can
+// see the whole pipeline, even though only the backend-allowed ones are
+// actually clickable. IN_PROGRESS is deliberately excluded — it's dropped
+// from the pipeline, kept only in STATUS_LABELS/STATUS_TONES below so any
+// legacy order still in that status still renders a proper badge.
+const ALL_STAGES: ServiceOrderStatus[] = ["RECEIVED", "COMPLETED", "PICKED_UP", "CANCELLED"];
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   UNPAID: "Unpaid",
@@ -240,7 +245,7 @@ export default function ServiceOrdersPage() {
         ))}
         <span className="mx-1 h-4 w-px bg-border" />
         <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
-        {(Object.keys(STATUS_LABELS) as ServiceOrderStatus[]).map((s) => (
+        {ALL_STAGES.map((s) => (
           <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
         ))}
       </div>
