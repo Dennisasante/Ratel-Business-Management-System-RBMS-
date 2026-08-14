@@ -482,6 +482,18 @@ public class BookingService {
         booking = bookingRepository.save(booking);
         bookingRepository.flush(); // so booking_number is readable below, same reasoning as ServiceOrderService.create()
 
+        // Staff chose PAID directly (cash already changed hands on the call) —
+        // same ledger treatment as verifyPayment() below, just MANUAL/CASH
+        // instead of a Paystack gateway result, and without it this payment
+        // was never logged at all (found during a payment-logging audit).
+        if ("PAID".equals(req.paymentStatus())) {
+            paymentTransactionService.record(
+                    businessId, PaymentTransaction.Direction.INCOMING, PaymentTransaction.SourceType.BOOKING,
+                    booking.getId(), "MANUAL", "CASH", price, "SUCCESS",
+                    null, resolvedCustomerId, resolvedCustomerWhatsapp, "Marked paid by staff at booking", TenantContext.getUserId()
+            );
+        }
+
         // No confirmation/notification emails here — unlike the public widget,
         // staff already know about this booking because they're the ones
         // entering it; there's no "customer booked while nobody was watching"

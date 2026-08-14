@@ -94,14 +94,27 @@ public class PaystackService {
                     .uri("/transaction/initialize")
                     .body(body)
                     .retrieve()
+                    // Paystack answers a rejected checkout (bad email, an amount below
+                    // its minimum, a currency not enabled on this account, a stale/
+                    // revoked key, etc.) with a non-2xx status but a real, actionable
+                    // `message` in the body — read it instead of letting the default
+                    // handler throw it away as a generic HTTP error.
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(InitializeResponse.class);
         } catch (RestClientException e) {
             log.error("Paystack initializeTransaction call failed", e);
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't start checkout with Paystack. Please try again.");
         }
 
-        if (response == null || !response.status() || response.data() == null) {
+        if (response == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't start checkout with Paystack. Please try again.");
+        }
+
+        if (!response.status() || response.data() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    response.message() != null && !response.message().isBlank()
+                            ? response.message()
+                            : "Couldn't start checkout with Paystack. Please try again.");
         }
 
         return new InitResult(response.data().accessCode(), response.data().reference(), response.data().authorizationUrl());
@@ -124,14 +137,22 @@ public class PaystackService {
                     .get()
                     .uri("/transaction/verify/{reference}", reference)
                     .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(VerifyResponse.class);
         } catch (RestClientException e) {
             log.error("Paystack verifyTransaction call failed", e);
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't verify this payment with Paystack right now. Please try again shortly.");
         }
 
-        if (response == null || response.data() == null) {
+        if (response == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't verify this payment with Paystack right now. Please try again shortly.");
+        }
+
+        if (response.data() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    response.message() != null && !response.message().isBlank()
+                            ? response.message()
+                            : "Couldn't verify this payment with Paystack right now. Please try again shortly.");
         }
 
         VerifyData data = response.data();
@@ -176,14 +197,19 @@ public class PaystackService {
                     .uri("/transaction/charge_authorization")
                     .body(body)
                     .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(ChargeAuthorizationResponse.class);
         } catch (RestClientException e) {
             log.error("Paystack chargeAuthorization call failed", e);
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to charge the saved card.");
         }
 
-        if (response == null || response.data() == null) {
+        if (response == null) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Couldn't reach Paystack to charge the saved card.");
+        }
+
+        if (response.data() == null) {
+            return new ChargeResult(false, "failed", null, response.message());
         }
 
         ChargeAuthorizationData data = response.data();
