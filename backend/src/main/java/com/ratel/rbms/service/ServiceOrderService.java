@@ -374,18 +374,27 @@ public class ServiceOrderService {
             order = serviceOrderRepository.save(order);
             activityLogService.log("Charged mobile money for service order #" + order.getOrderNumber(), "SERVICE_ORDER", order.getId());
             paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "SUCCESS");
-        } else if ("failed".equalsIgnoreCase(result.status())) {
+            return toResponse(order);
+        }
+
+        if ("failed".equalsIgnoreCase(result.status())) {
             order.setPaymentStatus("FAILED");
             order = serviceOrderRepository.save(order);
             paymentTransactionService.updateStatusByReference(order.getBusinessId(), reference, "FAILED");
-            // Surface Paystack's own reason (e.g. "Invalid OTP", "Expired OTP")
-            // instead of a generic message, now that we know this attempt is
-            // genuinely done rather than just still-pending.
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    result.message() != null && !result.message().isBlank() ? result.message() : "That code didn't work.");
         }
 
-        return toResponse(order);
+        // Anything short of success — "failed" isn't the only shape Paystack
+        // sends back here. A status like "pending" means the customer needs to
+        // approve via their mobile money app's own Approvals tab instead of
+        // reading back an OTP — result.message() is Paystack's real
+        // explanation of that, and is worth showing instead of a generic
+        // "that code didn't work" that gives the cashier nothing to act on.
+        // Only the literal "failed" case above marks the order FAILED, so a
+        // genuinely still-pending charge stays resolvable via verifyPayment().
+        throw new ApiException(HttpStatus.BAD_REQUEST,
+                result.message() != null && !result.message().isBlank()
+                        ? result.message()
+                        : "That code didn't work. If the customer got an approval prompt in their mobile money app instead of a code, use Verify once they've approved it there.");
     }
 
     @Transactional

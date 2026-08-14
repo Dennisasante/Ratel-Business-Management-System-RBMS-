@@ -295,15 +295,27 @@ public class SaleService {
             sale = saleRepository.save(sale);
             activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
             paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "SUCCESS");
-        } else if ("failed".equalsIgnoreCase(result.status())) {
+            return toResponseWithItems(sale);
+        }
+
+        if ("failed".equalsIgnoreCase(result.status())) {
             sale.setPaymentStatus("FAILED");
             sale = saleRepository.save(sale);
             paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "FAILED");
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    result.message() != null && !result.message().isBlank() ? result.message() : "That code didn't work.");
         }
 
-        return toResponseWithItems(sale);
+        // Anything short of success — "failed" isn't the only shape Paystack
+        // sends back here. A status like "pending" means the customer needs to
+        // approve via their mobile money app's own Approvals tab instead of
+        // reading back an OTP — result.message() is Paystack's real
+        // explanation of that, and is worth showing instead of a generic
+        // "that code didn't work" that gives the cashier nothing to act on.
+        // Only the literal "failed" case above marks the sale FAILED, so a
+        // genuinely still-pending charge stays resolvable via verifyPayment().
+        throw new ApiException(HttpStatus.BAD_REQUEST,
+                result.message() != null && !result.message().isBlank()
+                        ? result.message()
+                        : "That code didn't work. If the customer got an approval prompt in their mobile money app instead of a code, use Verify once they've approved it there.");
     }
 
     @Transactional
