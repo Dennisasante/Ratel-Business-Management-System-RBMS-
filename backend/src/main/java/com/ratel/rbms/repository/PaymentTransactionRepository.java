@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -42,4 +43,26 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("from") Instant from,
             @Param("to") Instant to
     );
+
+    // Money actually collected in a date range, for one business — regardless
+    // of which entity type it came from (Sale, ServiceOrder, Booking,
+    // PurchaseOrder, CustomWigRequest, or anything added later). Backs
+    // ReportService.summary()'s revenue figure so a newly-added money-
+    // collecting entity type is automatically included, the same way the
+    // Payments page (built on search() above) already is — no one-off fix
+    // needed the next time a new source type is added.
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.businessId = :businessId "
+            + "AND t.direction = :direction AND t.status = :status AND t.createdAt >= :from AND t.createdAt < :to")
+    BigDecimal sumAmount(
+            @Param("businessId") UUID businessId,
+            @Param("direction") PaymentTransaction.Direction direction,
+            @Param("status") String status,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
+
+    // Same as sumAmount() above but platform-wide, all-time, no business
+    // filter — backs PlatformStatsService's "platform revenue" figure.
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.direction = :direction AND t.status = :status")
+    BigDecimal sumAmountAllTime(@Param("direction") PaymentTransaction.Direction direction, @Param("status") String status);
 }

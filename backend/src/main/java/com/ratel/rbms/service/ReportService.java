@@ -3,9 +3,11 @@ package com.ratel.rbms.service;
 import com.ratel.rbms.dto.ReportSummaryResponse;
 import com.ratel.rbms.dto.StaffCommissionResponse;
 import com.ratel.rbms.entity.Expense;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.Sale;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.repository.ExpenseRepository;
+import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
@@ -25,11 +27,18 @@ public class ReportService {
     private final SaleRepository saleRepository;
     private final ExpenseRepository expenseRepository;
     private final UserRepository userRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
-    public ReportService(SaleRepository saleRepository, ExpenseRepository expenseRepository, UserRepository userRepository) {
+    public ReportService(
+            SaleRepository saleRepository,
+            ExpenseRepository expenseRepository,
+            UserRepository userRepository,
+            PaymentTransactionRepository paymentTransactionRepository
+    ) {
         this.saleRepository = saleRepository;
         this.expenseRepository = expenseRepository;
         this.userRepository = userRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
     public ReportSummaryResponse summary(LocalDate from, LocalDate to) {
@@ -38,7 +47,15 @@ public class ReportService {
         var sales = salesInRange(businessId, from, to);
         var expenses = expenseRepository.findAllByBusinessIdAndExpenseDateBetween(businessId, from, to);
 
-        BigDecimal revenue = sales.stream().map(Sale::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Actual money collected in this range, from every source (Sale,
+        // ServiceOrder, Booking, PurchaseOrder, CustomWigRequest, or anything
+        // added later) — not just Sale.totalAmount, which used to leave every
+        // other entity type's payments out of this figure entirely.
+        var fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+        var toInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        BigDecimal revenue = paymentTransactionRepository.sumAmount(
+                businessId, PaymentTransaction.Direction.INCOMING, "SUCCESS", fromInstant, toInstant
+        );
         BigDecimal expenseTotal = expenses.stream().map(Expense::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return new ReportSummaryResponse(

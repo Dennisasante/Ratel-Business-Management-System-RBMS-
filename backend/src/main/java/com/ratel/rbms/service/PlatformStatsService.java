@@ -6,13 +6,14 @@ import com.ratel.rbms.dto.PlatformPlanMixEntry;
 import com.ratel.rbms.dto.PlatformStatsResponse;
 import com.ratel.rbms.entity.ActivityLog;
 import com.ratel.rbms.entity.Business;
+import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.repository.ActivityLogRepository;
 import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.EcommerceOrderRepository;
-import com.ratel.rbms.repository.SaleRepository;
+import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
@@ -36,34 +37,34 @@ public class PlatformStatsService {
 
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
-    private final SaleRepository saleRepository;
     private final ActivityLogRepository activityLogRepository;
     private final BookingRepository bookingRepository;
     private final EcommerceOrderRepository ecommerceOrderRepository;
     private final CustomWigRequestRepository customWigRequestRepository;
     private final ServiceOrderRepository serviceOrderRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
     public PlatformStatsService(
             BusinessRepository businessRepository,
             UserRepository userRepository,
-            SaleRepository saleRepository,
             ActivityLogRepository activityLogRepository,
             BookingRepository bookingRepository,
             EcommerceOrderRepository ecommerceOrderRepository,
             CustomWigRequestRepository customWigRequestRepository,
             ServiceOrderRepository serviceOrderRepository,
-            SubscriptionPlanRepository subscriptionPlanRepository
+            SubscriptionPlanRepository subscriptionPlanRepository,
+            PaymentTransactionRepository paymentTransactionRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
-        this.saleRepository = saleRepository;
         this.activityLogRepository = activityLogRepository;
         this.bookingRepository = bookingRepository;
         this.ecommerceOrderRepository = ecommerceOrderRepository;
         this.customWigRequestRepository = customWigRequestRepository;
         this.serviceOrderRepository = serviceOrderRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
     public PlatformStatsResponse getStats() {
@@ -72,7 +73,11 @@ public class PlatformStatsService {
         int totalBusinesses = (int) businessRepository.count();
         int activeBusinesses = (int) businessRepository.countByActive(true);
         int totalUsers = (int) userRepository.count();
-        BigDecimal totalRevenue = saleRepository.sumTotalAmount();
+        // Every business's own money collected from their own customers — Sale,
+        // ServiceOrder, Booking, PurchaseOrder, CustomWigRequest, or anything
+        // added later — not just Sale.totalAmount, which used to leave every
+        // other entity type out of "platform revenue" entirely.
+        BigDecimal totalRevenue = paymentTransactionRepository.sumAmountAllTime(PaymentTransaction.Direction.INCOMING, "SUCCESS");
 
         List<Business> recentBusinesses = businessRepository.findAllByCreatedAtAfter(cutoff);
         Map<String, Long> signupsByDay = recentBusinesses.stream()
