@@ -15,6 +15,7 @@ import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.EcommerceOrderRepository;
 import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
+import com.ratel.rbms.repository.SubscriptionPaymentRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,7 @@ public class PlatformStatsService {
     private final ServiceOrderRepository serviceOrderRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
 
     public PlatformStatsService(
             BusinessRepository businessRepository,
@@ -54,7 +56,8 @@ public class PlatformStatsService {
             CustomWigRequestRepository customWigRequestRepository,
             ServiceOrderRepository serviceOrderRepository,
             SubscriptionPlanRepository subscriptionPlanRepository,
-            PaymentTransactionRepository paymentTransactionRepository
+            PaymentTransactionRepository paymentTransactionRepository,
+            SubscriptionPaymentRepository subscriptionPaymentRepository
     ) {
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
@@ -65,6 +68,7 @@ public class PlatformStatsService {
         this.serviceOrderRepository = serviceOrderRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
+        this.subscriptionPaymentRepository = subscriptionPaymentRepository;
     }
 
     public PlatformStatsResponse getStats() {
@@ -78,6 +82,10 @@ public class PlatformStatsService {
         // added later — not just Sale.totalAmount, which used to leave every
         // other entity type out of "platform revenue" entirely.
         BigDecimal totalRevenue = paymentTransactionRepository.sumAmountAllTime(PaymentTransaction.Direction.INCOMING, "SUCCESS");
+        // What businesses have actually paid TALLIA for their own subscriptions —
+        // distinct from totalRevenue above (each business's GMV from its own
+        // customers). Previously nowhere visible on the platform side at all.
+        BigDecimal totalSubscriptionRevenue = subscriptionPaymentRepository.sumAmountAllTime();
 
         List<Business> recentBusinesses = businessRepository.findAllByCreatedAtAfter(cutoff);
         Map<String, Long> signupsByDay = recentBusinesses.stream()
@@ -104,6 +112,7 @@ public class PlatformStatsService {
                 activeBusinesses,
                 totalUsers,
                 totalRevenue,
+                totalSubscriptionRevenue,
                 fillGaps(signupsByDay),
                 fillGaps(activityByDay),
                 billingStatusBreakdown,

@@ -8,6 +8,7 @@ public record PlatformStatsResponse(
         int activeBusinesses,
         int totalUsers,
         BigDecimal totalPlatformRevenue,
+        BigDecimal totalSubscriptionRevenue,
         List<DayCount> signupsByDay,
         List<DayCount> activityByDay,
         List<PlatformBillingStatusCount> billingStatusBreakdown,

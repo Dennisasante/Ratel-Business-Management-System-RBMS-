@@ -65,7 +65,7 @@ export default function PlatformOverviewPage() {
           <CardSkeleton count={4} />
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <StatCard label="Businesses" value={stats.totalBusinesses} hint={`${stats.activeBusinesses} active`} icon={Building2} tone="accent" />
               <StatCard label="Total users" value={stats.totalUsers} icon={Users} tone="info" />
               <StatCard
@@ -74,6 +74,13 @@ export default function PlatformOverviewPage() {
                 hint="All businesses, all time"
                 icon={Wallet}
                 tone="success"
+              />
+              <StatCard
+                label="Subscription revenue"
+                value={`GH₵${stats.totalSubscriptionRevenue.toFixed(2)}`}
+                hint="What businesses pay Tallia"
+                icon={Wallet}
+                tone="info"
               />
               <StatCard label="Signups (30d)" value={stats.signupsByDay.reduce((s, d) => s + d.count, 0)} icon={TrendingUp} tone="danger" />
             </div>

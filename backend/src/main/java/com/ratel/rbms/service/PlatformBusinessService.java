@@ -8,6 +8,7 @@ import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
 import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
 import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
+import com.ratel.rbms.dto.SubscriptionPaymentResponse;
 import com.ratel.rbms.dto.UserResponse;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
@@ -36,6 +37,7 @@ import com.ratel.rbms.repository.SaleItemRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.StockMovementRepository;
+import com.ratel.rbms.repository.SubscriptionPaymentRepository;
 import com.ratel.rbms.repository.SubscriptionPlanRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
@@ -69,6 +71,7 @@ public class PlatformBusinessService {
     private final CustomWigRequestRepository customWigRequestRepository;
     private final ServiceOrderRepository serviceOrderRepository;
     private final SubscriptionPlanRepository subscriptionPlanRepository;
+    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final PasswordEncoder passwordEncoder;
     private final PlatformAuditLogService auditLogService;
@@ -94,6 +97,7 @@ public class PlatformBusinessService {
             CustomWigRequestRepository customWigRequestRepository,
             ServiceOrderRepository serviceOrderRepository,
             SubscriptionPlanRepository subscriptionPlanRepository,
+            SubscriptionPaymentRepository subscriptionPaymentRepository,
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PasswordEncoder passwordEncoder,
             PlatformAuditLogService auditLogService,
@@ -118,6 +122,7 @@ public class PlatformBusinessService {
         this.customWigRequestRepository = customWigRequestRepository;
         this.serviceOrderRepository = serviceOrderRepository;
         this.subscriptionPlanRepository = subscriptionPlanRepository;
+        this.subscriptionPaymentRepository = subscriptionPaymentRepository;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogService = auditLogService;
@@ -139,6 +144,23 @@ public class PlatformBusinessService {
         businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
         return paymentTransactionService.search(businessId, null, null, null, null);
+    }
+
+    // What this business has paid TALLIA for its own subscription — a
+    // separate concern from getPaymentTransactions() above (that's the money
+    // this business collected from ITS OWN customers). Previously invisible
+    // to Super Admin entirely: the owner's own Billing page already showed
+    // this via BillingService.history(), but nothing surfaced it here.
+    public List<SubscriptionPaymentResponse> getSubscriptionPayments(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return subscriptionPaymentRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
+                .map(p -> SubscriptionPaymentResponse.from(p, planNameOrNull(p.getSubscriptionPlanId())))
+                .toList();
+    }
+
+    private String planNameOrNull(UUID planId) {
+        return subscriptionPlanRepository.findById(planId).map(SubscriptionPlan::getName).orElse(null);
     }
 
     // Cross-checks a stuck/PENDING gateway transaction — the same mechanism as

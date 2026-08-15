@@ -115,6 +115,7 @@ export interface PlatformStats {
   activeBusinesses: number;
   totalUsers: number;
   totalPlatformRevenue: number;
+  totalSubscriptionRevenue: number;
   signupsByDay: DayCount[];
   activityByDay: DayCount[];
   billingStatusBreakdown: PlatformBillingStatusCount[];
@@ -263,10 +264,13 @@ export type ExpenseCategory =
   | "MARKETING"
   | "OTHER";
 
+export type ExpensePaymentMethod = "CASH" | "MOBILE_MONEY";
+
 export interface Expense {
   id: string;
   category: ExpenseCategory;
   description: string | null;
+  paymentMethod: ExpensePaymentMethod;
   amount: number;
   expenseDate: string;
   recordedByName: string;
@@ -276,6 +280,7 @@ export interface Expense {
 export interface ExpensePayload {
   category: ExpenseCategory;
   description?: string;
+  paymentMethod: ExpensePaymentMethod;
   amount: number;
   expenseDate?: string;
 }
@@ -1730,6 +1735,9 @@ export const api = {
 
   getPlatformBusinessPaymentTransactions: (token: string, id: string) =>
     request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions`, {}, token),
+
+  getPlatformBusinessSubscriptionPayments: (token: string, id: string) =>
+    request<SubscriptionPaymentSummary[]>(`/api/platform/businesses/${id}/subscription-payments`, {}, token),
 
   verifyPlatformBusinessPaymentTransaction: (token: string, businessId: string, transactionId: string) =>
     request<void>(`/api/platform/businesses/${businessId}/payment-transactions/${transactionId}/verify`, { method: "POST" }, token),

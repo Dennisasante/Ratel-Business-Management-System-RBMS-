@@ -8,6 +8,7 @@ import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
 import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
 import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
+import com.ratel.rbms.dto.SubscriptionPaymentResponse;
 import com.ratel.rbms.dto.UpdateUserStatusRequest;
 import com.ratel.rbms.service.PlatformBusinessService;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +44,11 @@ public class PlatformBusinessController {
     @GetMapping("/{id}/payment-transactions")
     public List<PaymentTransactionResponse> paymentTransactions(@PathVariable UUID id) {
         return platformBusinessService.getPaymentTransactions(id);
+    }
+
+    @GetMapping("/{id}/subscription-payments")
+    public List<SubscriptionPaymentResponse> subscriptionPayments(@PathVariable UUID id) {
+        return platformBusinessService.getSubscriptionPayments(id);
     }
 
     @PostMapping("/{businessId}/payment-transactions/{transactionId}/verify")

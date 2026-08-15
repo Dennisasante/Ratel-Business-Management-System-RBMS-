@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +15,13 @@ import java.util.UUID;
 public interface SubscriptionPaymentRepository extends JpaRepository<SubscriptionPayment, UUID> {
 
     List<SubscriptionPayment> findAllByBusinessIdOrderByCreatedAtDesc(UUID businessId);
+
+    // Actual money businesses have paid Tallia for their own subscriptions,
+    // platform-wide, all-time — distinct from PlatformStatsService's existing
+    // "platform revenue" figure, which is GMV each business collected from
+    // ITS OWN customers (via PaymentTransaction), not what they paid Tallia.
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM SubscriptionPayment p WHERE p.status = 'SUCCESS'")
+    BigDecimal sumAmountAllTime();
 
     // The idempotency lookup: a webhook and a client-triggered verify for the
     // same payment resolve to the same row instead of double-extending the period.

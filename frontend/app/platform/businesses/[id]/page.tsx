@@ -13,6 +13,7 @@ import {
   PlatformCustomerSummary,
   PlatformSaleSummary,
   PlatformServiceOrderSummary,
+  SubscriptionPaymentSummary,
   SubscriptionPlan,
 } from "@/lib/api";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
@@ -70,6 +71,8 @@ export default function PlatformBusinessDetailPage() {
   const [verifyingTransactionId, setVerifyingTransactionId] = useState<string | null>(null);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
 
+  const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentSummary[]>([]);
+
   const [cleanupTab, setCleanupTab] = useState<"orders" | "sales" | "customers">("orders");
   const [cleanupOrders, setCleanupOrders] = useState<PlatformServiceOrderSummary[]>([]);
   const [cleanupSales, setCleanupSales] = useState<PlatformSaleSummary[]>([]);
@@ -108,6 +111,15 @@ export default function PlatformBusinessDetailPage() {
   useEffect(() => {
     loadTransactions();
   }, [loadTransactions]);
+
+  const loadSubscriptionPayments = useCallback(async () => {
+    if (!session || !params.id) return;
+    setSubscriptionPayments(await api.getPlatformBusinessSubscriptionPayments(session.token, params.id));
+  }, [session, params.id]);
+
+  useEffect(() => {
+    loadSubscriptionPayments();
+  }, [loadSubscriptionPayments]);
 
   async function handleVerifyTransaction(transactionId: string) {
     if (!session || !params.id) return;
@@ -495,6 +507,46 @@ export default function PlatformBusinessDetailPage() {
                     </Table>
                     {transactions.length > 25 && (
                       <p className="mt-2 text-xs text-ink-500">Showing the 25 most recent of {transactions.length} transactions.</p>
+                    )}
+                  </div>
+                )}
+              </Card>
+
+              <Card className="p-5">
+                <h2 className="text-base font-semibold text-ink-900">Subscription Payments</h2>
+                <p className="text-xs text-ink-500">What this business has paid Tallia for its own plan — separate from the payment events above.</p>
+                {subscriptionPayments.length === 0 ? (
+                  <p className="mt-3 text-sm text-ink-500">No subscription payments yet.</p>
+                ) : (
+                  <div className="mt-4 overflow-x-auto">
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>When</Th>
+                          <Th>Plan</Th>
+                          <Th>Months</Th>
+                          <Th>Status</Th>
+                          <Th className="text-right">Amount</Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {subscriptionPayments.slice(0, 25).map((p) => (
+                          <Tr key={p.id}>
+                            <Td className="tabular text-ink-500">{new Date(p.createdAt).toLocaleDateString()}</Td>
+                            <Td className="text-ink-700">{p.planName ?? "Unknown plan"}</Td>
+                            <Td className="text-ink-500">{p.months}</Td>
+                            <Td>
+                              <Badge tone={p.status === "SUCCESS" ? "success" : p.status === "FAILED" ? "danger" : "neutral"}>
+                                {p.status}
+                              </Badge>
+                            </Td>
+                            <Td className="tabular text-right font-medium">GH₵{p.amount.toFixed(2)}</Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                    {subscriptionPayments.length > 25 && (
+                      <p className="mt-2 text-xs text-ink-500">Showing the 25 most recent of {subscriptionPayments.length} payments.</p>
                     )}
                   </div>
                 )}
