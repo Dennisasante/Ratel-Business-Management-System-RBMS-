@@ -63,7 +63,7 @@ export default function ExpensesPage() {
 
       <Card>
         {fetching ? (
-          <TableSkeleton cols={5} />
+          <TableSkeleton cols={6} />
         ) : expenses.length === 0 ? (
           <EmptyState
             icon={Receipt}
@@ -82,6 +82,7 @@ export default function ExpensesPage() {
                 <Th>Date</Th>
                 <Th>Category</Th>
                 <Th>Description</Th>
+                <Th>Paid via</Th>
                 <Th>Recorded by</Th>
                 <Th className="text-right">Amount</Th>
               </Tr>
@@ -94,6 +95,7 @@ export default function ExpensesPage() {
                     <Badge tone="neutral">{e.category}</Badge>
                   </Td>
                   <Td className="text-ink-500">{e.description ?? "—"}</Td>
+                  <Td className="text-ink-500">{e.paymentMethod === "MOBILE_MONEY" ? "Mobile Money" : "Cash"}</Td>
                   <Td className="text-ink-500">{e.recordedByName}</Td>
                   <Td className="tabular text-right font-medium">GH₵{e.amount.toFixed(2)}</Td>
                 </Tr>

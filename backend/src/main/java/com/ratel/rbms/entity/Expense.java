@@ -1,6 +1,7 @@
 package com.ratel.rbms.entity;
 
 import com.ratel.rbms.entity.enums.ExpenseCategory;
+import com.ratel.rbms.entity.enums.ExpensePaymentMethod;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,6 +37,11 @@ public class Expense {
     private ExpenseCategory category;
 
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", nullable = false, length = 20)
+    @Builder.Default
+    private ExpensePaymentMethod paymentMethod = ExpensePaymentMethod.CASH;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;

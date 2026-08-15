@@ -52,6 +52,7 @@ public class ExpenseService {
                 .businessId(TenantContext.getBusinessId())
                 .category(req.category())
                 .description(req.description())
+                .paymentMethod(req.paymentMethod())
                 .amount(req.amount())
                 .expenseDate(req.expenseDate() != null ? req.expenseDate() : LocalDate.now())
                 .recordedBy(TenantContext.getUserId())
@@ -68,6 +69,7 @@ public class ExpenseService {
         Expense expense = getOwned(id);
         expense.setCategory(req.category());
         expense.setDescription(req.description());
+        expense.setPaymentMethod(req.paymentMethod());
         expense.setAmount(req.amount());
         if (req.expenseDate() != null) expense.setExpenseDate(req.expenseDate());
         expense = expenseRepository.save(expense);

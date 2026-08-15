@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, ExpenseCategory, ExpensePayload } from "@/lib/api";
+import { ApiError, ExpenseCategory, ExpensePaymentMethod, ExpensePayload } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
 
@@ -19,11 +19,17 @@ const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: "OTHER", label: "Other" },
 ];
 
+const PAYMENT_METHODS: { value: ExpensePaymentMethod; label: string }[] = [
+  { value: "CASH", label: "Cash" },
+  { value: "MOBILE_MONEY", label: "Mobile Money" },
+];
+
 export default function ExpenseForm({ onSubmit }: ExpenseFormProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     category: "OTHER" as ExpenseCategory,
     description: "",
+    paymentMethod: "CASH" as ExpensePaymentMethod,
     amount: "",
     expenseDate: today,
   });
@@ -42,6 +48,7 @@ export default function ExpenseForm({ onSubmit }: ExpenseFormProps) {
       await onSubmit({
         category: form.category,
         description: form.description || undefined,
+        paymentMethod: form.paymentMethod,
         amount: Number(form.amount) || 0,
         expenseDate: form.expenseDate,
       });
@@ -67,6 +74,24 @@ export default function ExpenseForm({ onSubmit }: ExpenseFormProps) {
           {CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="paymentMethod" className="text-sm font-medium text-ink-700">
+          Paid via <span className="text-danger">*</span>
+        </label>
+        <select
+          id="paymentMethod"
+          value={form.paymentMethod}
+          onChange={(e) => set("paymentMethod", e.target.value)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        >
+          {PAYMENT_METHODS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
             </option>
           ))}
         </select>
