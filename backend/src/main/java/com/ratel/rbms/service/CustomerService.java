@@ -55,8 +55,16 @@ public class CustomerService {
     // null (ON DELETE SET NULL) if the customer record is later removed, so this tolerates
     // a missing customer instead of throwing.
     public String getNameOrNull(UUID id) {
+        return getNameOrNull(id, TenantContext.getBusinessId());
+    }
+
+    // Same as above but takes businessId explicitly — for callers (like Super Admin's
+    // per-business payment transactions view) that resolve a specific business's data
+    // without TenantContext being populated, since platform-admin requests never carry
+    // a tenant business id.
+    public String getNameOrNull(UUID id, UUID businessId) {
         if (id == null) return null;
-        return customerRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+        return customerRepository.findByIdAndBusinessId(id, businessId)
                 .map(Customer::getFullName)
                 .orElse(null);
     }

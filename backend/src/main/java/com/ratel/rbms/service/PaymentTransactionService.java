@@ -125,12 +125,15 @@ public class PaymentTransactionService {
 
     public List<PaymentTransactionResponse> search(UUID businessId, PaymentTransaction.Direction direction, String gateway, Instant from, Instant to) {
         return paymentTransactionRepository.search(businessId, direction, gateway, from, to).stream()
-                .map(this::toResponse)
+                .map(t -> toResponse(t, businessId))
                 .toList();
     }
 
-    private PaymentTransactionResponse toResponse(PaymentTransaction t) {
-        String customerName = t.getCustomerId() != null ? customerService.getNameOrNull(t.getCustomerId()) : null;
+    // businessId is passed explicitly (not read from TenantContext) because this is also
+    // called for Super Admin's per-business payment transactions view, where TenantContext
+    // is never populated — platform-admin requests carry no tenant business id.
+    private PaymentTransactionResponse toResponse(PaymentTransaction t, UUID businessId) {
+        String customerName = t.getCustomerId() != null ? customerService.getNameOrNull(t.getCustomerId(), businessId) : null;
         String createdByName = t.getCreatedBy() != null
                 ? userRepository.findById(t.getCreatedBy()).map(User::getFullName).orElse(null)
                 : null;
