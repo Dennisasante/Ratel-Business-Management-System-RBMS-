@@ -21,6 +21,8 @@ import {
   Globe,
 } from "lucide-react";
 import Reveal from "@/components/marketing/Reveal";
+import DashboardPreview from "@/components/marketing/DashboardPreview";
+import PhonePreview from "@/components/marketing/PhonePreview";
 
 const PAIN_POINTS = [
   { problem: "Stock counts that are really just guesses", solution: "Live inventory with automatic low-stock alerts" },
@@ -48,6 +50,12 @@ const FEATURES = [
 const MARQUEE_ITEMS = [
   "Inventory", "Sales & POS", "Bookings", "Service Orders", "E-commerce Sync",
   "Custom Orders", "Team & Roles", "Reports", "WhatsApp", "Desktop App", "Mobile Install",
+];
+
+const LINK_STEPS = [
+  "Share your one link anywhere — WhatsApp bio, Instagram, receipts",
+  "Customers pick a service, request a custom order, or shop — and pay a deposit or in full",
+  "It lands on your dashboard instantly. No calls, no missed DMs",
 ];
 
 export default function Home() {
@@ -94,8 +102,17 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="relative isolate px-6 pb-20 pt-16 sm:pb-28 sm:pt-24">
+      <section className="relative isolate px-6 pb-16 pt-14 sm:pb-24 sm:pt-20">
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+          <div
+            className="absolute inset-0 opacity-[0.35]"
+            style={{
+              backgroundImage: "radial-gradient(#9AA0AC 1px, transparent 1px)",
+              backgroundSize: "22px 22px",
+              maskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 100%)",
+              WebkitMaskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 100%)",
+            }}
+          />
           <div className="animate-blob-drift absolute -left-24 -top-24 h-[420px] w-[420px] rounded-full bg-accent/20 blur-3xl" />
           <div className="animate-blob-drift absolute -right-16 top-10 h-[360px] w-[360px] rounded-full bg-info/20 blur-3xl [animation-delay:-6s]" />
           <div className="animate-blob-drift absolute bottom-0 left-1/3 h-[300px] w-[300px] rounded-full bg-danger/10 blur-3xl [animation-delay:-11s]" />
@@ -108,7 +125,7 @@ export default function Home() {
           </div>
 
           <h1
-            className="reveal is-visible mt-6 text-4xl font-semibold tracking-tight text-ink-900 sm:text-5xl md:text-6xl"
+            className="reveal is-visible mt-5 text-4xl font-semibold tracking-tight text-ink-900 sm:mt-6 sm:text-5xl md:text-6xl"
             style={{ animationDelay: "80ms" }}
           >
             Run your business.
@@ -116,13 +133,13 @@ export default function Home() {
             <span className="text-accent">Not a pile of notebooks.</span>
           </h1>
 
-          <p className="reveal is-visible mx-auto mt-5 max-w-xl text-base text-ink-500 sm:text-lg" style={{ animationDelay: "160ms" }}>
+          <p className="reveal is-visible mx-auto mt-4 max-w-xl text-base text-ink-500 sm:mt-5 sm:text-lg" style={{ animationDelay: "160ms" }}>
             Inventory, sales, bookings, staff, and money — all in one system built
             for how salons, retailers, and service businesses actually run day to
             day. No spreadsheets. No sticky notes. No guessing.
           </p>
 
-          <div className="reveal is-visible mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "240ms" }}>
+          <div className="reveal is-visible mt-7 flex flex-col items-center justify-center gap-3 sm:mt-8 sm:flex-row" style={{ animationDelay: "240ms" }}>
             <Link
               href="/register"
               className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3.5 text-sm font-semibold text-white shadow-card transition hover:bg-accent-hover sm:w-auto"
@@ -143,8 +160,13 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Product preview */}
+        <Reveal delay={340} className="mt-12 px-2 sm:mt-16">
+          <DashboardPreview />
+        </Reveal>
+
         {/* Marquee of everything the system does */}
-        <div className="reveal is-visible relative mt-16 overflow-hidden" style={{ animationDelay: "360ms" }}>
+        <div className="reveal is-visible relative mt-10 overflow-hidden sm:mt-14" style={{ animationDelay: "440ms" }}>
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-canvas to-transparent" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-canvas to-transparent" />
           <div className="animate-marquee flex w-max gap-3">
@@ -157,6 +179,34 @@ export default function Home() {
               </span>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* One link feature spotlight */}
+      <section className="px-6 py-16 sm:py-24">
+        <div className="mx-auto grid max-w-5xl items-center gap-10 sm:grid-cols-2 sm:gap-14">
+          <Reveal>
+            <h2 className="text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
+              One link. Every way customers reach you.
+            </h2>
+            <p className="mt-3 text-ink-500">
+              No app to download, no phone tag. Share one link and let customers
+              book, order, or shop on their own — any hour, from their phone.
+            </p>
+            <ul className="mt-6 space-y-4">
+              {LINK_STEPS.map((step, i) => (
+                <li key={step} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white">
+                    {i + 1}
+                  </span>
+                  <p className="text-sm text-ink-700">{step}</p>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+          <Reveal delay={120}>
+            <PhonePreview />
+          </Reveal>
         </div>
       </section>
 
