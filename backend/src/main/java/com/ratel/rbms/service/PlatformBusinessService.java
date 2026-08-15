@@ -48,6 +48,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -140,10 +141,10 @@ public class PlatformBusinessService {
     // Full payment-event visibility for a single business — "so I'm never
     // found wanting" when the owner needs to verify a payment dispute or
     // check what actually moved through the system.
-    public List<PaymentTransactionResponse> getPaymentTransactions(UUID businessId) {
+    public List<PaymentTransactionResponse> getPaymentTransactions(UUID businessId, Instant from, Instant to) {
         businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
-        return paymentTransactionService.search(businessId, null, null, null, null);
+        return paymentTransactionService.search(businessId, null, null, from, to);
     }
 
     // What this business has paid TALLIA for its own subscription — a

@@ -1733,8 +1733,13 @@ export const api = {
   getPlatformBusiness: (token: string, id: string) =>
     request<PlatformBusinessDetail>(`/api/platform/businesses/${id}`, {}, token),
 
-  getPlatformBusinessPaymentTransactions: (token: string, id: string) =>
-    request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions`, {}, token),
+  getPlatformBusinessPaymentTransactions: (token: string, id: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<PaymentTransaction[]>(`/api/platform/businesses/${id}/payment-transactions${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   getPlatformBusinessSubscriptionPayments: (token: string, id: string) =>
     request<SubscriptionPaymentSummary[]>(`/api/platform/businesses/${id}/subscription-payments`, {}, token),

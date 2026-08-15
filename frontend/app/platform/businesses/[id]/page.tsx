@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil, RotateCw } from "lucide-react";
+import { Package, Users2, ShoppingCart, Wallet, Trash2, Power, CalendarDays, ShoppingBag, Sparkles, Wrench, CreditCard, MessageCircle, Pencil, RotateCw, ChevronDown } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
 import {
   api,
@@ -70,6 +70,17 @@ export default function PlatformBusinessDetailPage() {
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [verifyingTransactionId, setVerifyingTransactionId] = useState<string | null>(null);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  // Collapsed by default and date-scoped — an active business accumulates
+  // transactions forever, and rendering the whole history by default made
+  // this page unusably long. Only fetched once the panel is opened.
+  const [transactionsOpen, setTransactionsOpen] = useState(false);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [txFrom, setTxFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [txTo, setTxTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentSummary[]>([]);
 
@@ -105,12 +116,23 @@ export default function PlatformBusinessDetailPage() {
 
   const loadTransactions = useCallback(async () => {
     if (!session || !params.id) return;
-    setTransactions(await api.getPlatformBusinessPaymentTransactions(session.token, params.id));
-  }, [session, params.id]);
+    setTransactionsLoading(true);
+    setTransactionsError(null);
+    try {
+      setTransactions(await api.getPlatformBusinessPaymentTransactions(session.token, params.id, { from: txFrom, to: txTo }));
+    } catch (err) {
+      setTransactionsError(err instanceof ApiError ? err.message : "Couldn't load payment transactions.");
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, [session, params.id, txFrom, txTo]);
 
   useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions]);
+    // Only fetches once the panel is actually opened — an active business's
+    // transaction history shouldn't load (or render) by default.
+    if (transactionsOpen) loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactionsOpen]);
 
   const loadSubscriptionPayments = useCallback(async () => {
     if (!session || !params.id) return;
@@ -454,59 +476,105 @@ export default function PlatformBusinessDetailPage() {
               </div>
 
               <Card className="p-5">
-                <h2 className="text-base font-semibold text-ink-900">Payment Transactions</h2>
-                <p className="text-xs text-ink-500">Every payment event recorded for this business — online and manual.</p>
-                {transactionsError && <p className="mt-2 text-sm text-danger">{transactionsError}</p>}
-                {transactions.length === 0 ? (
-                  <p className="mt-3 text-sm text-ink-500">No payment transactions yet.</p>
-                ) : (
-                  <div className="mt-4 overflow-x-auto">
-                    <Table>
-                      <THead>
-                        <Tr>
-                          <Th>When</Th>
-                          <Th>For</Th>
-                          <Th>Customer</Th>
-                          <Th>Type</Th>
-                          <Th>Status</Th>
-                          <Th className="text-right">Amount</Th>
-                          <Th className="text-right">Actions</Th>
-                        </Tr>
-                      </THead>
-                      <TBody>
-                        {transactions.slice(0, 25).map((t) => (
-                          <Tr key={t.id}>
-                            <Td className="tabular text-ink-500">{new Date(t.createdAt).toLocaleDateString()}</Td>
-                            <Td className="text-ink-700">{t.sourceLabel ?? t.sourceType}</Td>
-                            <Td className="text-ink-500">{t.customerName ?? t.customerPhone ?? "—"}</Td>
-                            <Td className="text-ink-500">{t.gateway === "PAYSTACK" ? "Paystack" : "Manual"}</Td>
-                            <Td>
-                              <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "FAILED" ? "danger" : "neutral"}>
-                                {t.status}
-                              </Badge>
-                            </Td>
-                            <Td className="tabular text-right font-medium">
-                              {t.direction === "OUTGOING" ? "-" : ""}GH₵{t.amount.toFixed(2)}
-                            </Td>
-                            <Td className="text-right">
-                              {t.status === "PENDING" && t.gateway === "PAYSTACK" && (
-                                <button
-                                  onClick={() => handleVerifyTransaction(t.id)}
-                                  disabled={verifyingTransactionId === t.id}
-                                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-ink-700 hover:bg-canvas disabled:opacity-50"
-                                  title="Cross-check with Paystack directly"
-                                >
-                                  <RotateCw size={12} className={verifyingTransactionId === t.id ? "animate-spin" : ""} />
-                                  {verifyingTransactionId === t.id ? "Checking..." : "Verify"}
-                                </button>
-                              )}
-                            </Td>
-                          </Tr>
-                        ))}
-                      </TBody>
-                    </Table>
-                    {transactions.length > 25 && (
-                      <p className="mt-2 text-xs text-ink-500">Showing the 25 most recent of {transactions.length} transactions.</p>
+                <button
+                  type="button"
+                  onClick={() => setTransactionsOpen((o) => !o)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <div>
+                    <h2 className="text-base font-semibold text-ink-900">Payment Transactions</h2>
+                    <p className="text-xs text-ink-500">
+                      {transactionsOpen ? "Tap to collapse" : "Every payment event recorded for this business — online and manual. Tap to view."}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    size={18}
+                    className={`shrink-0 text-ink-400 transition-transform ${transactionsOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {transactionsOpen && (
+                  <div className="mt-4">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-ink-700">From</label>
+                        <input
+                          type="date"
+                          value={txFrom}
+                          onChange={(e) => setTxFrom(e.target.value)}
+                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-ink-700">To</label>
+                        <input
+                          type="date"
+                          value={txTo}
+                          onChange={(e) => setTxTo(e.target.value)}
+                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        />
+                      </div>
+                      <Button variant="secondary" onClick={loadTransactions} disabled={transactionsLoading}>
+                        {transactionsLoading ? "Updating..." : "Update"}
+                      </Button>
+                    </div>
+
+                    {transactionsError && <p className="mt-3 text-sm text-danger">{transactionsError}</p>}
+
+                    {transactionsLoading ? (
+                      <p className="mt-3 text-sm text-ink-500">Loading...</p>
+                    ) : transactions.length === 0 ? (
+                      <p className="mt-3 text-sm text-ink-500">No payment transactions in this range.</p>
+                    ) : (
+                      <div className="mt-4 overflow-x-auto">
+                        <Table>
+                          <THead>
+                            <Tr>
+                              <Th>When</Th>
+                              <Th>For</Th>
+                              <Th>Customer</Th>
+                              <Th>Type</Th>
+                              <Th>Status</Th>
+                              <Th className="text-right">Amount</Th>
+                              <Th className="text-right">Actions</Th>
+                            </Tr>
+                          </THead>
+                          <TBody>
+                            {transactions.slice(0, 50).map((t) => (
+                              <Tr key={t.id}>
+                                <Td className="tabular text-ink-500">{new Date(t.createdAt).toLocaleDateString()}</Td>
+                                <Td className="text-ink-700">{t.sourceLabel ?? t.sourceType}</Td>
+                                <Td className="text-ink-500">{t.customerName ?? t.customerPhone ?? "—"}</Td>
+                                <Td className="text-ink-500">{t.gateway === "PAYSTACK" ? "Paystack" : "Manual"}</Td>
+                                <Td>
+                                  <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "FAILED" ? "danger" : "neutral"}>
+                                    {t.status}
+                                  </Badge>
+                                </Td>
+                                <Td className="tabular text-right font-medium">
+                                  {t.direction === "OUTGOING" ? "-" : ""}GH₵{t.amount.toFixed(2)}
+                                </Td>
+                                <Td className="text-right">
+                                  {t.status === "PENDING" && t.gateway === "PAYSTACK" && (
+                                    <button
+                                      onClick={() => handleVerifyTransaction(t.id)}
+                                      disabled={verifyingTransactionId === t.id}
+                                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-ink-700 hover:bg-canvas disabled:opacity-50"
+                                      title="Cross-check with Paystack directly"
+                                    >
+                                      <RotateCw size={12} className={verifyingTransactionId === t.id ? "animate-spin" : ""} />
+                                      {verifyingTransactionId === t.id ? "Checking..." : "Verify"}
+                                    </button>
+                                  )}
+                                </Td>
+                              </Tr>
+                            ))}
+                          </TBody>
+                        </Table>
+                        {transactions.length > 50 && (
+                          <p className="mt-2 text-xs text-ink-500">Showing the 50 most recent of {transactions.length} transactions in this range. Narrow the date range to see more precisely.</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

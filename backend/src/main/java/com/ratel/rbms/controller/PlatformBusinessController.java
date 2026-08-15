@@ -11,10 +11,14 @@ import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
 import com.ratel.rbms.dto.SubscriptionPaymentResponse;
 import com.ratel.rbms.dto.UpdateUserStatusRequest;
 import com.ratel.rbms.service.PlatformBusinessService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,8 +46,14 @@ public class PlatformBusinessController {
     }
 
     @GetMapping("/{id}/payment-transactions")
-    public List<PaymentTransactionResponse> paymentTransactions(@PathVariable UUID id) {
-        return platformBusinessService.getPaymentTransactions(id);
+    public List<PaymentTransactionResponse> paymentTransactions(
+            @PathVariable UUID id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return platformBusinessService.getPaymentTransactions(id, fromInstant, toInstant);
     }
 
     @GetMapping("/{id}/subscription-payments")
