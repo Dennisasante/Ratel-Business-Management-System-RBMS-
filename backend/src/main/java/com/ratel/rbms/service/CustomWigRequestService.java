@@ -72,6 +72,7 @@ public class CustomWigRequestService {
     private final String uploadDir;
     private final PaymentTransactionService paymentTransactionService;
     private final PaystackService paystackService;
+    private final NotificationService notificationService;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -87,7 +88,8 @@ public class CustomWigRequestService {
             ObjectMapper objectMapper,
             @Value("${app.upload-dir}") String uploadDir,
             PaymentTransactionService paymentTransactionService,
-            PaystackService paystackService
+            PaystackService paystackService,
+            NotificationService notificationService
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -103,6 +105,7 @@ public class CustomWigRequestService {
         this.uploadDir = uploadDir;
         this.paymentTransactionService = paymentTransactionService;
         this.paystackService = paystackService;
+        this.notificationService = notificationService;
     }
 
     // ---- Public side ----
@@ -198,6 +201,10 @@ public class CustomWigRequestService {
                     business.getCurrency() + " " + estimatedPrice.toPlainString(), customerWhatsappLink
             );
         }
+        // In-app inbox — unconditional (no contactEmail gate), since it has no
+        // external dependency to fail on.
+        notificationService.create(businessId, "NEW_CUSTOM_WIG_REQUEST", "New custom wig request from " + req.customerName(),
+                business.getCurrency() + " " + estimatedPrice.toPlainString() + " estimate", "CUSTOM_WIG_REQUEST", request.getId());
 
         return new CustomWigRequestCreatedResponse(request.getRequestNumber(), "Request received.", estimatedPrice);
     }

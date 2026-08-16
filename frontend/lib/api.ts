@@ -1142,6 +1142,17 @@ export interface PlatformHelpRequest extends HelpRequest {
   businessName: string;
 }
 
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface OnboardingStatus {
   completed: boolean;
 }
@@ -2038,6 +2049,17 @@ export const api = {
 
   completeOnboarding: (token: string) =>
     request<OnboardingStatus>("/api/users/me/complete-onboarding", { method: "POST" }, token),
+
+  listNotifications: (token: string) => request<Notification[]>("/api/notifications", {}, token),
+
+  getUnreadNotificationCount: (token: string) =>
+    request<{ count: number }>("/api/notifications/unread-count", {}, token),
+
+  markNotificationRead: (token: string, id: string) =>
+    request<void>(`/api/notifications/${id}/read`, { method: "POST" }, token),
+
+  markAllNotificationsRead: (token: string) =>
+    request<void>("/api/notifications/read-all", { method: "POST" }, token),
 
   listHelpRequests: (token: string) => request<HelpRequest[]>("/api/help-requests", {}, token),
 

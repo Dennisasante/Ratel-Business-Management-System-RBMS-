@@ -89,6 +89,7 @@ public class BookingService {
     private final RateLimiterService rateLimiterService;
     private final PaymentTransactionService paymentTransactionService;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
     private final String frontendUrl;
 
     public BookingService(
@@ -111,6 +112,7 @@ public class BookingService {
             RateLimiterService rateLimiterService,
             PaymentTransactionService paymentTransactionService,
             ActivityLogService activityLogService,
+            NotificationService notificationService,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -132,6 +134,7 @@ public class BookingService {
         this.rateLimiterService = rateLimiterService;
         this.paymentTransactionService = paymentTransactionService;
         this.activityLogService = activityLogService;
+        this.notificationService = notificationService;
         this.frontendUrl = frontendUrl;
     }
 
@@ -341,6 +344,10 @@ public class BookingService {
                     WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
             );
         }
+        // In-app inbox — unconditional (no contactEmail gate), since it has no
+        // external dependency to fail on.
+        notificationService.create(businessId, "NEW_BOOKING", "New booking from " + req.customerName(),
+                serviceName + " — " + WHEN_FORMAT.format(req.scheduledAt()), "BOOKING", booking.getId());
 
         boolean paymentRequired = !"NONE".equals(effectivePolicy(integrations, itemPolicyOverride));
         BigDecimal amountDue = paymentRequired ? depositAmount(price, integrations, itemPolicyOverride) : null;

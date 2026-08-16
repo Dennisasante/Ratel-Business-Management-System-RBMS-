@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, ChevronDown, LogOut, KeyRound, Building2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import InstallAppButton from "@/components/InstallAppButton";
+import NotificationBell from "@/components/shell/NotificationBell";
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const { session, logout } = useAuth();
@@ -41,6 +42,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
       <div className="hidden lg:block" />
 
       <div className="flex items-center gap-3">
+        <NotificationBell />
         <InstallAppButton className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-canvas" />
         <div className="relative" ref={menuRef}>
         <button
