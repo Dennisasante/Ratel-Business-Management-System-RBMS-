@@ -32,8 +32,15 @@ export default function NotificationBell() {
 
   const refreshCount = useCallback(async () => {
     if (!session) return;
-    const { count } = await api.getUnreadNotificationCount(session.token);
-    setUnreadCount(count);
+    // Swallow failures — this runs unattended every 45s, so a lapsed session
+    // (tab left open past token expiry) shouldn't spam the console forever.
+    // The next real navigation will hit the normal login redirect anyway.
+    try {
+      const { count } = await api.getUnreadNotificationCount(session.token);
+      setUnreadCount(count);
+    } catch {
+      // ignored
+    }
   }, [session]);
 
   useEffect(() => {
@@ -55,7 +62,11 @@ export default function NotificationBell() {
     const next = !open;
     setOpen(next);
     if (next && session) {
-      setNotifications(await api.listNotifications(session.token));
+      try {
+        setNotifications(await api.listNotifications(session.token));
+      } catch {
+        // ignored — same lapsed-session reasoning as refreshCount above.
+      }
     }
   }
 
@@ -63,14 +74,22 @@ export default function NotificationBell() {
     if (!session) return;
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
-    await api.markNotificationRead(session.token, id);
+    try {
+      await api.markNotificationRead(session.token, id);
+    } catch {
+      // ignored — the optimistic update above already reflects intent.
+    }
   }
 
   async function handleMarkAllRead() {
     if (!session) return;
     setNotifications((list) => list.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
-    await api.markAllNotificationsRead(session.token);
+    try {
+      await api.markAllNotificationsRead(session.token);
+    } catch {
+      // ignored — the optimistic update above already reflects intent.
+    }
   }
 
   if (!canSee) return null;
