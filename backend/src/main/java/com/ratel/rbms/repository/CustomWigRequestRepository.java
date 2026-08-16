@@ -3,6 +3,7 @@ package com.ratel.rbms.repository;
 import com.ratel.rbms.entity.CustomWigRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,4 +21,7 @@ public interface CustomWigRequestRepository extends JpaRepository<CustomWigReque
     long countByBusinessIdAndTest(UUID businessId, boolean test);
 
     long countByTest(boolean test);
+
+    // Used by the weekly digest to report "N new custom wig requests" for the week.
+    List<CustomWigRequest> findAllByBusinessIdAndCreatedAtBetween(UUID businessId, Instant from, Instant to);
 }

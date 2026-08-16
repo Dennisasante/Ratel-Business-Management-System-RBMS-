@@ -65,4 +65,15 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     // filter — backs PlatformStatsService's "platform revenue" figure.
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.direction = :direction AND t.status = :status")
     BigDecimal sumAmountAllTime(@Param("direction") PaymentTransaction.Direction direction, @Param("status") String status);
+
+    // Same as sumAmount() but platform-wide with a date range — backs the
+    // Super Admin weekly digest's "platform revenue this week" figure.
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.direction = :direction "
+            + "AND t.status = :status AND t.createdAt >= :from AND t.createdAt < :to")
+    BigDecimal sumAmountByDateRange(
+            @Param("direction") PaymentTransaction.Direction direction,
+            @Param("status") String status,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
 }

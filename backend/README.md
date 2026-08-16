@@ -476,3 +476,25 @@ email just gets logged instead of sent.
 There's no per-Owner opt-out yet — every active Owner gets it every day.
 Worth adding a preference toggle if that turns out to matter, but not
 built now to keep this simple.
+
+## Weekly digest emails
+
+`WeeklyDigestScheduler` runs once a week (`app.weekly-digest.cron`, default
+`0 0 7 * * MON` — 7:00 AM UTC Monday, same no-offset-for-Ghana reasoning as
+the daily digest) and sends two different rollups, alongside the daily one
+above, not replacing it:
+
+- **Every active business's active Owner(s)** get a summary of the
+  just-finished calendar week (last Monday through Sunday): sales count +
+  revenue, expenses, net, new customers, low stock, plus new bookings and
+  new custom wig requests for the week — the two entity types the daily
+  digest doesn't mention at all.
+- **Every Super Admin** (every row in `platform_admins`) gets a
+  platform-wide rollup: businesses that signed up that week, total revenue
+  collected across every business that week (from the `PaymentTransaction`
+  ledger, same source `PlatformStatsService` uses — not `Sale.totalAmount`
+  alone), active/trialing/suspended business counts, and how many new help
+  requests came in that are still awaiting a response.
+
+Same `SMTP_HOST` requirement as the daily digest — without it, both rollups
+still "run" but every email gets logged instead of sent.

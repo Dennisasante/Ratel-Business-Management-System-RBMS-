@@ -3,6 +3,7 @@ package com.ratel.rbms.repository;
 import com.ratel.rbms.entity.Booking;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,4 +27,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     long countByTest(boolean test);
 
     List<Booking> findAllByBusinessIdAndTest(UUID businessId, boolean test);
+
+    // Used by the weekly digest to report "N new bookings" for the week.
+    List<Booking> findAllByBusinessIdAndCreatedAtBetween(UUID businessId, Instant from, Instant to);
 }

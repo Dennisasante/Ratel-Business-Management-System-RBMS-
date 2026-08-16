@@ -85,6 +85,12 @@ app:
     # no offset) — so the default needs no adjustment for the primary market.
     # If you deploy for businesses elsewhere, override via env var.
     cron: ${DIGEST_CRON:0 0 6 * * *}
+  weekly-digest:
+    # Runs once a week, Monday mornings — summarizes the just-finished
+    # calendar week (last Monday through Sunday) for business Owners and
+    # Super Admins alike. Default 7:00 UTC = 7:00 AM in Ghana, same
+    # no-offset reasoning as app.digest.cron above.
+    cron: ${WEEKLY_DIGEST_CRON:0 0 7 * * MON}
   billing:
     # Runs once a day, shortly after the digest — flips lapsed trials/subscriptions
     # to read-only and sends the 3-day-out renewal reminder.
