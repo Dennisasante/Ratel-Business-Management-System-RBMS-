@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Building2, History, ShieldAlert, Users, KeyRound, LogOut, Layers, CreditCard, LifeBuoy } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
+import InstallAppButton from "@/components/InstallAppButton";
 
 const NAV_ITEMS = [
   { href: "/platform", label: "Overview", icon: LayoutDashboard },
@@ -49,6 +50,7 @@ export default function PlatformShell({ children }: { children: React.ReactNode 
           </div>
           <div className="flex items-center gap-4">
             <span className="hidden text-sm text-white/80 sm:inline">{session.fullName}</span>
+            <InstallAppButton className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white" />
             <Link
               href="/platform/change-password"
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white"
