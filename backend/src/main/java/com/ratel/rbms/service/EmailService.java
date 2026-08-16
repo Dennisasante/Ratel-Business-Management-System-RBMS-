@@ -1,10 +1,14 @@
 package com.ratel.rbms.service;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+
+import java.io.UnsupportedEncodingException;
 
 /**
  * Thin wrapper around Spring's JavaMailSender, deliberately provider-agnostic —
@@ -190,13 +194,16 @@ public class EmailService {
         }
 
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromAddress);
-            message.setTo(to);
-            message.setSubject(subject);
-            message.setText(body);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message);
+            // Display name only — recipients would otherwise just see the bare
+            // no-reply address instead of "Tallia" in their inbox.
+            helper.setFrom(fromAddress, "Tallia");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(body);
             mailSender.send(message);
-        } catch (MailException e) {
+        } catch (MailException | MessagingException | UnsupportedEncodingException e) {
             // Swallow rather than propagate: a broken SMTP config shouldn't surface
             // as a 500 to the end user, or reveal account existence via error timing.
             System.err.println("[RBMS] Failed to send email to " + to + ": " + e.getMessage());
