@@ -79,6 +79,9 @@ public class BusinessIntegrationsService {
         if (req.testMode() != null) {
             integrations.setTestMode(req.testMode());
         }
+        if (req.notifyOnSale() != null) {
+            integrations.setNotifyOnSale(req.notifyOnSale());
+        }
 
         return toResponse(businessIntegrationsRepository.save(integrations));
     }
@@ -202,6 +205,7 @@ public class BusinessIntegrationsService {
                 i.getWoocommerceWebhookSecret() != null,
                 i.getWhatsappNotifyNumber(),
                 i.isTestMode(),
+                i.isNotifyOnSale(),
                 i.getPaymentGateway()
         );
     }

@@ -15,6 +15,7 @@ public record BusinessIntegrationsRequest(
         String woocommerceConsumerKey,
         String woocommerceConsumerSecret,
         String whatsappNotifyNumber,
-        Boolean testMode
+        Boolean testMode,
+        Boolean notifyOnSale
 ) {
 }

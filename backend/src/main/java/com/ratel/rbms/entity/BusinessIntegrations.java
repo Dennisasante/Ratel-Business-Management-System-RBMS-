@@ -89,6 +89,13 @@ public class BusinessIntegrations {
     @Builder.Default
     private boolean testMode = false;
 
+    // In-app "New sale" notification (the bell, Owner+Manager) — on by default,
+    // same as every other notification type having no opt-out; Owner-only to
+    // change, since it's a business-wide setting like the rest of this entity.
+    @Column(name = "notify_on_sale", nullable = false)
+    @Builder.Default
+    private boolean notifyOnSale = true;
+
     // PAYSTACK today — only value supported. Kept as an explicit field (rather
     // than inferring "which gateway" purely from which secret key is set) so a
     // future second gateway (e.g. Hubtel) has a real selector to switch on

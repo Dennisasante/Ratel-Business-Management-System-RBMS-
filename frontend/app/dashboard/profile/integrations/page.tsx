@@ -39,6 +39,8 @@ export default function IntegrationsPage() {
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [savingTestMode, setSavingTestMode] = useState(false);
+  const [notifyOnSale, setNotifyOnSale] = useState(true);
+  const [savingNotifyOnSale, setSavingNotifyOnSale] = useState(false);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -48,6 +50,7 @@ export default function IntegrationsPage() {
     setWooSiteUrl(result.woocommerceSiteUrl ?? "");
     setWhatsappNumber(result.whatsappNotifyNumber ?? "");
     setTestMode(result.testMode);
+    setNotifyOnSale(result.notifyOnSale);
   }, [session]);
 
   useEffect(() => {
@@ -159,6 +162,19 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function toggleNotifyOnSale() {
+    if (!session) return;
+    setSavingNotifyOnSale(true);
+    try {
+      const next = !notifyOnSale;
+      const result = await api.updateBusinessIntegrations(session.token, { notifyOnSale: next });
+      setData(result);
+      setNotifyOnSale(result.notifyOnSale);
+    } finally {
+      setSavingNotifyOnSale(false);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -206,6 +222,25 @@ export default function IntegrationsPage() {
             <p className="mt-1 text-xs text-ink-500">
               Turn this on while you&apos;re setting up a client&apos;s site — test bookings won&apos;t look like real business
               until you turn it back off.
+            </p>
+          </Card>
+
+          <Card className="max-w-2xl p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-ink-900">Notify on sale</h2>
+              <button
+                onClick={toggleNotifyOnSale}
+                disabled={savingNotifyOnSale}
+                className={`relative h-6 w-11 rounded-full transition disabled:opacity-50 ${notifyOnSale ? "bg-accent" : "bg-border"}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${notifyOnSale ? "left-5" : "left-0.5"}`}
+                />
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-ink-500">
+              When on, Owners and Managers get a notification (in the bell, top right) every time anyone on the team
+              records a sale. Turn it off if that gets too noisy.
             </p>
           </Card>
 

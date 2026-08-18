@@ -53,6 +53,7 @@ public class SaleService {
     private final BusinessRepository businessRepository;
     private final PaystackService paystackService;
     private final PaymentTransactionService paymentTransactionService;
+    private final NotificationService notificationService;
 
     public SaleService(
             SaleRepository saleRepository,
@@ -65,7 +66,8 @@ public class SaleService {
             BusinessIntegrationsRepository businessIntegrationsRepository,
             BusinessRepository businessRepository,
             PaystackService paystackService,
-            PaymentTransactionService paymentTransactionService
+            PaymentTransactionService paymentTransactionService,
+            NotificationService notificationService
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
@@ -78,6 +80,7 @@ public class SaleService {
         this.businessRepository = businessRepository;
         this.paystackService = paystackService;
         this.paymentTransactionService = paymentTransactionService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -209,6 +212,19 @@ public class SaleService {
                         + (customer != null ? " (" + customer.getFullName() + ")" : " (walk-in)"),
                 "SALE", sale.getId()
         );
+
+        // Fires regardless of who rang it up — the point is admin visibility
+        // into sales happening across the whole team, not just their own.
+        // Opt-out toggle lives on BusinessIntegrations (Integrations page,
+        // Owner-only); no row yet defaults to on, same as the entity default.
+        boolean notifyOnSale = businessIntegrationsRepository.findByBusinessId(businessId)
+                .map(BusinessIntegrations::isNotifyOnSale)
+                .orElse(true);
+        if (notifyOnSale) {
+            notificationService.create(businessId, "NEW_SALE", "New sale #" + sale.getSaleNumber()
+                            + (customer != null ? " (" + customer.getFullName() + ")" : " (walk-in)"),
+                    "GH₵" + runningTotal, "SALE", sale.getId());
+        }
 
         String customerName = customer != null ? customer.getFullName() : null;
 
