@@ -17,12 +17,14 @@ import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.PaymentTransaction;
+import com.ratel.rbms.entity.PendingApproval;
 import com.ratel.rbms.entity.ServiceType;
 import com.ratel.rbms.entity.StaffMember;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.PaymentMethod;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.exception.ApprovalRequiredException;
 import com.ratel.rbms.repository.BookingRepository;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
@@ -87,6 +89,7 @@ public class ServiceOrderService {
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final PaystackService paystackService;
     private final PaymentTransactionService paymentTransactionService;
+    private final ApprovalGateService approvalGateService;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -103,7 +106,8 @@ public class ServiceOrderService {
             WhatsAppLinkService whatsAppLinkService,
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PaystackService paystackService,
-            PaymentTransactionService paymentTransactionService
+            PaymentTransactionService paymentTransactionService,
+            ApprovalGateService approvalGateService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -120,6 +124,7 @@ public class ServiceOrderService {
         this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.paystackService = paystackService;
         this.paymentTransactionService = paymentTransactionService;
+        this.approvalGateService = approvalGateService;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -216,11 +221,35 @@ public class ServiceOrderService {
         ServiceOrder order = getOwned(id);
 
         if (req.price() != null) {
+            // Validate up front — for everyone, so an invalid request never
+            // gets queued for approval either.
             List<ServiceOrderItem> items = serviceOrderItemRepository.findAllByServiceOrderId(order.getId());
             if (items.size() > 1) {
                 throw new ApiException(HttpStatus.BAD_REQUEST,
                         "This order has more than one service — editing individual services isn't supported yet.");
             }
+            if (!approvalGateService.isOwner()) {
+                // A price change bundled with other field changes in the same
+                // PATCH goes to approval as one atomic request — notes/assignee/
+                // scheduling don't apply piecemeal ahead of the price.
+                UUID pendingId = approvalGateService.queueForApproval(
+                        PendingApproval.SourceType.SERVICE_ORDER, PendingApproval.ActionType.EDIT_PRICE, id, req,
+                        "Edit price on service order #" + order.getOrderNumber() + ": GH₵" + order.getPrice() + " → GH₵" + req.price());
+                throw new ApprovalRequiredException(pendingId, "Price change submitted for Owner approval.");
+            }
+        }
+
+        return doUpdate(order, req);
+    }
+
+    @Transactional
+    public ServiceOrderResponse applyApprovedUpdate(UUID id, ServiceOrderUpdateRequest req) {
+        return doUpdate(getOwned(id), req);
+    }
+
+    private ServiceOrderResponse doUpdate(ServiceOrder order, ServiceOrderUpdateRequest req) {
+        if (req.price() != null) {
+            List<ServiceOrderItem> items = serviceOrderItemRepository.findAllByServiceOrderId(order.getId());
             BigDecimal discountAmount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
             order.setPrice(req.price());
             order.setDiscountAmount(discountAmount);
@@ -484,7 +513,23 @@ public class ServiceOrderService {
         if (order.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this order to refund.");
         }
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.SERVICE_ORDER, PendingApproval.ActionType.REFUND, id, req,
+                    "Refund GH₵" + order.getAmountPaid() + " on service order #" + order.getOrderNumber());
+            throw new ApprovalRequiredException(pendingId, "Refund submitted for Owner approval.");
+        }
+        return doRefund(order, req);
+    }
 
+    // Called ONLY by PendingApprovalService.approve() — the Owner clicking
+    // Approve IS the authorization, so this bypasses the gate entirely.
+    @Transactional
+    public ServiceOrderResponse applyApprovedRefund(UUID id, RefundRequest req) {
+        return doRefund(getOwned(id), req);
+    }
+
+    private ServiceOrderResponse doRefund(ServiceOrder order, RefundRequest req) {
         BigDecimal refundedAmount = order.getAmountPaid();
         order.setPaymentStatus("REFUNDED");
         order = serviceOrderRepository.save(order);

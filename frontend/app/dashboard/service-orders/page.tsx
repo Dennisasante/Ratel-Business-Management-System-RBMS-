@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import {
   api,
   ApiError,
+  isPendingApproval,
   ServiceCatalogItem,
   ServiceOrder,
   ServiceOrderPayload,
@@ -99,6 +100,7 @@ export default function ServiceOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<ServiceOrderStatus | "">("");
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null); // `${orderId}:${action}`
 
   const [paystackConfigured, setPaystackConfigured] = useState(false);
@@ -156,7 +158,8 @@ export default function ServiceOrdersPage() {
 
   async function handleUpdate(orderId: string, payload: ServiceOrderUpdatePayload) {
     if (!session) return;
-    await api.updateServiceOrder(session.token, orderId, payload);
+    const result = await api.updateServiceOrder(session.token, orderId, payload);
+    setActionInfo(isPendingApproval(result) ? result.message : null);
     await loadOrders();
     setModal({ type: "none" });
   }
@@ -252,6 +255,7 @@ export default function ServiceOrdersPage() {
 
       <Card>
         {actionError && <p className="px-5 pt-4 text-sm text-danger">{actionError}</p>}
+        {actionInfo && <p className="px-5 pt-4 text-sm text-info">{actionInfo}</p>}
         {fetching ? (
           <TableSkeleton cols={7} />
         ) : orders.length === 0 ? (

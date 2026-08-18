@@ -11,6 +11,7 @@ import com.ratel.rbms.dto.QuoteCustomWigRequestRequest;
 import com.ratel.rbms.dto.RecordPaymentRequest;
 import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SubmitOtpRequest;
+import com.ratel.rbms.dto.UpdateFinalPriceRequest;
 import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.service.CustomWigRequestService;
@@ -69,6 +70,11 @@ public class CustomWigRequestController {
     @PatchMapping("/{id}/quote")
     public CustomWigRequestResponse quote(@PathVariable UUID id, @Valid @RequestBody QuoteCustomWigRequestRequest request) {
         return customWigRequestService.quote(id, request.finalPrice(), request.message());
+    }
+
+    @PatchMapping("/{id}/price")
+    public CustomWigRequestResponse updatePrice(@PathVariable UUID id, @Valid @RequestBody UpdateFinalPriceRequest request) {
+        return customWigRequestService.updatePrice(id, request);
     }
 
     @PatchMapping("/{id}/decline")

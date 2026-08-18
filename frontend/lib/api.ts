@@ -224,6 +224,7 @@ export interface SalePayload {
 }
 
 export interface SaleItem {
+  id: string;
   itemType: SaleItemType;
   productId: string | null;
   serviceCatalogId: string | null;
@@ -1156,6 +1157,31 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface PendingApproval {
+  id: string;
+  sourceType: "SALE" | "SERVICE_ORDER" | "CUSTOM_WIG_REQUEST";
+  sourceId: string;
+  actionType: "EDIT_PRICE" | "REFUND";
+  summary: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  requestedByName: string;
+  requestedAt: string;
+}
+
+// Shape of the 202 response a non-Owner's price edit/refund gets back instead
+// of the updated record — see ApprovalGateService/GlobalExceptionHandler on
+// the backend. Call site pattern: check isPendingApproval(result) before
+// treating the response as the updated Sale/ServiceOrder/CustomWigRequest.
+export interface PendingApprovalOutcome {
+  status: "PENDING_APPROVAL";
+  pendingApprovalId: string;
+  message: string;
+}
+
+export function isPendingApproval(result: unknown): result is PendingApprovalOutcome {
+  return !!result && typeof result === "object" && (result as { status?: string }).status === "PENDING_APPROVAL";
+}
+
 export interface OnboardingStatus {
   completed: boolean;
 }
@@ -1430,7 +1456,7 @@ export const api = {
     request<ServiceOrder>("/api/service-orders", { method: "POST", body: JSON.stringify(payload) }, token),
 
   updateServiceOrder: (token: string, id: string, payload: ServiceOrderUpdatePayload) =>
-    request<ServiceOrder>(`/api/service-orders/${id}`, { method: "PATCH", body: JSON.stringify(payload) }, token),
+    request<ServiceOrder | PendingApprovalOutcome>(`/api/service-orders/${id}`, { method: "PATCH", body: JSON.stringify(payload) }, token),
 
   updateServiceOrderStatus: (token: string, id: string, status: ServiceOrderStatus) =>
     request<ServiceOrder>(`/api/service-orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, token),
@@ -1462,7 +1488,7 @@ export const api = {
     request<ServiceOrder>(`/api/service-orders/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
 
   refundServiceOrder: (token: string, id: string, note?: string) =>
-    request<ServiceOrder>(`/api/service-orders/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
+    request<ServiceOrder | PendingApprovalOutcome>(`/api/service-orders/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
 
   listPaymentTransactions: (
     token: string,
@@ -1564,7 +1590,19 @@ export const api = {
     request<Sale>(`/api/sales/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
 
   refundSale: (token: string, id: string, note?: string) =>
-    request<Sale>(`/api/sales/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
+    request<Sale | PendingApprovalOutcome>(`/api/sales/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
+
+  updateSaleItemPrice: (
+    token: string,
+    saleId: string,
+    itemId: string,
+    payload: { unitPrice: number; discountAmount?: number; note?: string }
+  ) =>
+    request<Sale | PendingApprovalOutcome>(
+      `/api/sales/${saleId}/items/${itemId}/price`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+      token
+    ),
 
   listExpenses: (token: string) => request<Expense[]>("/api/expenses", {}, token),
 
@@ -2045,7 +2083,14 @@ export const api = {
     request<CustomWigRequest>(`/api/custom-wig-requests/${id}/record-payment`, { method: "POST", body: JSON.stringify(payload) }, token),
 
   refundCustomWigRequest: (token: string, id: string, note?: string) =>
-    request<CustomWigRequest>(`/api/custom-wig-requests/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
+    request<CustomWigRequest | PendingApprovalOutcome>(`/api/custom-wig-requests/${id}/refund`, { method: "POST", body: JSON.stringify({ note }) }, token),
+
+  updateCustomWigRequestPrice: (token: string, id: string, finalPrice: number, note?: string) =>
+    request<CustomWigRequest | PendingApprovalOutcome>(
+      `/api/custom-wig-requests/${id}/price`,
+      { method: "PATCH", body: JSON.stringify({ finalPrice, note }) },
+      token
+    ),
 
   getOnboardingStatus: (token: string) =>
     request<OnboardingStatus>("/api/users/me/onboarding-status", {}, token),
@@ -2078,6 +2123,14 @@ export const api = {
       { method: "PATCH", body: JSON.stringify({ response: responseMessage }) },
       token
     ),
+
+  listPendingApprovals: (token: string) => request<PendingApproval[]>("/api/pending-approvals", {}, token),
+
+  approvePendingApproval: (token: string, id: string, note?: string) =>
+    request<PendingApproval>(`/api/pending-approvals/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }, token),
+
+  rejectPendingApproval: (token: string, id: string, note?: string) =>
+    request<PendingApproval>(`/api/pending-approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
 };
 
 export { ApiError };

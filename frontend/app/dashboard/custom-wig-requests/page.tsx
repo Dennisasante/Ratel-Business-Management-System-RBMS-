@@ -12,6 +12,7 @@ import {
   CustomWigRequest,
   CustomWigRequestDetail,
   CustomWigRequestStatus,
+  isPendingApproval,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import UpsellBanner from "@/components/UpsellBanner";
@@ -306,6 +307,11 @@ function RequestDetailModal({
   const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [newFinalPrice, setNewFinalPrice] = useState("");
+  const [editPriceBusy, setEditPriceBusy] = useState(false);
+  const [editPriceInfo, setEditPriceInfo] = useState<string | null>(null);
+
   async function handleQuote(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -343,6 +349,26 @@ function RequestDetailModal({
       setError(err instanceof ApiError ? err.message : "Couldn't update this request.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleEditPrice(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setEditPriceInfo(null);
+    setEditPriceBusy(true);
+    try {
+      const result = await api.updateCustomWigRequestPrice(token, detail.id, Number(newFinalPrice) || 0);
+      setEditingPrice(false);
+      if (isPendingApproval(result)) {
+        setEditPriceInfo(result.message);
+      } else {
+        onChanged();
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't update the price.");
+    } finally {
+      setEditPriceBusy(false);
     }
   }
 
@@ -472,6 +498,49 @@ function RequestDetailModal({
 
         {detail.status === "DECLINED" && detail.ownerMessage && (
           <p className="rounded-lg bg-canvas p-3 text-sm text-ink-700">{detail.ownerMessage}</p>
+        )}
+
+        {detail.finalPrice != null && detail.status !== "DECLINED" && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-ink-900">Price</p>
+              {!editingPrice && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewFinalPrice(detail.finalPrice!.toFixed(2));
+                    setEditingPrice(true);
+                    setEditPriceInfo(null);
+                  }}
+                  className="text-xs font-medium text-accent-hover hover:underline"
+                >
+                  Edit price
+                </button>
+              )}
+            </div>
+            {!editingPrice ? (
+              <p className="text-sm text-ink-700">GHS {detail.finalPrice.toFixed(2)}</p>
+            ) : (
+              <form onSubmit={handleEditPrice} className="flex flex-col gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newFinalPrice}
+                  onChange={(e) => setNewFinalPrice(e.target.value)}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={editPriceBusy} className="flex-1">
+                    {editPriceBusy ? "Saving..." : "Save price"}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setEditingPrice(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            )}
+            {editPriceInfo && <p className="text-xs text-info">{editPriceInfo}</p>}
+          </div>
         )}
 
         {detail.whatsappLink && (

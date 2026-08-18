@@ -4,6 +4,7 @@ import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.RecordPaymentRequest;
 import com.ratel.rbms.dto.RefundRequest;
+import com.ratel.rbms.dto.SaleItemPriceUpdateRequest;
 import com.ratel.rbms.dto.SaleRequest;
 import com.ratel.rbms.dto.SaleResponse;
 import com.ratel.rbms.dto.SubmitOtpRequest;
@@ -83,6 +84,11 @@ public class SaleController {
     @PostMapping("/{id}/refund")
     public SaleResponse refund(@PathVariable UUID id, @RequestBody(required = false) RefundRequest request) {
         return saleService.refund(id, request != null ? request : new RefundRequest(null));
+    }
+
+    @PatchMapping("/{id}/items/{itemId}/price")
+    public SaleResponse updateItemPrice(@PathVariable UUID id, @PathVariable UUID itemId, @Valid @RequestBody SaleItemPriceUpdateRequest request) {
+        return saleService.updateItemPrice(id, itemId, request);
     }
 
     @GetMapping("/{id}/receipt")

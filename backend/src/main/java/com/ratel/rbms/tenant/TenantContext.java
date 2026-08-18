@@ -14,6 +14,7 @@ public final class TenantContext {
 
     private static final ThreadLocal<UUID> CURRENT_BUSINESS_ID = new ThreadLocal<>();
     private static final ThreadLocal<UUID> CURRENT_USER_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_ROLE = new ThreadLocal<>();
 
     private TenantContext() {
     }
@@ -45,8 +46,22 @@ public final class TenantContext {
         return CURRENT_USER_ID.get();
     }
 
+    // The business user's role (OWNER/MANAGER/SALES_PERSON/ACCOUNTANT), same
+    // string already used to build the "ROLE_" Spring Security authority —
+    // this just makes it readable from the service layer too, for checks
+    // like ApprovalGateService.isOwner() that aren't naturally expressed as
+    // a controller-level @PreAuthorize. Unset for platform-admin requests.
+    public static void setRole(String role) {
+        CURRENT_ROLE.set(role);
+    }
+
+    public static String getRole() {
+        return CURRENT_ROLE.get();
+    }
+
     public static void clear() {
         CURRENT_BUSINESS_ID.remove();
         CURRENT_USER_ID.remove();
+        CURRENT_ROLE.remove();
     }
 }

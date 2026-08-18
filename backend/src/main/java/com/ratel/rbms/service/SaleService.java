@@ -4,6 +4,8 @@ import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.RecordPaymentRequest;
 import com.ratel.rbms.dto.RefundRequest;
+import com.ratel.rbms.dto.SaleItemPricePayload;
+import com.ratel.rbms.dto.SaleItemPriceUpdateRequest;
 import com.ratel.rbms.dto.SaleItemRequest;
 import com.ratel.rbms.dto.SaleItemResponse;
 import com.ratel.rbms.dto.SaleRequest;
@@ -12,6 +14,7 @@ import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.PaymentTransaction;
+import com.ratel.rbms.entity.PendingApproval;
 import com.ratel.rbms.entity.Product;
 import com.ratel.rbms.entity.Sale;
 import com.ratel.rbms.entity.SaleItem;
@@ -22,6 +25,7 @@ import com.ratel.rbms.entity.enums.PaymentMethod;
 import com.ratel.rbms.entity.enums.SaleItemType;
 import com.ratel.rbms.dto.StockAdjustmentRequest;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.exception.ApprovalRequiredException;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.SaleItemRepository;
@@ -54,6 +58,7 @@ public class SaleService {
     private final PaystackService paystackService;
     private final PaymentTransactionService paymentTransactionService;
     private final NotificationService notificationService;
+    private final ApprovalGateService approvalGateService;
 
     public SaleService(
             SaleRepository saleRepository,
@@ -67,7 +72,8 @@ public class SaleService {
             BusinessRepository businessRepository,
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            ApprovalGateService approvalGateService
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
@@ -81,6 +87,7 @@ public class SaleService {
         this.paystackService = paystackService;
         this.paymentTransactionService = paymentTransactionService;
         this.notificationService = notificationService;
+        this.approvalGateService = approvalGateService;
     }
 
     @Transactional
@@ -420,7 +427,23 @@ public class SaleService {
         if (sale.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this sale to refund.");
         }
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.SALE, PendingApproval.ActionType.REFUND, id, req,
+                    "Refund GH₵" + sale.getAmountPaid() + " on sale #" + sale.getSaleNumber());
+            throw new ApprovalRequiredException(pendingId, "Refund submitted for Owner approval.");
+        }
+        return doRefund(sale, req);
+    }
 
+    // Called ONLY by PendingApprovalService.approve() — the Owner clicking
+    // Approve IS the authorization, so this bypasses the gate entirely.
+    @Transactional
+    public SaleResponse applyApprovedRefund(UUID id, RefundRequest req) {
+        return doRefund(getOwned(id), req);
+    }
+
+    private SaleResponse doRefund(Sale sale, RefundRequest req) {
         BigDecimal refundedAmount = sale.getAmountPaid();
         sale.setPaymentStatus("REFUNDED");
         sale = saleRepository.save(sale);
@@ -433,6 +456,58 @@ public class SaleService {
                 null, sale.getCustomerId(), null, req.note() != null && !req.note().isBlank() ? req.note() : "Refunded",
                 TenantContext.getUserId()
         );
+
+        return toResponseWithItems(sale);
+    }
+
+    // New capability — Sale.totalAmount is derived from its line items, so
+    // "editing the price" here means editing one line's unitPrice/discountAmount
+    // (not quantity — that would desync the stock-movement row already written
+    // at sale creation, a bigger separate feature) and re-summing the total.
+    // Owner-only immediate, gated for everyone else the same way refund() is.
+    @Transactional
+    public SaleResponse updateItemPrice(UUID saleId, UUID itemId, SaleItemPriceUpdateRequest req) {
+        Sale sale = getOwned(saleId);
+        SaleItem item = saleItemRepository.findByIdAndSaleId(itemId, saleId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Item not found on this sale."));
+        BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+        BigDecimal newLineTotal = req.unitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+        BigDecimal newDiscount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
+        if (newDiscount.compareTo(newLineTotal) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Discount can't exceed the line total.");
+        }
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.SALE, PendingApproval.ActionType.EDIT_PRICE, sale.getId(),
+                    new SaleItemPricePayload(itemId, req),
+                    "Edit price on \"" + item.getProductName() + "\" in sale #" + sale.getSaleNumber()
+                            + ": GH₵" + lineTotal.subtract(item.getDiscountAmount()) + " → GH₵" + newLineTotal.subtract(newDiscount));
+            throw new ApprovalRequiredException(pendingId, "Price change submitted for Owner approval.");
+        }
+        return doItemPriceUpdate(sale, item, req);
+    }
+
+    @Transactional
+    public SaleResponse applyApprovedItemPriceEdit(UUID saleId, UUID itemId, SaleItemPriceUpdateRequest req) {
+        Sale sale = getOwned(saleId);
+        SaleItem item = saleItemRepository.findByIdAndSaleId(itemId, saleId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Item not found on this sale."));
+        return doItemPriceUpdate(sale, item, req);
+    }
+
+    private SaleResponse doItemPriceUpdate(Sale sale, SaleItem item, SaleItemPriceUpdateRequest req) {
+        BigDecimal newDiscount = req.discountAmount() != null ? req.discountAmount() : BigDecimal.ZERO;
+        item.setUnitPrice(req.unitPrice());
+        item.setDiscountAmount(newDiscount);
+        item.setSubtotal(req.unitPrice().multiply(BigDecimal.valueOf(item.getQuantity())).subtract(newDiscount));
+        saleItemRepository.save(item);
+
+        List<SaleItem> items = saleItemRepository.findAllBySaleId(sale.getId());
+        BigDecimal newTotal = items.stream().map(SaleItem::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        sale.setTotalAmount(newTotal);
+        sale = saleRepository.save(sale);
+
+        activityLogService.log("Changed price on \"" + item.getProductName() + "\" in sale #" + sale.getSaleNumber(), "SALE", sale.getId());
 
         return toResponseWithItems(sale);
     }

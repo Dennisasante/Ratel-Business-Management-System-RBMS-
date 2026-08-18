@@ -21,6 +21,7 @@ import {
   CalendarCheck2,
   ArrowUpRight,
   LifeBuoy,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -75,6 +76,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
       { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
       { href: "/dashboard/team", label: "Team", icon: UserCog },
+      { href: "/dashboard/approvals", label: "Pending Approvals", icon: ShieldCheck, ownerOnly: true },
       { href: "/dashboard/activity", label: "Activity Log", icon: History },
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard, ownerOnly: true },
       { href: "/dashboard/help", label: "Help & Support", icon: LifeBuoy },

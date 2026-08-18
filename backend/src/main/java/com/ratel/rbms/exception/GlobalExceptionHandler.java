@@ -24,6 +24,18 @@ public class GlobalExceptionHandler {
         return buildResponse(ex.getStatus(), ex.getMessage());
     }
 
+    // Success-shaped, not an error — the change was queued for Owner approval
+    // instead of applied. 202 Accepted: the request was accepted, just not
+    // acted on yet. See ApprovalRequiredException's own doc comment.
+    @ExceptionHandler(ApprovalRequiredException.class)
+    public ResponseEntity<Map<String, Object>> handleApprovalRequired(ApprovalRequiredException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "PENDING_APPROVAL");
+        body.put("pendingApprovalId", ex.getPendingApprovalId());
+        body.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

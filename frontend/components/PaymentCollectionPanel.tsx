@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { CheckCircle2, RotateCcw, Smartphone } from "lucide-react";
-import { ApiError, MobileMoneyChargeResponse, MobileMoneyProvider, PaymentMethod, RecordPaymentPayload } from "@/lib/api";
+import {
+  ApiError,
+  isPendingApproval,
+  MobileMoneyChargeResponse,
+  MobileMoneyProvider,
+  PaymentMethod,
+  PendingApprovalOutcome,
+  RecordPaymentPayload,
+} from "@/lib/api";
 import Badge from "@/components/ui/Badge";
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -66,10 +74,11 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
   onChargeMobileMoney: (id: string, phone: string, provider: MobileMoneyProvider) => Promise<MobileMoneyChargeResponse>;
   onSubmitOtp: (reference: string, otp: string) => Promise<T>;
   onRecordPayment: (id: string, payload: RecordPaymentPayload) => Promise<T>;
-  onRefund: (id: string, note?: string) => Promise<T>;
+  onRefund: (id: string, note?: string) => Promise<T | PendingApprovalOutcome>;
   onChanged: (updated: T) => void;
 }) {
   const [payError, setPayError] = useState<string | null>(null);
+  const [pendingApprovalMessage, setPendingApprovalMessage] = useState<string | null>(null);
   const [markingPaid, setMarkingPaid] = useState(false);
 
   const [showMomoForm, setShowMomoForm] = useState(false);
@@ -122,9 +131,14 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
     if (!confirm("Refund this payment? This can't be undone.")) return;
     setRefunding(true);
     setPayError(null);
+    setPendingApprovalMessage(null);
     try {
-      const updated = await onRefund(id);
-      onChanged(updated);
+      const result = await onRefund(id);
+      if (isPendingApproval(result)) {
+        setPendingApprovalMessage(result.message);
+      } else {
+        onChanged(result);
+      }
     } catch (err) {
       setPayError(err instanceof ApiError ? err.message : "Couldn't process this refund.");
     } finally {
@@ -235,6 +249,7 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
       )}
 
       {payError && <p className="text-xs text-danger">{payError}</p>}
+      {pendingApprovalMessage && <p className="text-xs text-info">{pendingApprovalMessage}</p>}
 
       {collecting && (
         <div className="flex flex-col gap-2">
@@ -370,7 +385,7 @@ export default function PaymentCollectionPanel<T extends PaidLike>({
         </div>
       )}
 
-      {refundable && (
+      {refundable && !pendingApprovalMessage && (
         <button
           type="button"
           onClick={handleRefund}

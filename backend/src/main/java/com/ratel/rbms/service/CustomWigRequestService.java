@@ -15,13 +15,16 @@ import com.ratel.rbms.dto.PublicCustomWigConfigResponse;
 import com.ratel.rbms.dto.RecordPaymentRequest;
 import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SubmitCustomWigRequestRequest;
+import com.ratel.rbms.dto.UpdateFinalPriceRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.CustomItemAttribute;
 import com.ratel.rbms.entity.CustomItemAttributeOption;
 import com.ratel.rbms.entity.CustomWigRequest;
 import com.ratel.rbms.entity.PaymentTransaction;
+import com.ratel.rbms.entity.PendingApproval;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.exception.ApprovalRequiredException;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomItemAttributeOptionRepository;
@@ -75,6 +78,7 @@ public class CustomWigRequestService {
     private final PaystackService paystackService;
     private final NotificationService notificationService;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final ApprovalGateService approvalGateService;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -92,7 +96,8 @@ public class CustomWigRequestService {
             PaymentTransactionService paymentTransactionService,
             PaystackService paystackService,
             NotificationService notificationService,
-            PaymentTransactionRepository paymentTransactionRepository
+            PaymentTransactionRepository paymentTransactionRepository,
+            ApprovalGateService approvalGateService
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -110,6 +115,7 @@ public class CustomWigRequestService {
         this.paystackService = paystackService;
         this.notificationService = notificationService;
         this.paymentTransactionRepository = paymentTransactionRepository;
+        this.approvalGateService = approvalGateService;
     }
 
     // ---- Public side ----
@@ -427,7 +433,23 @@ public class CustomWigRequestService {
         if (request.getAmountPaid().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Nothing has been collected on this request to refund.");
         }
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.CUSTOM_WIG_REQUEST, PendingApproval.ActionType.REFUND, id, req,
+                    "Refund GH₵" + request.getAmountPaid() + " on custom wig request #" + request.getRequestNumber());
+            throw new ApprovalRequiredException(pendingId, "Refund submitted for Owner approval.");
+        }
+        return doRefund(request, req);
+    }
 
+    // Called ONLY by PendingApprovalService.approve() — the Owner clicking
+    // Approve IS the authorization, so this bypasses the gate entirely.
+    @Transactional
+    public CustomWigRequestResponse applyApprovedRefund(UUID id, RefundRequest req) {
+        return doRefund(getOwned(id), req);
+    }
+
+    private CustomWigRequestResponse doRefund(CustomWigRequest request, RefundRequest req) {
         BigDecimal refundedAmount = request.getAmountPaid();
         request.setPaymentStatus("REFUNDED");
         request = customWigRequestRepository.save(request);
@@ -441,6 +463,37 @@ public class CustomWigRequestService {
                 TenantContext.getUserId()
         );
 
+        return toResponse(request);
+    }
+
+    // New capability — quote()/createByStaff() only ever set finalPrice once;
+    // this lets it change afterward. Owner-only immediate, gated for everyone
+    // else the same way refund() is.
+    @Transactional
+    public CustomWigRequestResponse updatePrice(UUID id, UpdateFinalPriceRequest req) {
+        CustomWigRequest request = getOwned(id);
+        requireFinalPrice(request);
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.CUSTOM_WIG_REQUEST, PendingApproval.ActionType.EDIT_PRICE, id, req,
+                    "Edit price on custom wig request #" + request.getRequestNumber() + ": GH₵" + request.getFinalPrice() + " → GH₵" + req.finalPrice());
+            throw new ApprovalRequiredException(pendingId, "Price change submitted for Owner approval.");
+        }
+        return doPriceUpdate(request, req);
+    }
+
+    @Transactional
+    public CustomWigRequestResponse applyApprovedPriceUpdate(UUID id, UpdateFinalPriceRequest req) {
+        return doPriceUpdate(getOwned(id), req);
+    }
+
+    private CustomWigRequestResponse doPriceUpdate(CustomWigRequest request, UpdateFinalPriceRequest req) {
+        BigDecimal oldPrice = request.getFinalPrice();
+        request.setFinalPrice(req.finalPrice());
+        request = customWigRequestRepository.save(request);
+        activityLogService.log("Changed price on custom wig request #" + request.getRequestNumber()
+                        + " from GH₵" + oldPrice + " to GH₵" + req.finalPrice(),
+                "CUSTOM_WIG_REQUEST", request.getId());
         return toResponse(request);
     }
 

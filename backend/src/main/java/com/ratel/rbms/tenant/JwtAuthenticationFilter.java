@@ -68,6 +68,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 TenantContext.setUserId(userId);
                 TenantContext.setBusinessId(businessId);
+                TenantContext.setRole(role);
 
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                 var authentication = new UsernamePasswordAuthenticationToken(userId, null, authorities);
