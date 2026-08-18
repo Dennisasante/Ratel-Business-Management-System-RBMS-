@@ -229,6 +229,35 @@ public class CustomWigRequestService {
                 .toList();
     }
 
+    // ---- Super Admin side — explicit businessId (never TenantContext,
+    // which a platform-scoped request never populates) and deliberately
+    // skips the plan-feature gate above: a Super Admin needs to see this
+    // data for support regardless of the business's current plan. ----
+
+    public List<CustomWigRequestResponse> listForPlatform(UUID businessId) {
+        return customWigRequestRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    public CustomWigRequestDetailResponse getForPlatform(UUID businessId, UUID id) {
+        CustomWigRequest request = customWigRequestRepository.findByIdAndBusinessId(id, businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Custom wig request not found."));
+        String paymentMethod = paymentTransactionRepository
+                .findFirstBySourceTypeAndSourceIdAndDirectionAndStatusOrderByCreatedAtDesc(
+                        PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST, request.getId(),
+                        PaymentTransaction.Direction.INCOMING, "SUCCESS")
+                .map(PaymentTransaction::getMethod)
+                .orElse(null);
+        return new CustomWigRequestDetailResponse(
+                request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
+                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), request.getEstimatedPrice(),
+                request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
+                request.getOwnerMessage(), request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
+                paymentMethod, whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
+        );
+    }
+
     public CustomWigRequestDetailResponse get(UUID id) {
         CustomWigRequest request = getOwned(id);
         String paymentMethod = paymentTransactionRepository

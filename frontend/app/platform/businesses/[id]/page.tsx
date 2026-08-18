@@ -8,11 +8,16 @@ import { usePlatformAuth } from "@/lib/platformAuth";
 import {
   api,
   ApiError,
+  CustomWigRequest,
+  CustomWigRequestDetail,
+  Expense,
   PaymentTransaction,
   PlatformBusinessDetail,
   PlatformCustomerSummary,
   PlatformSaleSummary,
   PlatformServiceOrderSummary,
+  Sale,
+  ServiceOrder,
   SubscriptionPaymentSummary,
   SubscriptionPlan,
 } from "@/lib/api";
@@ -84,13 +89,22 @@ export default function PlatformBusinessDetailPage() {
 
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentSummary[]>([]);
 
-  const [cleanupTab, setCleanupTab] = useState<"orders" | "sales" | "customers">("orders");
+  const [cleanupTab, setCleanupTab] = useState<"orders" | "sales" | "customers" | "expenses" | "wigs">("orders");
   const [cleanupOrders, setCleanupOrders] = useState<PlatformServiceOrderSummary[]>([]);
   const [cleanupSales, setCleanupSales] = useState<PlatformSaleSummary[]>([]);
   const [cleanupCustomers, setCleanupCustomers] = useState<PlatformCustomerSummary[]>([]);
+  const [cleanupExpenses, setCleanupExpenses] = useState<Expense[]>([]);
+  const [cleanupWigRequests, setCleanupWigRequests] = useState<CustomWigRequest[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "order" | "sale" | "customer"; id: string; label: string } | null>(null);
   const [deletingRecord, setDeletingRecord] = useState(false);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
+
+  // Read-only detail views — "for support sake": tapping a row shows the
+  // full record, same shape the business's own Owner sees.
+  const [viewing, setViewing] = useState<{ type: "sale" | "order" | "wig"; id: string } | null>(null);
+  const [viewingDetail, setViewingDetail] = useState<Sale | ServiceOrder | CustomWigRequestDetail | null>(null);
+  const [viewingLoading, setViewingLoading] = useState(false);
+  const [viewingError, setViewingError] = useState<string | null>(null);
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [editingBilling, setEditingBilling] = useState(false);
@@ -159,14 +173,18 @@ export default function PlatformBusinessDetailPage() {
 
   const loadCleanupLists = useCallback(async () => {
     if (!session || !params.id) return;
-    const [orders, sales, customers] = await Promise.all([
+    const [orders, sales, customers, expenses, wigRequests] = await Promise.all([
       api.getPlatformBusinessServiceOrders(session.token, params.id),
       api.getPlatformBusinessSales(session.token, params.id),
       api.getPlatformBusinessCustomers(session.token, params.id),
+      api.getPlatformBusinessExpenses(session.token, params.id),
+      api.getPlatformBusinessCustomWigRequests(session.token, params.id),
     ]);
     setCleanupOrders(orders);
     setCleanupSales(sales);
     setCleanupCustomers(customers);
+    setCleanupExpenses(expenses);
+    setCleanupWigRequests(wigRequests);
   }, [session, params.id]);
 
   useEffect(() => {
@@ -191,6 +209,27 @@ export default function PlatformBusinessDetailPage() {
       setCleanupError(err instanceof ApiError ? err.message : "Couldn't delete this record.");
     } finally {
       setDeletingRecord(false);
+    }
+  }
+
+  async function openView(type: "sale" | "order" | "wig", id: string) {
+    if (!session || !params.id) return;
+    setViewing({ type, id });
+    setViewingDetail(null);
+    setViewingError(null);
+    setViewingLoading(true);
+    try {
+      const detail =
+        type === "sale"
+          ? await api.getPlatformSaleDetail(session.token, params.id, id)
+          : type === "order"
+          ? await api.getPlatformServiceOrderDetail(session.token, params.id, id)
+          : await api.getPlatformCustomWigRequestDetail(session.token, params.id, id);
+      setViewingDetail(detail);
+    } catch (err) {
+      setViewingError(err instanceof ApiError ? err.message : "Couldn't load this record.");
+    } finally {
+      setViewingLoading(false);
     }
   }
 
@@ -664,8 +703,8 @@ export default function PlatformBusinessDetailPage() {
                 business&apos;s own Activity feed as well as the platform audit log.
               </p>
 
-              <div className="mt-4 flex gap-1 rounded-lg bg-canvas p-1">
-                {(["orders", "sales", "customers"] as const).map((tab) => (
+              <div className="mt-4 flex flex-wrap gap-1 rounded-lg bg-canvas p-1">
+                {(["orders", "sales", "customers", "expenses", "wigs"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setCleanupTab(tab)}
@@ -673,7 +712,15 @@ export default function PlatformBusinessDetailPage() {
                       cleanupTab === tab ? "bg-surface text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-700"
                     }`}
                   >
-                    {tab === "orders" ? `Service orders (${cleanupOrders.length})` : tab === "sales" ? `Sales (${cleanupSales.length})` : `Customers (${cleanupCustomers.length})`}
+                    {tab === "orders"
+                      ? `Service orders (${cleanupOrders.length})`
+                      : tab === "sales"
+                      ? `Sales (${cleanupSales.length})`
+                      : tab === "customers"
+                      ? `Customers (${cleanupCustomers.length})`
+                      : tab === "expenses"
+                      ? `Expenses (${cleanupExpenses.length})`
+                      : `Custom wig requests (${cleanupWigRequests.length})`}
                   </button>
                 ))}
               </div>
@@ -705,12 +752,20 @@ export default function PlatformBusinessDetailPage() {
                             </Td>
                             <Td className="tabular text-right">GH₵{o.price.toFixed(2)}</Td>
                             <Td className="text-right">
-                              <button
-                                onClick={() => setConfirmDelete({ type: "order", id: o.id, label: `service order #${o.orderNumber}` })}
-                                className="text-xs font-medium text-danger hover:underline"
-                              >
-                                Delete
-                              </button>
+                              <div className="flex justify-end gap-3">
+                                <button
+                                  onClick={() => openView("order", o.id)}
+                                  className="text-xs font-medium text-accent-hover hover:underline"
+                                >
+                                  View
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete({ type: "order", id: o.id, label: `service order #${o.orderNumber}` })}
+                                  className="text-xs font-medium text-danger hover:underline"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </Td>
                           </Tr>
                         ))}
@@ -741,12 +796,20 @@ export default function PlatformBusinessDetailPage() {
                             <Td className="text-ink-500">{s.paymentStatus}</Td>
                             <Td className="tabular text-right">GH₵{s.totalAmount.toFixed(2)}</Td>
                             <Td className="text-right">
-                              <button
-                                onClick={() => setConfirmDelete({ type: "sale", id: s.id, label: `sale #${s.saleNumber}` })}
-                                className="text-xs font-medium text-danger hover:underline"
-                              >
-                                Delete
-                              </button>
+                              <div className="flex justify-end gap-3">
+                                <button
+                                  onClick={() => openView("sale", s.id)}
+                                  className="text-xs font-medium text-accent-hover hover:underline"
+                                >
+                                  View
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete({ type: "sale", id: s.id, label: `sale #${s.saleNumber}` })}
+                                  className="text-xs font-medium text-danger hover:underline"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </Td>
                           </Tr>
                         ))}
@@ -780,6 +843,71 @@ export default function PlatformBusinessDetailPage() {
                                 className="text-xs font-medium text-danger hover:underline"
                               >
                                 Delete
+                              </button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                )}
+
+                {cleanupTab === "expenses" && (
+                  cleanupExpenses.length === 0 ? (
+                    <p className="py-4 text-sm text-ink-500">No expenses.</p>
+                  ) : (
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>Category</Th>
+                          <Th>Description</Th>
+                          <Th>Recorded by</Th>
+                          <Th>Date</Th>
+                          <Th className="text-right">Amount</Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {cleanupExpenses.map((e) => (
+                          <Tr key={e.id}>
+                            <Td className="font-medium capitalize">{e.category.toLowerCase()}</Td>
+                            <Td className="text-ink-500">{e.description ?? "—"}</Td>
+                            <Td className="text-ink-500">{e.recordedByName}</Td>
+                            <Td className="text-ink-500">{new Date(e.expenseDate).toLocaleDateString()}</Td>
+                            <Td className="tabular text-right">GH₵{e.amount.toFixed(2)}</Td>
+                          </Tr>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                )}
+
+                {cleanupTab === "wigs" && (
+                  cleanupWigRequests.length === 0 ? (
+                    <p className="py-4 text-sm text-ink-500">No custom wig requests.</p>
+                  ) : (
+                    <Table>
+                      <THead>
+                        <Tr>
+                          <Th>Request</Th>
+                          <Th>Customer</Th>
+                          <Th>Status</Th>
+                          <Th className="text-right">Price</Th>
+                          <Th></Th>
+                        </Tr>
+                      </THead>
+                      <TBody>
+                        {cleanupWigRequests.map((w) => (
+                          <Tr key={w.id}>
+                            <Td className="tabular font-medium">#{w.requestNumber}</Td>
+                            <Td className="text-ink-500">{w.customerName}</Td>
+                            <Td className="text-ink-500">{w.status}</Td>
+                            <Td className="tabular text-right">GH₵{(w.finalPrice ?? w.estimatedPrice).toFixed(2)}</Td>
+                            <Td className="text-right">
+                              <button
+                                onClick={() => openView("wig", w.id)}
+                                className="text-xs font-medium text-accent-hover hover:underline"
+                              >
+                                View
                               </button>
                             </Td>
                           </Tr>
@@ -837,6 +965,31 @@ export default function PlatformBusinessDetailPage() {
         </Modal>
       )}
 
+      {viewing && (
+        <Modal
+          title={
+            viewing.type === "sale"
+              ? `Sale #${(viewingDetail as Sale | null)?.saleNumber ?? ""}`
+              : viewing.type === "order"
+              ? `Service order #${(viewingDetail as ServiceOrder | null)?.orderNumber ?? ""}`
+              : `Wig request #${(viewingDetail as CustomWigRequestDetail | null)?.requestNumber ?? ""}`
+          }
+          onClose={() => setViewing(null)}
+        >
+          {viewingLoading ? (
+            <p className="text-sm text-ink-500">Loading...</p>
+          ) : viewingError ? (
+            <p className="text-sm text-danger">{viewingError}</p>
+          ) : !viewingDetail ? null : viewing.type === "sale" ? (
+            <SaleDetailView sale={viewingDetail as Sale} />
+          ) : viewing.type === "order" ? (
+            <ServiceOrderDetailView order={viewingDetail as ServiceOrder} />
+          ) : (
+            <CustomWigRequestDetailView request={viewingDetail as CustomWigRequestDetail} />
+          )}
+        </Modal>
+      )}
+
       {resetResult && (
         <Modal title={`New password for ${resetResult.name}`} onClose={() => setResetResult(null)}>
           <p className="text-sm text-ink-700">
@@ -848,5 +1001,154 @@ export default function PlatformBusinessDetailPage() {
         </Modal>
       )}
     </PlatformShell>
+  );
+}
+
+function SaleDetailView({ sale }: { sale: Sale }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-ink-500">{new Date(sale.createdAt).toLocaleString()}</span>
+        <Badge tone="neutral">{sale.paymentMethod.replaceAll("_", " ")}</Badge>
+      </div>
+      <div className="text-sm">
+        <p className="font-medium text-ink-900">{sale.customerName ?? "Walk-in"}</p>
+        <p className="text-ink-500">Cashier: {sale.cashierName}</p>
+      </div>
+      <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+        {sale.items.map((item) => (
+          <div key={item.id} className="flex items-center justify-between text-sm">
+            <span className="text-ink-700">
+              {item.productName} × {item.quantity}
+              {item.gift && <span className="ml-1.5 text-xs font-medium text-accent-hover">(gift)</span>}
+            </span>
+            <span className="tabular text-ink-500">GH₵{item.subtotal.toFixed(2)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Total</span>
+          <span className="tabular">GH₵{sale.totalAmount.toFixed(2)}</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm">
+        <span className="text-ink-700">Payment</span>
+        <div className="flex items-center gap-2">
+          <Badge tone={sale.paymentStatus === "PAID" ? "success" : sale.paymentStatus === "REFUNDED" ? "violet" : "neutral"}>
+            {sale.paymentStatus}
+          </Badge>
+          <span className="tabular text-ink-500">GH₵{sale.amountPaid.toFixed(2)} paid</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ServiceOrderDetailView({ order }: { order: ServiceOrder }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between text-sm">
+        <Badge tone="neutral">{order.status.replaceAll("_", " ")}</Badge>
+        <span className="text-ink-500">{new Date(order.receivedAt).toLocaleString()}</span>
+      </div>
+      <div className="text-sm">
+        <p className="font-medium text-ink-900">{order.customerName ?? "Walk-in"}</p>
+        <p className="text-ink-500">Logged by {order.createdByName}</p>
+        {order.assignedStaffName && <p className="text-ink-500">Assigned to {order.assignedStaffName}</p>}
+      </div>
+      <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+        {order.items.map((item) => (
+          <div key={item.id} className="flex items-center justify-between text-sm">
+            <span className="text-ink-700">{item.serviceName}</span>
+            <span className="tabular text-ink-500">GH₵{item.price.toFixed(2)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Total</span>
+          <span className="tabular">GH₵{order.price.toFixed(2)}</span>
+        </div>
+      </div>
+      {order.notes && (
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">Notes</p>
+          <p className="text-sm text-ink-700">{order.notes}</p>
+        </div>
+      )}
+      <div className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm">
+        <span className="text-ink-700">Payment</span>
+        <div className="flex items-center gap-2">
+          <Badge tone={order.paymentStatus === "PAID" ? "success" : order.paymentStatus === "REFUNDED" ? "violet" : "neutral"}>
+            {order.paymentStatus}
+          </Badge>
+          <span className="tabular text-ink-500">GH₵{order.amountPaid.toFixed(2)} paid</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const WIG_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  MOBILE_MONEY_DIRECT: "Direct Mobile Money",
+  MOBILE_MONEY: "Online Payment",
+};
+
+function CustomWigRequestDetailView({ request }: { request: CustomWigRequestDetail }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between text-sm">
+        <Badge tone="neutral">{request.status}</Badge>
+        <span className="text-ink-500">{new Date(request.createdAt).toLocaleString()}</span>
+      </div>
+      <div className="text-sm">
+        <p className="font-medium text-ink-900">{request.customerName}</p>
+        {request.customerEmail && <p className="text-ink-500">{request.customerEmail}</p>}
+        {request.customerWhatsapp && <p className="text-ink-500">{request.customerWhatsapp}</p>}
+        {request.source && <p className="text-xs text-ink-400">via {request.source}</p>}
+      </div>
+      {request.description && (
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
+          <p className="text-sm text-ink-700">{request.description}</p>
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+        {request.selections.map((sel, i) => (
+          <div key={i} className="flex items-center justify-between text-sm">
+            <span className="text-ink-700">
+              {sel.attributeName}: {sel.optionLabel}
+            </span>
+            <span className="tabular text-ink-500">+{sel.priceModifier.toFixed(2)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Estimated</span>
+          <span className="tabular">GHS {request.estimatedPrice.toFixed(2)}</span>
+        </div>
+        {request.finalPrice != null && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-ink-700">Final price</span>
+            <span className="tabular font-medium">GHS {request.finalPrice.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+      {request.notes && (
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">Notes</p>
+          <p className="text-sm text-ink-700">{request.notes}</p>
+        </div>
+      )}
+      <div className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm">
+        <span className="text-ink-700">Payment</span>
+        <div className="flex items-center gap-2">
+          <Badge tone={request.paymentStatus === "PAID" ? "success" : request.paymentStatus === "REFUNDED" ? "violet" : "neutral"}>
+            {request.paymentStatus}
+          </Badge>
+          <span className="tabular text-ink-500">
+            GHS {request.amountPaid.toFixed(2)} paid
+            {request.paymentMethod ? ` via ${WIG_PAYMENT_METHOD_LABELS[request.paymentMethod] ?? request.paymentMethod}` : ""}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

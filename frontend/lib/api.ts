@@ -1817,6 +1817,24 @@ export const api = {
   deletePlatformCustomer: (token: string, businessId: string, customerId: string) =>
     request<void>(`/api/platform/businesses/${businessId}/customers/${customerId}`, { method: "DELETE" }, token),
 
+  getPlatformBusinessExpenses: (token: string, id: string) =>
+    request<Expense[]>(`/api/platform/businesses/${id}/expenses`, {}, token),
+
+  getPlatformBusinessCustomWigRequests: (token: string, id: string) =>
+    request<CustomWigRequest[]>(`/api/platform/businesses/${id}/custom-wig-requests`, {}, token),
+
+  // Full-record detail views — "for support sake": tapping a Sale/Service
+  // Order/Custom Wig Request row shows everything the business's own Owner
+  // would see, reusing the same response shapes as the owner-side endpoints.
+  getPlatformSaleDetail: (token: string, businessId: string, saleId: string) =>
+    request<Sale>(`/api/platform/businesses/${businessId}/sales/${saleId}`, {}, token),
+
+  getPlatformServiceOrderDetail: (token: string, businessId: string, orderId: string) =>
+    request<ServiceOrder>(`/api/platform/businesses/${businessId}/service-orders/${orderId}`, {}, token),
+
+  getPlatformCustomWigRequestDetail: (token: string, businessId: string, requestId: string) =>
+    request<CustomWigRequestDetail>(`/api/platform/businesses/${businessId}/custom-wig-requests/${requestId}`, {}, token),
+
   setPlatformBusinessStatus: (token: string, id: string, active: boolean) =>
     request<PlatformBusinessSummary>(
       `/api/platform/businesses/${id}/status`,

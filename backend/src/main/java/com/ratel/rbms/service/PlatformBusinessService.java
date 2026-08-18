@@ -1,6 +1,9 @@
 package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.AdminResetPasswordResponse;
+import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
+import com.ratel.rbms.dto.CustomWigRequestResponse;
+import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
@@ -8,6 +11,8 @@ import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
 import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
 import com.ratel.rbms.dto.PlatformServiceOrderSummaryResponse;
+import com.ratel.rbms.dto.SaleResponse;
+import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.SubscriptionPaymentResponse;
 import com.ratel.rbms.dto.UserResponse;
 import com.ratel.rbms.entity.Business;
@@ -235,6 +240,51 @@ public class PlatformBusinessService {
         return customerRepository.findAllByBusinessIdOrderByFullNameAsc(businessId).stream()
                 .map(c -> new PlatformCustomerSummaryResponse(c.getId(), c.getFullName(), c.getPhone(), c.getEmail(), c.getCreatedAt()))
                 .toList();
+    }
+
+    public List<ExpenseResponse> listExpenses(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        Map<UUID, String> userNames = new HashMap<>();
+        for (User u : userRepository.findAllByBusinessId(businessId)) {
+            userNames.put(u.getId(), u.getFullName());
+        }
+        return expenseRepository.findAllByBusinessIdOrderByExpenseDateDesc(businessId).stream()
+                .map(e -> ExpenseResponse.from(e, e.getRecordedBy() != null ? userNames.getOrDefault(e.getRecordedBy(), "Unknown") : "System"))
+                .toList();
+    }
+
+    public List<CustomWigRequestResponse> listCustomWigRequests(UUID businessId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return customWigRequestService.listForPlatform(businessId);
+    }
+
+    // Full-detail single-record fetches for the Super Admin support view —
+    // reuse the same domain-service response construction via the
+    // TenantContext-stamping trick already used by verifyPaymentTransaction()
+    // above, since SaleService/ServiceOrderService.get() read
+    // TenantContext.getBusinessId() internally and a Super Admin's platform
+    // token never carries one. CustomWigRequestService has its own
+    // feature-gate-free variant instead (see getForPlatform()'s own comment).
+    public SaleResponse getSaleDetail(UUID businessId, UUID saleId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        TenantContext.setBusinessId(businessId);
+        return saleService.get(saleId);
+    }
+
+    public ServiceOrderResponse getServiceOrderDetail(UUID businessId, UUID orderId) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        TenantContext.setBusinessId(businessId);
+        return serviceOrderService.get(orderId);
+    }
+
+    public CustomWigRequestDetailResponse getCustomWigRequestDetail(UUID businessId, UUID id) {
+        businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        return customWigRequestService.getForPlatform(businessId, id);
     }
 
     private Map<UUID, String> customerNamesFor(UUID businessId) {
