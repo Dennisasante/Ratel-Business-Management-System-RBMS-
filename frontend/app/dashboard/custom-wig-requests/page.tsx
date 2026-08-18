@@ -54,6 +54,12 @@ const PAYMENT_STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "d
   REFUNDED: "violet",
 };
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  MOBILE_MONEY_DIRECT: "Direct Mobile Money",
+  MOBILE_MONEY: "Online Payment",
+};
+
 export default function CustomWigRequestsPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -348,6 +354,13 @@ function RequestDetailModal({
           {detail.source && <p className="text-xs text-ink-400">via {detail.source}</p>}
         </div>
 
+        {detail.description && (
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
+            <p className="text-sm text-ink-700">{detail.description}</p>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
           {detail.selections.map((sel, i) => (
             <div key={i} className="flex items-center justify-between text-sm">
@@ -362,6 +375,12 @@ function RequestDetailModal({
             <span>Estimated</span>
             <span className="tabular">GHS {detail.estimatedPrice.toFixed(2)}</span>
           </div>
+          {detail.amountPaid > 0 && (
+            <div className="flex items-center justify-between text-sm text-ink-500">
+              <span>Paid{detail.paymentMethod ? ` via ${PAYMENT_METHOD_LABELS[detail.paymentMethod] ?? detail.paymentMethod}` : ""}</span>
+              <span className="tabular">GHS {detail.amountPaid.toFixed(2)}</span>
+            </div>
+          )}
         </div>
 
         {detail.inspirationPhotoUrl && (

@@ -22,6 +22,7 @@ public record CustomWigRequestDetailResponse(
         String paymentStatus,
         BigDecimal amountPaid,
         BigDecimal balanceDue,
+        String paymentMethod,
         String whatsappLink,
         String source,
         Instant createdAt

@@ -727,6 +727,7 @@ export interface BusinessIntegrations {
   woocommerceWebhookRegistered: boolean;
   whatsappNotifyNumber: string | null;
   testMode: boolean;
+  notifyOnSale: boolean;
 }
 
 // Every field: undefined/omitted = leave unchanged, "" = clear, else = set.
@@ -738,6 +739,7 @@ export interface BusinessIntegrationsPayload {
   woocommerceConsumerSecret?: string;
   whatsappNotifyNumber?: string;
   testMode?: boolean;
+  notifyOnSale?: boolean;
 }
 
 export interface BlackoutDate {
@@ -990,6 +992,7 @@ export interface CustomWigRequestDetail {
   paymentStatus: string;
   amountPaid: number;
   balanceDue: number | null;
+  paymentMethod: PaymentMethod | null;
   whatsappLink: string | null;
   source: string | null;
   createdAt: string;

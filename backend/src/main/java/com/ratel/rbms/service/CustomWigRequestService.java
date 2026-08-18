@@ -27,6 +27,7 @@ import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomItemAttributeOptionRepository;
 import com.ratel.rbms.repository.CustomItemAttributeRepository;
 import com.ratel.rbms.repository.CustomWigRequestRepository;
+import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -73,6 +74,7 @@ public class CustomWigRequestService {
     private final PaymentTransactionService paymentTransactionService;
     private final PaystackService paystackService;
     private final NotificationService notificationService;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -89,7 +91,8 @@ public class CustomWigRequestService {
             @Value("${app.upload-dir}") String uploadDir,
             PaymentTransactionService paymentTransactionService,
             PaystackService paystackService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            PaymentTransactionRepository paymentTransactionRepository
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -106,6 +109,7 @@ public class CustomWigRequestService {
         this.paymentTransactionService = paymentTransactionService;
         this.paystackService = paystackService;
         this.notificationService = notificationService;
+        this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
     // ---- Public side ----
@@ -221,12 +225,18 @@ public class CustomWigRequestService {
 
     public CustomWigRequestDetailResponse get(UUID id) {
         CustomWigRequest request = getOwned(id);
+        String paymentMethod = paymentTransactionRepository
+                .findFirstBySourceTypeAndSourceIdAndDirectionAndStatusOrderByCreatedAtDesc(
+                        PaymentTransaction.SourceType.CUSTOM_WIG_REQUEST, request.getId(),
+                        PaymentTransaction.Direction.INCOMING, "SUCCESS")
+                .map(PaymentTransaction::getMethod)
+                .orElse(null);
         return new CustomWigRequestDetailResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
                 request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), request.getEstimatedPrice(),
                 request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
                 request.getOwnerMessage(), request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
-                whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
+                paymentMethod, whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
     }
 

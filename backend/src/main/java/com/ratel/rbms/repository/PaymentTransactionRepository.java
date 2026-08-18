@@ -76,4 +76,15 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("from") Instant from,
             @Param("to") Instant to
     );
+
+    // "How was this most recently paid?" for a single source record — backs
+    // CustomWigRequestDetailResponse.paymentMethod. Deliberately not a column
+    // on CustomWigRequest itself (that would just be a copy of what the
+    // ledger already knows, and could drift from it).
+    Optional<PaymentTransaction> findFirstBySourceTypeAndSourceIdAndDirectionAndStatusOrderByCreatedAtDesc(
+            PaymentTransaction.SourceType sourceType,
+            UUID sourceId,
+            PaymentTransaction.Direction direction,
+            String status
+    );
 }
