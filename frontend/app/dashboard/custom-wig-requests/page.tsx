@@ -197,8 +197,15 @@ export default function CustomWigRequestsPage() {
                         </button>
                       </Td>
                       <Td className="text-ink-500">
-                        {r.customerName}
-                        {r.source && <span className="ml-1.5 text-xs text-ink-400">via {r.source}</span>}
+                        <span>
+                          {r.customerName}
+                          {r.source && <span className="ml-1.5 text-xs text-ink-400">via {r.source}</span>}
+                        </span>
+                        {r.description && (
+                          <p className="mt-0.5 max-w-xs truncate text-xs text-ink-400" title={r.description}>
+                            {r.description}
+                          </p>
+                        )}
                       </Td>
                       <Td className="tabular font-medium">GHS {r.estimatedPrice.toFixed(2)}</Td>
                       <Td>
