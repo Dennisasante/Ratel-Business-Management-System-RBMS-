@@ -248,8 +248,12 @@ public class CustomWigRequestService {
     // immediately rather than starting the SUBMITTED->QUOTED review pipeline
     // — the price is already agreed the moment staff typed it in, same
     // spirit as a Sale or Service Order being recorded already-priced.
-    // Deliberately doesn't send the "new request" notification to the
-    // business's own contact email — staff already know, they just typed it in.
+    // Deliberately doesn't send the "new request" EMAIL to the business's own
+    // contact address — staff already know, they just typed it in. The in-app
+    // bell notification still fires though: the point there is team-wide
+    // visibility (Owner/Manager knowing a request landed, however it arrived),
+    // not "tell the person who already knows" — same reasoning as the sale
+    // notification firing regardless of who rang up the sale.
     @Transactional
     public CustomWigRequestResponse createByStaff(CreateStaffCustomWigRequestRequest req, MultipartFile photo) {
         UUID businessId = TenantContext.getBusinessId();
@@ -290,14 +294,16 @@ public class CustomWigRequestService {
                 "CUSTOM_WIG_REQUEST", request.getId()
         );
 
-        if (request.getCustomerEmail() != null) {
-            Business business = businessRepository.findById(businessId).orElse(null);
-            if (business != null) {
-                emailService.sendCustomWigRequestReceived(
-                        request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), business.getName(),
-                        business.getCurrency() + " " + req.price().toPlainString()
-                );
-            }
+        Business business = businessRepository.findById(businessId).orElse(null);
+        String estimateLabel = (business != null ? business.getCurrency() : "GHS") + " " + req.price().toPlainString();
+        notificationService.create(businessId, "NEW_CUSTOM_WIG_REQUEST", "New custom wig request from " + request.getCustomerName(),
+                estimateLabel + " estimate", "CUSTOM_WIG_REQUEST", request.getId());
+
+        if (request.getCustomerEmail() != null && business != null) {
+            emailService.sendCustomWigRequestReceived(
+                    request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), business.getName(),
+                    estimateLabel
+            );
         }
 
         return toResponse(request);
