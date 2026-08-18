@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, Customer, CustomerPayload } from "@/lib/api";
+import { api, ApiError, Customer, CustomerPayload } from "@/lib/api";
 import Modal from "@/components/Modal";
 import CustomerForm from "@/components/CustomerForm";
 
@@ -25,6 +25,7 @@ export default function CustomerPicker({ token, onSelect, placeholder = "Search 
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,25 +71,50 @@ export default function CustomerPicker({ token, onSelect, placeholder = "Search 
   }
 
   async function handleAddCustomer(payload: CustomerPayload) {
-    const customer = await api.createCustomer(token, payload);
-    setShowAddModal(false);
-    pick(customer);
+    try {
+      const customer = await api.createCustomer(token, payload);
+      setShowAddModal(false);
+      setDuplicateNotice(null);
+      pick(customer);
+    } catch (err) {
+      // A phone number already on file — rather than a dead-end error, find
+      // that existing customer and select them instead of creating a
+      // duplicate. Most of the time this is exactly what staff wanted anyway
+      // (they just didn't search for the name first).
+      if (err instanceof ApiError && err.status === 409 && payload.phone) {
+        const matches = await api.listCustomers(token, { search: payload.phone });
+        const existing = matches.find((c) => c.phone === payload.phone);
+        if (existing) {
+          setShowAddModal(false);
+          setDuplicateNotice(`Already had "${existing.fullName}" on file with that number — selected them instead.`);
+          pick(existing);
+          return;
+        }
+      }
+      throw err;
+    }
   }
 
   if (selected) {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink-900">{selected.fullName}</p>
-          {selected.phone && <p className="truncate text-xs text-ink-500">{selected.phone}</p>}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-ink-900">{selected.fullName}</p>
+            {selected.phone && <p className="truncate text-xs text-ink-500">{selected.phone}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSelected(null);
+              setDuplicateNotice(null);
+            }}
+            className="shrink-0 text-xs font-medium text-accent-hover hover:underline"
+          >
+            Change
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setSelected(null)}
-          className="shrink-0 text-xs font-medium text-accent-hover hover:underline"
-        >
-          Change
-        </button>
+        {duplicateNotice && <p className="text-xs text-ink-500">{duplicateNotice}</p>}
       </div>
     );
   }

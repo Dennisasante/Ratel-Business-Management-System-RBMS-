@@ -77,8 +77,15 @@ public class CustomerService {
     }
 
     public CustomerResponse create(CustomerRequest req) {
+        UUID businessId = TenantContext.getBusinessId();
+        if (req.phone() != null && !req.phone().isBlank()) {
+            customerRepository.findFirstByBusinessIdAndPhone(businessId, req.phone()).ifPresent(existing -> {
+                throw new ApiException(HttpStatus.CONFLICT,
+                        "A customer named \"" + existing.getFullName() + "\" already uses this phone number.");
+            });
+        }
         Customer customer = Customer.builder()
-                .businessId(TenantContext.getBusinessId())
+                .businessId(businessId)
                 .fullName(req.fullName())
                 .phone(req.phone())
                 .email(req.email())
