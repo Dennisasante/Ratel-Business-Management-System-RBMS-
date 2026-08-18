@@ -141,7 +141,7 @@
 
   var POWERED_BY =
     '<div class="rbw-poweredby">' +
-    '<img src="' + apiBase + '/branding/ratel-icon.png" alt="" width="14" height="14" />' +
+    '<img src="' + apiBase + '/branding/tallia-icon-mark.svg" alt="" width="14" height="14" />' +
     "Powered by Ratel Systems</div>";
 
   function render(html) {

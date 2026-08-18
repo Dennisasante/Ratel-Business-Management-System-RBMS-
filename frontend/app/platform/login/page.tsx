@@ -34,7 +34,7 @@ export default function PlatformLoginPage() {
   }
 
   return (
-    <PlatformAuthShell title="Super Admin" subtitle="Sign in to manage the Ratel platform.">
+    <PlatformAuthShell title="Super Admin" subtitle="Sign in to manage the Tallia platform.">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label className={DARK_LABEL_CLASS}>Email</label>

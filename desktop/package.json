@@ -1,7 +1,7 @@
 {
   "name": "ratel-desktop",
   "version": "1.0.0",
-  "description": "Ratel RBMS desktop shell — a lightweight installable/portable wrapper around the hosted web app.",
+  "description": "Tallia desktop shell — a lightweight installable/portable wrapper around the hosted web app.",
   "main": "main.js",
   "author": "Ratel Systems",
   "private": true,
@@ -15,7 +15,7 @@
   },
   "build": {
     "appId": "com.ratel.rbms.desktop",
-    "productName": "Ratel RBMS",
+    "productName": "Tallia",
     "directories": {
       "output": "release"
     },
@@ -34,12 +34,12 @@
       "icon": "assets/icon.ico"
     },
     "portable": {
-      "artifactName": "RatelRBMS-Portable-${version}.exe"
+      "artifactName": "Tallia-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "RatelRBMS-Setup-${version}.exe"
+      "artifactName": "Tallia-Setup-${version}.exe"
     }
   }
 }

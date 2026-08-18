@@ -6,7 +6,7 @@ export default function PoweredByRatel({ className = "", iconSize = 14 }: { clas
     <div className={`flex items-center gap-1.5 ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/branding/ratel-icon.png"
+        src="/branding/tallia-icon-mark.svg"
         alt=""
         width={iconSize}
         height={iconSize}

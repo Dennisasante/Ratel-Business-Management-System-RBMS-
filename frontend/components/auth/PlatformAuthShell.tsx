@@ -23,7 +23,7 @@ export default function PlatformAuthShell({
       <div className="reveal is-visible w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2 text-sidebar-text-active">
           <ShieldCheck size={20} />
-          <span className="text-sm font-semibold tracking-wide">RATEL PLATFORM</span>
+          <span className="text-sm font-semibold tracking-wide">TALLIA PLATFORM</span>
         </div>
 
         <div className="rounded-2xl border border-sidebar-border bg-[#20242E] p-8 shadow-panel">

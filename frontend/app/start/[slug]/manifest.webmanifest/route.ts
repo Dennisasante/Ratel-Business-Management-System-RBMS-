@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
 
 export async function GET(_request: Request, { params }: { params: { slug: string } }) {
-  let businessName = "Ratel";
+  let businessName = "Tallia";
   try {
     const res = await fetch(`${API_BASE}/api/public/start/by-slug/${params.slug}`, { cache: "no-store" });
     if (res.ok) {
@@ -26,7 +26,7 @@ export async function GET(_request: Request, { params }: { params: { slug: strin
     {
       name: businessName,
       short_name: businessName,
-      description: `${businessName} on Ratel.`,
+      description: `${businessName} on Tallia.`,
       start_url: `/start/${params.slug}`,
       scope: `/start/${params.slug}`,
       display: "standalone",

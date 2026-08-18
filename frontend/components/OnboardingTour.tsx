@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 const STEPS: { icon: typeof Sparkles; title: string; body: string }[] = [
   {
     icon: Sparkles,
-    title: "Welcome to Ratel",
+    title: "Welcome to Tallia",
     body: "A quick look at where everything lives, so you're not hunting for it on your first real day.",
   },
   {

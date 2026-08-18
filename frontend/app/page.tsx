@@ -44,7 +44,7 @@ const FEATURES = [
   { icon: BarChart3, title: "Reports", desc: "Revenue, expenses, and profit — for today, this month, or any range." },
   { icon: MessageCircle, title: "WhatsApp Built In", desc: "One-tap links to message customers and staff — no extra app to juggle." },
   { icon: Monitor, title: "Runs Everywhere", desc: "A desktop app for the shop computer, or install it on any phone or tablet." },
-  { icon: ShieldCheck, title: "Yours Alone", desc: "Your data is fully isolated from every other business on Ratel." },
+  { icon: ShieldCheck, title: "Yours Alone", desc: "Your data is fully isolated from every other business on Tallia." },
 ];
 
 const MARQUEE_ITEMS = [
@@ -81,8 +81,8 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/ratel-icon.png" alt="" width={28} height={28} />
-            <span className="text-base font-semibold tracking-tight text-ink-900">Ratel Systems</span>
+            <img src="/branding/tallia-icon-mark.svg" alt="" width={28} height={28} />
+            <span className="text-base font-semibold tracking-tight text-ink-900">Tallia</span>
           </div>
           <nav className="flex items-center gap-2 sm:gap-3">
             <Link
@@ -349,7 +349,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 sm:flex-row">
           <div className="flex items-center gap-2 text-ink-500">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/ratel-icon.png" alt="" width={18} height={18} />
+            <img src="/branding/tallia-icon-mark.svg" alt="" width={18} height={18} />
             <span className="text-xs">Powered by Ratel Systems</span>
           </div>
           <p className="text-xs text-ink-300">&copy; {new Date().getFullYear()} Ratel Systems. All rights reserved.</p>

@@ -189,7 +189,7 @@ export default function IntegrationsPage() {
 
       <PageHeader
         title="Integrations"
-        subtitle="Your own Paystack and WooCommerce credentials — separate from Ratel's own billing, this is how your customers pay you directly."
+        subtitle="Your own Paystack and WooCommerce credentials — separate from Tallia's own billing, this is how your customers pay you directly."
       />
 
       {fetching || !data ? (
@@ -248,7 +248,7 @@ export default function IntegrationsPage() {
             <h2 className="text-base font-semibold text-ink-900">Paystack</h2>
             <p className="mt-1 text-xs text-ink-500">
               Your own Paystack account (Settings → API Keys &amp; Webhooks) — your customers pay you directly through
-              these, separate from your Ratel subscription.
+              these, separate from your Tallia subscription.
             </p>
 
             <form onSubmit={savePaystack} className="mt-4 flex flex-col gap-3">

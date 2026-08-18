@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
 
 export async function GET(_request: Request, { params }: { params: { slug: string } }) {
-  let businessName = "Ratel";
+  let businessName = "Tallia";
   try {
     const res = await fetch(`${API_BASE}/api/public/bookings/by-slug/${params.slug}/widget-config`, { cache: "no-store" });
     if (res.ok) {

@@ -57,7 +57,7 @@ export default function DashboardPreview() {
         <div className="hidden w-32 shrink-0 flex-col gap-1 bg-sidebar p-2.5 [@media(min-width:420px)]:flex sm:w-40 sm:gap-1.5 sm:p-3">
           <div className="mb-2 flex items-center gap-1.5 px-0.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/ratel-icon.png" alt="" width={14} height={14} />
+            <img src="/branding/tallia-icon-mark.svg" alt="" width={14} height={14} />
             <span className="truncate text-[9px] font-semibold text-white sm:text-[10.5px]">Skulba Salon</span>
           </div>
           {NAV_ITEMS.map((item, i) => (

@@ -107,7 +107,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           )}
           <div className="min-w-0">
             <p className="truncate text-base font-semibold tracking-tight text-sidebar-text-active">
-              {business?.name ?? session?.businessName ?? "Ratel"}
+              {business?.name ?? session?.businessName ?? "Tallia"}
             </p>
             <p className="truncate text-xs text-sidebar-text">
               {(session?.role && ROLE_LABELS[session.role as StaffRole]) ?? session?.role ?? "Business Management"}

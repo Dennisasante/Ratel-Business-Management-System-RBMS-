@@ -164,7 +164,7 @@ export default function HelpPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Help & Support"
-        subtitle="How Ratel works, and a direct line to us if something's wrong."
+        subtitle="How Tallia works, and a direct line to us if something's wrong."
         actions={
           <Button variant="secondary" onClick={restartTour}>
             <RotateCcw size={15} className="mr-1.5" /> Replay walkthrough
@@ -243,7 +243,7 @@ export default function HelpPage() {
                     <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700">{r.message}</p>
                     {r.adminResponse && (
                       <div className="mt-3 rounded-lg bg-canvas p-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Ratel support replied</p>
+                        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Tallia support replied</p>
                         <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700">{r.adminResponse}</p>
                       </div>
                     )}

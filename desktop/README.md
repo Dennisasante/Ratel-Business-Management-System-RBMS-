@@ -19,7 +19,7 @@ Hostinger-hosted URL, with graceful handling when the connection drops.
 
 ## First run on a shop computer
 
-1. Copy `RatelRBMS-Portable-<version>.exe` (or run the installer) onto the
+1. Copy `Tallia-Portable-<version>.exe` (or run the installer) onto the
    shop's computer — from a pendrive, email, or however you distribute it.
 2. Launch it. On first run it asks for the business's Ratel URL (the same
    address used to log in from a browser) and remembers it from then on
@@ -45,9 +45,9 @@ npm run dist
 ```
 
 Outputs land in `release/`:
-- `RatelRBMS-Portable-<version>.exe` — single file, no install, ideal for a
+- `Tallia-Portable-<version>.exe` — single file, no install, ideal for a
   pendrive handoff.
-- `RatelRBMS-Setup-<version>.exe` — a normal Windows installer, for shops that
+- `Tallia-Setup-<version>.exe` — a normal Windows installer, for shops that
   want a Start Menu shortcut instead.
 
 Both are unsigned (no code-signing cert configured), so Windows SmartScreen
@@ -63,8 +63,8 @@ you're still on 26+ before reaching for Developer Mode or an admin shell.
 
 ## Icon
 
-`assets/icon.ico` (the Ratel "R" mark, same source as `frontend/public/branding/ratel-icon.png`)
+`assets/icon.ico` (the Tallia mark, same source as `frontend/public/icons/icon-512.png`)
 is bundled and set via `build.win.icon` in `package.json` — used for the exe
 file icon, the taskbar, and the window titlebar. `assets/icon.png` is the
-same mark at 128px, used inside `setup.html`. To rebrand, regenerate both
+same mark at 512px, used inside `setup.html`. To rebrand, regenerate both
 from a new source image and keep the same filenames.

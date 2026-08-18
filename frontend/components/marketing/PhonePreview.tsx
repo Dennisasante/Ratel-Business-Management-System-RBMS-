@@ -22,7 +22,7 @@ export default function PhonePreview() {
           <div className="px-4 pb-5 pt-2">
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/branding/ratel-icon.png" alt="" width={20} height={20} className="rounded" />
+              <img src="/branding/tallia-icon-mark.svg" alt="" width={20} height={20} className="rounded" />
               <div className="min-w-0">
                 <p className="truncate text-[11px] font-semibold text-ink-900">Skulba Salon</p>
                 <p className="text-[9px] text-ink-500">Choose what you need</p>

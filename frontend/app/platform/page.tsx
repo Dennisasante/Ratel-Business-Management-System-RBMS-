@@ -57,7 +57,7 @@ export default function PlatformOverviewPage() {
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-sidebar-text-active sm:text-3xl">Platform Overview</h1>
           <p className="mt-2 text-sm text-sidebar-text">
-            {stats ? `${stats.totalBusinesses} businesses, ${stats.totalUsers} users, GH₵${stats.totalPlatformRevenue.toFixed(2)} in lifetime revenue.` : "Every business running on Ratel, at a glance."}
+            {stats ? `${stats.totalBusinesses} businesses, ${stats.totalUsers} users, GH₵${stats.totalPlatformRevenue.toFixed(2)} in lifetime revenue.` : "Every business running on Tallia, at a glance."}
           </p>
         </div>
 

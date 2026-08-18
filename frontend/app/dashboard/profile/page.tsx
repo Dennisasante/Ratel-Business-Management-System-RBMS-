@@ -99,7 +99,7 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Business Profile" subtitle="How your business shows up across Ratel — logo, contact details, and industry." />
+      <PageHeader title="Business Profile" subtitle="How your business shows up across Tallia — logo, contact details, and industry." />
 
       <Card className="max-w-2xl p-5">
         <div className="flex items-center justify-between">
