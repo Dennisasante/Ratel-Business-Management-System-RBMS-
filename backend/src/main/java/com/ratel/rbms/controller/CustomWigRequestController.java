@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ratel.rbms.dto.CreateStaffCustomWigRequestRequest;
 import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
 import com.ratel.rbms.dto.CustomWigRequestResponse;
+import com.ratel.rbms.dto.CustomWigStatusUpdateRequest;
 import com.ratel.rbms.dto.DeclineCustomWigRequestRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeRequest;
 import com.ratel.rbms.dto.MobileMoneyChargeResponse;
@@ -85,6 +86,11 @@ public class CustomWigRequestController {
     @PatchMapping("/{id}/accept")
     public CustomWigRequestResponse accept(@PathVariable UUID id) {
         return customWigRequestService.accept(id);
+    }
+
+    @PatchMapping("/{id}/status")
+    public CustomWigRequestResponse updateStatus(@PathVariable UUID id, @Valid @RequestBody CustomWigStatusUpdateRequest request) {
+        return customWigRequestService.moveToStage(id, request.status());
     }
 
     @PostMapping("/{id}/charge-mobile-money")

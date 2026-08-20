@@ -2077,6 +2077,13 @@ export const api = {
   acceptCustomWigRequest: (token: string, id: string) =>
     request<CustomWigRequest>(`/api/custom-wig-requests/${id}/accept`, { method: "PATCH" }, token),
 
+  updateCustomWigRequestStatus: (token: string, id: string, status: CustomWigRequestStatus) =>
+    request<CustomWigRequest>(
+      `/api/custom-wig-requests/${id}/status`,
+      { method: "PATCH", body: JSON.stringify({ status }) },
+      token
+    ),
+
   chargeCustomWigRequestMobileMoney: (token: string, id: string, phone: string, provider: MobileMoneyProvider) =>
     request<MobileMoneyChargeResponse>(
       `/api/custom-wig-requests/${id}/charge-mobile-money`,

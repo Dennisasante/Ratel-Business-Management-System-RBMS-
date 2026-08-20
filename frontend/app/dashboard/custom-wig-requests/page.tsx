@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, MessageCircle, Settings, CheckCircle2, Plus } from "lucide-react";
+import { Sparkles, MessageCircle, Settings, CheckCircle2, Plus, Move, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -61,6 +61,81 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   MOBILE_MONEY: "Online Payment",
 };
 
+// Mirrors CustomWigRequestService.ALLOWED_TRANSITIONS exactly — every
+// destination the backend actually accepts from a given status. Keep in
+// sync if the backend graph ever changes. SUBMITTED->QUOTED is deliberately
+// absent — that move needs a price, which only the "Send a quote" form
+// (inside the detail modal) can supply.
+const ALLOWED_TRANSITIONS: Record<CustomWigRequestStatus, CustomWigRequestStatus[]> = {
+  SUBMITTED: ["DECLINED"],
+  QUOTED: ["ACCEPTED", "DECLINED", "SUBMITTED"],
+  ACCEPTED: ["QUOTED", "DECLINED"],
+  DECLINED: ["SUBMITTED"],
+};
+
+const ALL_STAGES: CustomWigRequestStatus[] = ["SUBMITTED", "QUOTED", "ACCEPTED", "DECLINED"];
+
+// Same self-contained dropdown pattern as Service Orders' StageMenu — every
+// stage except the current one is shown, ones not directly reachable are
+// visible but disabled so staff can see the whole pipeline.
+function StageMenu({
+  options,
+  pending,
+  onSelect,
+}: {
+  options: { status: CustomWigRequestStatus; allowed: boolean }[];
+  pending: boolean;
+  onSelect: (status: CustomWigRequestStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline"
+      >
+        <Move size={13} />
+        Move to stage
+        <ChevronRight size={13} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-border bg-surface py-1 text-left shadow-card">
+          {options.map(({ status, allowed }) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => {
+                if (!allowed) return;
+                onSelect(status);
+                setOpen(false);
+              }}
+              disabled={!allowed || pending}
+              title={allowed ? undefined : "Not reachable directly from the current stage"}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
+                status === "DECLINED" ? "text-danger" : "text-ink-700"
+              }`}
+            >
+              {STATUS_LABELS[status]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CustomWigRequestsPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -74,6 +149,7 @@ export default function CustomWigRequestsPage() {
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [paystackConfigured, setPaystackConfigured] = useState(false);
   const [collectingPaymentRequest, setCollectingPaymentRequest] = useState<CustomWigRequest | null>(null);
+  const [movingStageId, setMovingStageId] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     if (!session) return;
@@ -135,6 +211,20 @@ export default function CustomWigRequestsPage() {
     await loadRequests();
   }
 
+  async function handleSetStatus(request: CustomWigRequest, status: CustomWigRequestStatus) {
+    if (!session) return;
+    setActionError(null);
+    setMovingStageId(request.id);
+    try {
+      await api.updateCustomWigRequestStatus(session.token, request.id, status);
+      await loadRequests();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't move this request.");
+    } finally {
+      setMovingStageId(null);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -169,8 +259,9 @@ export default function CustomWigRequestsPage() {
           </div>
 
           <Card>
+            {actionError && <p className="px-5 pt-4 text-sm text-danger">{actionError}</p>}
             {fetching ? (
-              <TableSkeleton cols={6} />
+              <TableSkeleton cols={7} />
             ) : visibleRequests.length === 0 ? (
               <EmptyState
                 icon={Sparkles}
@@ -187,6 +278,7 @@ export default function CustomWigRequestsPage() {
                     <Th>Status</Th>
                     <Th>Received</Th>
                     <Th className="text-right">Quote</Th>
+                    <Th className="text-right">Stage</Th>
                   </Tr>
                 </THead>
                 <TBody>
@@ -238,6 +330,16 @@ export default function CustomWigRequestsPage() {
                             Review
                           </button>
                         )}
+                      </Td>
+                      <Td className="text-right">
+                        <StageMenu
+                          options={ALL_STAGES.filter((s) => s !== r.status).map((s) => ({
+                            status: s,
+                            allowed: ALLOWED_TRANSITIONS[r.status].includes(s),
+                          }))}
+                          pending={movingStageId === r.id}
+                          onSelect={(status) => handleSetStatus(r, status)}
+                        />
                       </Td>
                     </Tr>
                   ))}

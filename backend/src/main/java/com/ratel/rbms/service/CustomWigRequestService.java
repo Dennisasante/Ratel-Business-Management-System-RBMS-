@@ -48,6 +48,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -357,7 +358,7 @@ public class CustomWigRequestService {
 
         activityLogService.log("Sent a quote for custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
 
-        String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Ratel");
+        String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Tallia");
         String currency = businessRepository.findById(request.getBusinessId()).map(Business::getCurrency).orElse("GHS");
         emailService.sendCustomWigQuoteReady(
                 request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), businessName,
@@ -379,7 +380,7 @@ public class CustomWigRequestService {
 
         activityLogService.log("Declined custom wig request #" + request.getRequestNumber(), "CUSTOM_WIG_REQUEST", request.getId());
 
-        String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Ratel");
+        String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Tallia");
         emailService.sendCustomWigDeclined(request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), businessName, message);
 
         return toResponse(request);
@@ -395,6 +396,55 @@ public class CustomWigRequestService {
         request = customWigRequestRepository.save(request);
 
         activityLogService.log("Marked custom wig request #" + request.getRequestNumber() + " as accepted", "CUSTOM_WIG_REQUEST", request.getId());
+
+        return toResponse(request);
+    }
+
+    // "Move to stage" — mirrors ServiceOrderService.ALLOWED_TRANSITIONS/
+    // updateStatus() exactly: a corrective/manual-override path that sits
+    // alongside quote()/decline()/accept() (their own forms/buttons stay the
+    // primary flow, untouched) rather than replacing them, since only quote()
+    // can supply the price a SUBMITTED->QUOTED move needs — that edge is
+    // deliberately left out of this graph. "Always correctable, no arbitrary
+    // skip": moving back to SUBMITTED is a real reopen (clears finalPrice/
+    // ownerMessage, not a half-state); moving ACCEPTED back to QUOTED keeps
+    // the existing quote intact since nothing about the price changed.
+    private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
+            "SUBMITTED", Set.of("DECLINED"),
+            "QUOTED", Set.of("ACCEPTED", "DECLINED", "SUBMITTED"),
+            "ACCEPTED", Set.of("QUOTED", "DECLINED"),
+            "DECLINED", Set.of("SUBMITTED")
+    );
+
+    @Transactional
+    public CustomWigRequestResponse moveToStage(UUID id, String newStatus) {
+        CustomWigRequest request = getOwned(id);
+        String current = request.getStatus();
+        if (current.equals(newStatus)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This request is already " + newStatus.toLowerCase() + ".");
+        }
+        if (!ALLOWED_TRANSITIONS.getOrDefault(current, Set.of()).contains(newStatus)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Can't move a " + current.toLowerCase() + " request straight to " + newStatus.toLowerCase() + ".");
+        }
+
+        request.setStatus(newStatus);
+        if (newStatus.equals("SUBMITTED")) {
+            // A real reopen, not a half-state — the old quote no longer applies.
+            request.setFinalPrice(null);
+            request.setOwnerMessage(null);
+        }
+        request = customWigRequestRepository.save(request);
+
+        activityLogService.log(
+                "Moved custom wig request #" + request.getRequestNumber() + " from " + current + " to " + newStatus,
+                "CUSTOM_WIG_REQUEST", request.getId()
+        );
+
+        if (newStatus.equals("DECLINED")) {
+            String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Tallia");
+            emailService.sendCustomWigDeclined(request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), businessName, null);
+        }
 
         return toResponse(request);
     }
