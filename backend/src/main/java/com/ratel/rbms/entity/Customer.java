@@ -1,5 +1,6 @@
 package com.ratel.rbms.entity;
 
+import com.ratel.rbms.util.PhoneUtils;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,6 +35,12 @@ public class Customer {
     @Column(length = 50)
     private String phone;
 
+    // Kept in sync automatically (see syncPhoneNormalized() below) rather
+    // than only at the one write path that currently exists — defense in
+    // depth so any future edit path can't drift out of sync with `phone`.
+    @Column(name = "phone_normalized", length = 20)
+    private String phoneNormalized;
+
     @Column(length = 150)
     private String email;
 
@@ -53,4 +60,10 @@ public class Customer {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    private void syncPhoneNormalized() {
+        this.phoneNormalized = PhoneUtils.normalize(this.phone);
+    }
 }

@@ -34,6 +34,11 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     // bookings link to the same customer record instead of creating duplicates.
     Optional<Customer> findFirstByBusinessIdAndPhone(UUID businessId, String phone);
 
+    // Same lookup as above but normalized (see PhoneUtils.normalize()) — used
+    // for duplicate-customer detection so "0244123456"/"+233244123456"/
+    // "024-412-3456" are recognized as the same real number.
+    Optional<Customer> findFirstByBusinessIdAndPhoneNormalized(UUID businessId, String phoneNormalized);
+
     // Per-business usage count (super admin stats).
     long countByBusinessId(UUID businessId);
 }

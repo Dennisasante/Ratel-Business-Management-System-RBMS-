@@ -8,6 +8,7 @@ import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.tenant.TenantContext;
+import com.ratel.rbms.util.PhoneUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -79,7 +80,7 @@ public class CustomerService {
     public CustomerResponse create(CustomerRequest req) {
         UUID businessId = TenantContext.getBusinessId();
         if (req.phone() != null && !req.phone().isBlank()) {
-            customerRepository.findFirstByBusinessIdAndPhone(businessId, req.phone()).ifPresent(existing -> {
+            customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(req.phone())).ifPresent(existing -> {
                 throw new ApiException(HttpStatus.CONFLICT,
                         "A customer named \"" + existing.getFullName() + "\" already uses this phone number.");
             });

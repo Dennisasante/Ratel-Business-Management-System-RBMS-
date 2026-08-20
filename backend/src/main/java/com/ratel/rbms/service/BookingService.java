@@ -37,6 +37,7 @@ import com.ratel.rbms.repository.ServicePackageRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
+import com.ratel.rbms.util.PhoneUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -292,7 +293,7 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Please provide your location for this service.");
         }
 
-        Customer customer = customerRepository.findFirstByBusinessIdAndPhone(businessId, req.customerWhatsapp())
+        Customer customer = customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(req.customerWhatsapp()))
                 .orElseGet(() -> customerRepository.save(Customer.builder()
                         .businessId(businessId)
                         .fullName(req.customerName())
@@ -433,7 +434,7 @@ public class BookingService {
             resolvedCustomerEmail = customer.getEmail();
             resolvedCustomerWhatsapp = customer.getPhone();
         } else if (req.customerWhatsapp() != null && !req.customerWhatsapp().isBlank()) {
-            Customer customer = customerRepository.findFirstByBusinessIdAndPhone(businessId, req.customerWhatsapp())
+            Customer customer = customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(req.customerWhatsapp()))
                     .orElseGet(() -> customerRepository.save(Customer.builder()
                             .businessId(businessId)
                             .fullName(req.customerName() != null && !req.customerName().isBlank() ? req.customerName() : "Customer")
