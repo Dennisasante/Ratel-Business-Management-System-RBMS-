@@ -291,6 +291,65 @@ export interface ExpenseEditPayload {
   reason: string;
 }
 
+export type InvoiceStatus = "DRAFT" | "SENT" | "PAID" | "OVERDUE";
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  subtotal: number;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: number;
+  customerId: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  issueDate: string;
+  dueDate: string | null;
+  notes: string | null;
+  status: InvoiceStatus;
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+  items: InvoiceItem[];
+  createdAt: string;
+}
+
+export interface InvoiceSummary {
+  id: string;
+  invoiceNumber: number;
+  customerName: string | null;
+  issueDate: string;
+  dueDate: string | null;
+  status: InvoiceStatus;
+  totalAmount: number;
+}
+
+export interface InvoiceItemPayload {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+}
+
+export interface InvoicePayload {
+  customerId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  issueDate: string;
+  dueDate?: string;
+  notes?: string;
+  items: InvoiceItemPayload[];
+}
+
 export interface ReportSummary {
   from: string;
   to: string;
@@ -1624,6 +1683,26 @@ export const api = {
       { method: "PUT", body: JSON.stringify(payload) },
       token
     ),
+
+  listInvoices: (token: string) => request<InvoiceSummary[]>("/api/invoices", {}, token),
+
+  getInvoice: (token: string, id: string) => request<Invoice>(`/api/invoices/${id}`, {}, token),
+
+  createInvoice: (token: string, payload: InvoicePayload) =>
+    request<Invoice>("/api/invoices", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  updateInvoice: (token: string, id: string, payload: InvoicePayload) =>
+    request<Invoice>(`/api/invoices/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  updateInvoiceStatus: (token: string, id: string, status: InvoiceStatus) =>
+    request<Invoice>(`/api/invoices/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, token),
+
+  deleteInvoice: (token: string, id: string) =>
+    request<void>(`/api/invoices/${id}`, { method: "DELETE" }, token),
+
+  downloadInvoicePdf: async (token: string, invoiceId: string, invoiceNumber: number) => {
+    await downloadFile(`/api/invoices/${invoiceId}/pdf`, token, `invoice-${invoiceNumber}.pdf`, true);
+  },
 
   getReportSummary: (token: string, from?: string, to?: string) => {
     const params = new URLSearchParams();
