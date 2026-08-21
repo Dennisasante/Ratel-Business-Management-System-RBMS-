@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
-import { Building2, Upload, Pencil, Plug, Link2, Copy, Check } from "lucide-react";
+import { Building2, Upload, Pencil, Plug, Link2, Copy, Check, Bell } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, BusinessUpdatePayload } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
@@ -13,6 +13,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import BusinessProfileForm from "@/components/BusinessProfileForm";
+import PushNotificationToggle from "@/components/PushNotificationToggle";
 
 export default function ProfilePage() {
   const { session, business, loading, refreshBusiness } = useAuth();
@@ -274,6 +275,22 @@ export default function ProfilePage() {
           </form>
         )}
       </Card>
+
+      {canEdit && (
+        <Card className="max-w-2xl p-5">
+          <div className="flex items-center gap-2">
+            <Bell size={16} className="text-ink-500" />
+            <h2 className="text-base font-semibold text-ink-900">Push notifications</h2>
+          </div>
+          <p className="mt-1 text-xs text-ink-500">
+            Get notified on this device for new sales, bookings, custom wig requests, and anything waiting on your
+            approval — the same events already in your notification bell.
+          </p>
+          <div className="mt-3">
+            <PushNotificationToggle token={session.token} />
+          </div>
+        </Card>
+      )}
 
       {session.role === "OWNER" && (
         <Link

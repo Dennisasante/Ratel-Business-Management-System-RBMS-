@@ -2168,6 +2168,12 @@ export const api = {
 
   rejectPendingApproval: (token: string, id: string, note?: string) =>
     request<PendingApproval>(`/api/pending-approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }, token),
+
+  subscribeToPush: (token: string, payload: { endpoint: string; p256dh: string; auth: string }) =>
+    request<void>("/api/push-subscriptions", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  unsubscribeFromPush: (token: string, endpoint: string) =>
+    request<void>(`/api/push-subscriptions?endpoint=${encodeURIComponent(endpoint)}`, { method: "DELETE" }, token),
 };
 
 export { ApiError };

@@ -19,9 +19,11 @@ import java.util.UUID;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final PushNotificationService pushNotificationService;
 
-    public NotificationService(NotificationRepository notificationRepository) {
+    public NotificationService(NotificationRepository notificationRepository, PushNotificationService pushNotificationService) {
         this.notificationRepository = notificationRepository;
+        this.pushNotificationService = pushNotificationService;
     }
 
     public void create(UUID businessId, String type, String title, String body, String sourceType, UUID sourceId) {
@@ -33,6 +35,11 @@ public class NotificationService {
                 .sourceType(sourceType)
                 .sourceId(sourceId)
                 .build());
+        // Every in-app notification also fans out to push — the single choke
+        // point this method already is means every current and future
+        // notification type gets push automatically, no other call site
+        // needs to know push exists.
+        pushNotificationService.notifyBusinessOwnersAndManagers(businessId, title, body);
     }
 
     public List<NotificationResponse> listAll() {

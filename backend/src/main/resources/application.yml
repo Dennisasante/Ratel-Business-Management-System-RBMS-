@@ -95,3 +95,10 @@ app:
     # Runs once a day, shortly after the digest — flips lapsed trials/subscriptions
     # to read-only and sends the 3-day-out renewal reminder.
     expiry-cron: ${BILLING_EXPIRY_CRON:0 30 6 * * *}
+  vapid:
+    # Generate once with `npx web-push generate-vapid-keys`. If public/private
+    # key are blank, PushNotificationService silently no-ops (same posture as
+    # EmailService when SMTP isn't configured) rather than failing startup.
+    public-key: ${VAPID_PUBLIC_KEY:}
+    private-key: ${VAPID_PRIVATE_KEY:}
+    subject: ${VAPID_SUBJECT:mailto:support@example.com}
