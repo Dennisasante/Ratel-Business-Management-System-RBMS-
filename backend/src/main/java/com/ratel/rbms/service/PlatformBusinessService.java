@@ -26,6 +26,7 @@ import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.StockMovement;
 import com.ratel.rbms.entity.SubscriptionPlan;
 import com.ratel.rbms.entity.User;
+import com.ratel.rbms.entity.enums.BillingStatus;
 import com.ratel.rbms.entity.enums.MovementType;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.exception.ApiException;
@@ -474,8 +475,24 @@ public class PlatformBusinessService {
             business.setSubscriptionPlanId(plan.getId());
         }
 
+        // Extending trialEndsAt into the future is meant to actually restore
+        // access, not just change a stored date — without this, editing the
+        // date on a business that's already lapsed to READ_ONLY/GRACE had no
+        // real effect, since BillingExpiryService.flipExpiredTrials() only
+        // ever re-checks businesses that are CURRENTLY TRIALING. Scoped
+        // strictly to a suspended business and a genuinely future date, so
+        // this never demotes an already-ACTIVE paying business back down.
+        boolean restoredAccess = false;
         if (req.trialEndsAt() != null) {
             business.setTrialEndsAt(req.trialEndsAt());
+            boolean extendingIntoFuture = req.trialEndsAt().isAfter(Instant.now());
+            boolean currentlySuspended = business.getBillingStatus() == BillingStatus.READ_ONLY
+                    || business.getBillingStatus() == BillingStatus.GRACE;
+            if (extendingIntoFuture && currentlySuspended) {
+                business.setBillingStatus(BillingStatus.TRIALING);
+                business.setGracePeriodEndsAt(null);
+                restoredAccess = true;
+            }
         }
 
         if (req.clearPriceOverride()) {
@@ -486,7 +503,8 @@ public class PlatformBusinessService {
 
         business = businessRepository.save(business);
 
-        auditLogService.log(adminId, "Updated billing for \"" + business.getName() + "\"",
+        auditLogService.log(adminId, "Updated billing for \"" + business.getName() + "\""
+                        + (restoredAccess ? " (restored from suspended to trialing)" : ""),
                 business.getId(), business.getName(), null);
 
         return getDetail(business.getId());
