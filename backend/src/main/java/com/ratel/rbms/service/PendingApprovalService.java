@@ -1,6 +1,7 @@
 package com.ratel.rbms.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ratel.rbms.dto.ExpenseEditRequest;
 import com.ratel.rbms.dto.PendingApprovalResponse;
 import com.ratel.rbms.dto.RefundRequest;
 import com.ratel.rbms.dto.SaleItemPricePayload;
@@ -34,6 +35,7 @@ public class PendingApprovalService {
     private final SaleService saleService;
     private final ServiceOrderService serviceOrderService;
     private final CustomWigRequestService customWigRequestService;
+    private final ExpenseService expenseService;
 
     public PendingApprovalService(
             PendingApprovalRepository pendingApprovalRepository,
@@ -42,7 +44,8 @@ public class PendingApprovalService {
             ActivityLogService activityLogService,
             SaleService saleService,
             ServiceOrderService serviceOrderService,
-            CustomWigRequestService customWigRequestService
+            CustomWigRequestService customWigRequestService,
+            ExpenseService expenseService
     ) {
         this.pendingApprovalRepository = pendingApprovalRepository;
         this.userRepository = userRepository;
@@ -51,6 +54,7 @@ public class PendingApprovalService {
         this.saleService = saleService;
         this.serviceOrderService = serviceOrderService;
         this.customWigRequestService = customWigRequestService;
+        this.expenseService = expenseService;
     }
 
     public List<PendingApprovalResponse> listPending() {
@@ -125,6 +129,7 @@ public class PendingApprovalService {
                     customWigRequestService.applyApprovedPriceUpdate(pa.getSourceId(), readPayload(pa, UpdateFinalPriceRequest.class));
                 }
             }
+            case EXPENSE -> expenseService.applyApprovedUpdate(pa.getSourceId(), readPayload(pa, ExpenseEditRequest.class));
         }
     }
 

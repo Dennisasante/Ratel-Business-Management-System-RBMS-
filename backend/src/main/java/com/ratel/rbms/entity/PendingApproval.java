@@ -71,9 +71,9 @@ public class PendingApproval {
     @Column(name = "decision_note", length = 500)
     private String decisionNote;
 
-    public enum SourceType { SALE, SERVICE_ORDER, CUSTOM_WIG_REQUEST }
+    public enum SourceType { SALE, SERVICE_ORDER, CUSTOM_WIG_REQUEST, EXPENSE }
 
-    public enum ActionType { EDIT_PRICE, REFUND }
+    public enum ActionType { EDIT_PRICE, REFUND, EDIT }
 
     public enum Status { PENDING, APPROVED, REJECTED }
 }

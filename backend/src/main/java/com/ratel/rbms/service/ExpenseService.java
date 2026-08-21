@@ -1,15 +1,19 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.ExpenseEditRequest;
 import com.ratel.rbms.dto.ExpenseRequest;
 import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.entity.Expense;
+import com.ratel.rbms.entity.PendingApproval;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.exception.ApprovalRequiredException;
 import com.ratel.rbms.repository.ExpenseRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -21,15 +25,18 @@ public class ExpenseService {
     private final ExpenseRepository expenseRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
+    private final ApprovalGateService approvalGateService;
 
     public ExpenseService(
             ExpenseRepository expenseRepository,
             UserRepository userRepository,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            ApprovalGateService approvalGateService
     ) {
         this.expenseRepository = expenseRepository;
         this.userRepository = userRepository;
         this.activityLogService = activityLogService;
+        this.approvalGateService = approvalGateService;
     }
 
     public List<ExpenseResponse> listAll() {
@@ -65,14 +72,37 @@ public class ExpenseService {
         return toResponse(expense);
     }
 
-    public ExpenseResponse update(UUID id, ExpenseRequest req) {
-        Expense expense = getOwned(id);
-        expense.setCategory(req.category());
-        expense.setDescription(req.description());
-        expense.setPaymentMethod(req.paymentMethod());
-        expense.setAmount(req.amount());
-        if (req.expenseDate() != null) expense.setExpenseDate(req.expenseDate());
+    @Transactional
+    public ExpenseResponse update(UUID id, ExpenseEditRequest req) {
+        Expense expense = getOwned(id); // existence/ownership check for everyone, before gating
+        if (!approvalGateService.isOwner()) {
+            UUID pendingId = approvalGateService.queueForApproval(
+                    PendingApproval.SourceType.EXPENSE, PendingApproval.ActionType.EDIT, id, req,
+                    "Edit expense (" + expense.getCategory() + ", GH₵" + expense.getAmount()
+                            + " → GH₵" + req.expense().amount() + "): " + req.reason());
+            throw new ApprovalRequiredException(pendingId, "Expense edit submitted for Owner approval.");
+        }
+        return doUpdate(expense, req);
+    }
+
+    // Called ONLY by PendingApprovalService.approve() — the Owner clicking
+    // Approve IS the authorization, so this bypasses the gate entirely.
+    @Transactional
+    public ExpenseResponse applyApprovedUpdate(UUID id, ExpenseEditRequest req) {
+        return doUpdate(getOwned(id), req);
+    }
+
+    private ExpenseResponse doUpdate(Expense expense, ExpenseEditRequest req) {
+        ExpenseRequest r = req.expense();
+        expense.setCategory(r.category());
+        expense.setDescription(r.description());
+        expense.setPaymentMethod(r.paymentMethod());
+        expense.setAmount(r.amount());
+        if (r.expenseDate() != null) expense.setExpenseDate(r.expenseDate());
         expense = expenseRepository.save(expense);
+
+        activityLogService.log("Edited expense — " + req.reason(), "EXPENSE", expense.getId());
+
         return toResponse(expense);
     }
 

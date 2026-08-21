@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, Expense, ExpensePayload } from "@/lib/api";
+import { api, Expense, ExpenseEditPayload, ExpensePayload, isPendingApproval } from "@/lib/api";
 import Modal from "@/components/Modal";
 import ExpenseForm from "@/components/ExpenseForm";
+import ExpenseEditForm from "@/components/ExpenseEditForm";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -21,6 +22,8 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [fetching, setFetching] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
 
   const loadExpenses = useCallback(async () => {
     if (!session) return;
@@ -43,6 +46,14 @@ export default function ExpensesPage() {
     setShowAdd(false);
   }
 
+  async function handleEditSubmit(payload: ExpenseEditPayload) {
+    if (!session || !editingExpense) return;
+    const result = await api.updateExpense(session.token, editingExpense.id, payload);
+    setActionInfo(isPendingApproval(result) ? result.message : null);
+    await loadExpenses();
+    setEditingExpense(null);
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -62,8 +73,9 @@ export default function ExpensesPage() {
       />
 
       <Card>
+        {actionInfo && <p className="px-5 pt-4 text-sm text-info">{actionInfo}</p>}
         {fetching ? (
-          <TableSkeleton cols={6} />
+          <TableSkeleton cols={7} />
         ) : expenses.length === 0 ? (
           <EmptyState
             icon={Receipt}
@@ -85,6 +97,7 @@ export default function ExpensesPage() {
                 <Th>Paid via</Th>
                 <Th>Recorded by</Th>
                 <Th className="text-right">Amount</Th>
+                <Th></Th>
               </Tr>
             </THead>
             <TBody>
@@ -98,12 +111,29 @@ export default function ExpensesPage() {
                   <Td className="text-ink-500">{e.paymentMethod === "MOBILE_MONEY" ? "Mobile Money" : "Cash"}</Td>
                   <Td className="text-ink-500">{e.recordedByName}</Td>
                   <Td className="tabular text-right font-medium">GH₵{e.amount.toFixed(2)}</Td>
+                  <Td className="text-right">
+                    <button
+                      onClick={() => {
+                        setActionInfo(null);
+                        setEditingExpense(e);
+                      }}
+                      className="text-xs font-medium text-accent-hover hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </Td>
                 </Tr>
               ))}
             </TBody>
           </Table>
         )}
       </Card>
+
+      {editingExpense && (
+        <Modal title="Edit expense" onClose={() => setEditingExpense(null)}>
+          <ExpenseEditForm expense={editingExpense} onSubmit={handleEditSubmit} />
+        </Modal>
+      )}
 
       {showAdd && (
         <Modal title="Log expense" onClose={() => setShowAdd(false)}>

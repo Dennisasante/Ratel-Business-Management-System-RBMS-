@@ -1,5 +1,6 @@
 package com.ratel.rbms.controller;
 
+import com.ratel.rbms.dto.ExpenseEditRequest;
 import com.ratel.rbms.dto.ExpenseRequest;
 import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.service.ExpenseService;
@@ -39,7 +40,7 @@ public class ExpenseController {
     }
 
     @PutMapping("/{id}")
-    public ExpenseResponse update(@PathVariable UUID id, @Valid @RequestBody ExpenseRequest request) {
+    public ExpenseResponse update(@PathVariable UUID id, @Valid @RequestBody ExpenseEditRequest request) {
         return expenseService.update(id, request);
     }
 }

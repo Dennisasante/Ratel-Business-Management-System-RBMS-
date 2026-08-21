@@ -286,6 +286,11 @@ export interface ExpensePayload {
   expenseDate?: string;
 }
 
+export interface ExpenseEditPayload {
+  expense: ExpensePayload;
+  reason: string;
+}
+
 export interface ReportSummary {
   from: string;
   to: string;
@@ -1610,6 +1615,13 @@ export const api = {
     request<Expense>(
       "/api/expenses",
       { method: "POST", body: JSON.stringify(payload) },
+      token
+    ),
+
+  updateExpense: (token: string, id: string, payload: ExpenseEditPayload) =>
+    request<Expense | PendingApprovalOutcome>(
+      `/api/expenses/${id}`,
+      { method: "PUT", body: JSON.stringify(payload) },
       token
     ),
 
