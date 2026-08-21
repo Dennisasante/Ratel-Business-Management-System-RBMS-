@@ -55,8 +55,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -340,24 +342,32 @@ public class BookingService {
                 serviceName, WHEN_FORMAT.format(req.scheduledAt()), manageLink
         );
 
-        // Owner+Manager-facing — nobody's watching the dashboard in real time,
-        // so this is how a new booking actually gets noticed, with a one-tap
-        // link to message the customer straight away. Every Owner/Manager's
-        // own email gets it (not just business.contactEmail, a single
-        // possibly-stale address) — same recipient-selection convention as
-        // WeeklyDigestService's Owner digest.
+        // Owner-facing — nobody's watching the dashboard in real time, so this
+        // is how a new booking actually gets noticed, with a one-tap link to
+        // message the customer straight away. Sent to business.contactEmail
+        // (kept, not replaced — cheap and someone may already rely on it)
+        // *and* to every Owner/Manager's own real login email, deduped by
+        // lowercased address so a contact email that happens to match a
+        // user's login doesn't get two copies.
+        Set<String> notifiedAddresses = new HashSet<>();
+        String customerWhatsappLink = whatsAppLinkService.buildLink(req.customerWhatsapp(),
+                "Hi " + req.customerName() + ", thanks for booking " + serviceName + " with us!");
+        if (business.getContactEmail() != null && !business.getContactEmail().isBlank()) {
+            emailService.sendNewBookingNotification(
+                    business.getContactEmail(), req.customerName(), serviceName,
+                    WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
+            );
+            notifiedAddresses.add(business.getContactEmail().toLowerCase());
+        }
         List<User> notifyRecipients = userRepository.findAllByBusinessIdAndRoleIn(businessId, List.of(Role.OWNER, Role.MANAGER)).stream()
                 .filter(User::isActive)
                 .toList();
-        if (!notifyRecipients.isEmpty()) {
-            String customerWhatsappLink = whatsAppLinkService.buildLink(req.customerWhatsapp(),
-                    "Hi " + req.customerName() + ", thanks for booking " + serviceName + " with us!");
-            for (User recipient : notifyRecipients) {
-                emailService.sendNewBookingNotification(
-                        recipient.getEmail(), req.customerName(), serviceName,
-                        WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
-                );
-            }
+        for (User recipient : notifyRecipients) {
+            if (!notifiedAddresses.add(recipient.getEmail().toLowerCase())) continue; // already sent (matched contactEmail)
+            emailService.sendNewBookingNotification(
+                    recipient.getEmail(), req.customerName(), serviceName,
+                    WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
+            );
         }
         // In-app inbox — unconditional (no recipient-list gate), since it has
         // no external dependency to fail on.
