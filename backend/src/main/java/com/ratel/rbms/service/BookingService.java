@@ -21,6 +21,8 @@ import com.ratel.rbms.entity.ServiceOrderItem;
 import com.ratel.rbms.entity.ServicePackage;
 import com.ratel.rbms.entity.ServicePackageItem;
 import com.ratel.rbms.entity.ServiceType;
+import com.ratel.rbms.entity.User;
+import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BookingRepository;
@@ -35,6 +37,7 @@ import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServicePackageItemRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
+import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
 import com.ratel.rbms.util.PhoneUtils;
@@ -91,6 +94,7 @@ public class BookingService {
     private final PaymentTransactionService paymentTransactionService;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
     private final String frontendUrl;
 
     public BookingService(
@@ -114,6 +118,7 @@ public class BookingService {
             PaymentTransactionService paymentTransactionService,
             ActivityLogService activityLogService,
             NotificationService notificationService,
+            UserRepository userRepository,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -136,6 +141,7 @@ public class BookingService {
         this.paymentTransactionService = paymentTransactionService;
         this.activityLogService = activityLogService;
         this.notificationService = notificationService;
+        this.userRepository = userRepository;
         this.frontendUrl = frontendUrl;
     }
 
@@ -334,19 +340,27 @@ public class BookingService {
                 serviceName, WHEN_FORMAT.format(req.scheduledAt()), manageLink
         );
 
-        // Owner-facing — nobody's watching the dashboard in real time, so this
-        // is how a new booking actually gets noticed, with a one-tap link to
-        // message the customer straight away.
-        if (business.getContactEmail() != null && !business.getContactEmail().isBlank()) {
+        // Owner+Manager-facing — nobody's watching the dashboard in real time,
+        // so this is how a new booking actually gets noticed, with a one-tap
+        // link to message the customer straight away. Every Owner/Manager's
+        // own email gets it (not just business.contactEmail, a single
+        // possibly-stale address) — same recipient-selection convention as
+        // WeeklyDigestService's Owner digest.
+        List<User> notifyRecipients = userRepository.findAllByBusinessIdAndRoleIn(businessId, List.of(Role.OWNER, Role.MANAGER)).stream()
+                .filter(User::isActive)
+                .toList();
+        if (!notifyRecipients.isEmpty()) {
             String customerWhatsappLink = whatsAppLinkService.buildLink(req.customerWhatsapp(),
                     "Hi " + req.customerName() + ", thanks for booking " + serviceName + " with us!");
-            emailService.sendNewBookingNotification(
-                    business.getContactEmail(), req.customerName(), serviceName,
-                    WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
-            );
+            for (User recipient : notifyRecipients) {
+                emailService.sendNewBookingNotification(
+                        recipient.getEmail(), req.customerName(), serviceName,
+                        WHEN_FORMAT.format(req.scheduledAt()), customerWhatsappLink
+                );
+            }
         }
-        // In-app inbox — unconditional (no contactEmail gate), since it has no
-        // external dependency to fail on.
+        // In-app inbox — unconditional (no recipient-list gate), since it has
+        // no external dependency to fail on.
         notificationService.create(businessId, "NEW_BOOKING", "New booking from " + req.customerName(),
                 serviceName + " — " + WHEN_FORMAT.format(req.scheduledAt()), "BOOKING", booking.getId());
 

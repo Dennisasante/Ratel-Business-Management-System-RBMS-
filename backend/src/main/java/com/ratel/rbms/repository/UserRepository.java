@@ -25,6 +25,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // Used by the "don't deactivate/demote the last Owner" guard rails.
     List<User> findAllByBusinessIdAndRole(UUID businessId, Role role);
 
+    // Owner+Manager audience shared by push notifications and booking emails
+    // — the same set of roles the in-app notification bell already targets.
+    List<User> findAllByBusinessIdAndRoleIn(UUID businessId, List<Role> roles);
+
     // Used by the Super Admin's business list to show who owns each account.
     Optional<User> findFirstByBusinessIdAndRole(UUID businessId, Role role);
 
