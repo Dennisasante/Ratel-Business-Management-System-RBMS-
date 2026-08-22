@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Truck, Plus, Search } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, Supplier, SupplierPayload } from "@/lib/api";
+import { api, ApiError, Supplier, SupplierPayload } from "@/lib/api";
 import Modal from "@/components/Modal";
 import SupplierForm from "@/components/SupplierForm";
 import PageHeader from "@/components/ui/PageHeader";
@@ -21,10 +21,15 @@ export default function SuppliersPage() {
   const [fetching, setFetching] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const loadSuppliers = useCallback(async () => {
     if (!session) return;
-    setSuppliers(await api.listSuppliers(session.token));
+    try {
+      setSuppliers(await api.listSuppliers(session.token));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't load suppliers.");
+    }
   }, [session]);
 
   useEffect(() => {
@@ -78,6 +83,7 @@ export default function SuppliersPage() {
       )}
 
       <Card>
+        {error && <p className="px-5 pt-4 text-sm text-danger">{error}</p>}
         {fetching ? (
           <TableSkeleton cols={3} />
         ) : suppliers.length === 0 ? (

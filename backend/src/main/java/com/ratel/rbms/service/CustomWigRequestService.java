@@ -80,6 +80,7 @@ public class CustomWigRequestService {
     private final NotificationService notificationService;
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final ApprovalGateService approvalGateService;
+    private final ModuleAccessService moduleAccessService;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -98,7 +99,8 @@ public class CustomWigRequestService {
             PaystackService paystackService,
             NotificationService notificationService,
             PaymentTransactionRepository paymentTransactionRepository,
-            ApprovalGateService approvalGateService
+            ApprovalGateService approvalGateService,
+            ModuleAccessService moduleAccessService
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -117,6 +119,7 @@ public class CustomWigRequestService {
         this.notificationService = notificationService;
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.approvalGateService = approvalGateService;
+        this.moduleAccessService = moduleAccessService;
     }
 
     // ---- Public side ----
@@ -138,7 +141,8 @@ public class CustomWigRequestService {
 
     private PublicCustomWigConfigResponse buildConfig(Business business) {
         UUID businessId = business.getId();
-        boolean enabled = planFeatureService.hasFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
+        boolean enabled = planFeatureService.hasFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS)
+                && moduleAccessService.hasModule(businessId, "CUSTOM_WIG_REQUESTS");
         List<CustomItemAttributeResponse> attributes = enabled
                 ? attributeRepository.findAllByBusinessIdOrderBySortOrderAsc(businessId).stream()
                         .map(this::toAttributeResponse)
@@ -225,6 +229,7 @@ public class CustomWigRequestService {
     public List<CustomWigRequestResponse> list() {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
+        moduleAccessService.requireModule(businessId, "CUSTOM_WIG_REQUESTS");
         return customWigRequestRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -294,6 +299,7 @@ public class CustomWigRequestService {
     public CustomWigRequestResponse createByStaff(CreateStaffCustomWigRequestRequest req, MultipartFile photo) {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
+        moduleAccessService.requireModule(businessId, "CUSTOM_WIG_REQUESTS");
 
         if (req.customerName() == null || req.customerName().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Customer name is required.");
@@ -736,6 +742,7 @@ public class CustomWigRequestService {
     private CustomWigRequest getOwned(UUID id) {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
+        moduleAccessService.requireModule(businessId, "CUSTOM_WIG_REQUESTS");
         return customWigRequestRepository.findByIdAndBusinessId(id, businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Request not found."));
     }

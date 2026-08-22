@@ -52,6 +52,7 @@ public class EcommerceOrderService {
     private final EmailService emailService;
     private final WhatsAppLinkService whatsAppLinkService;
     private final ActivityLogService activityLogService;
+    private final ModuleAccessService moduleAccessService;
 
     public EcommerceOrderService(
             EcommerceOrderRepository ecommerceOrderRepository,
@@ -60,7 +61,8 @@ public class EcommerceOrderService {
             PlanFeatureService planFeatureService,
             EmailService emailService,
             WhatsAppLinkService whatsAppLinkService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            ModuleAccessService moduleAccessService
     ) {
         this.ecommerceOrderRepository = ecommerceOrderRepository;
         this.ecommerceOrderItemRepository = ecommerceOrderItemRepository;
@@ -69,11 +71,13 @@ public class EcommerceOrderService {
         this.emailService = emailService;
         this.whatsAppLinkService = whatsAppLinkService;
         this.activityLogService = activityLogService;
+        this.moduleAccessService = moduleAccessService;
     }
 
     public List<EcommerceOrderResponse> list() {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.WOOCOMMERCE_SYNC);
+        moduleAccessService.requireModule(businessId, "ECOMMERCE");
         return ecommerceOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -127,6 +131,7 @@ public class EcommerceOrderService {
     private EcommerceOrder getOwned(UUID id) {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.WOOCOMMERCE_SYNC);
+        moduleAccessService.requireModule(businessId, "ECOMMERCE");
         return ecommerceOrderRepository.findByIdAndBusinessId(id, businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Order not found."));
     }

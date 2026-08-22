@@ -38,6 +38,7 @@ public class PurchaseOrderService {
     private final SupplierService supplierService;
     private final ActivityLogService activityLogService;
     private final PaymentTransactionService paymentTransactionService;
+    private final ModuleAccessService moduleAccessService;
 
     public PurchaseOrderService(
             PurchaseOrderRepository purchaseOrderRepository,
@@ -46,7 +47,8 @@ public class PurchaseOrderService {
             ProductService productService,
             SupplierService supplierService,
             ActivityLogService activityLogService,
-            PaymentTransactionService paymentTransactionService
+            PaymentTransactionService paymentTransactionService,
+            ModuleAccessService moduleAccessService
     ) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.purchaseOrderItemRepository = purchaseOrderItemRepository;
@@ -55,11 +57,13 @@ public class PurchaseOrderService {
         this.supplierService = supplierService;
         this.activityLogService = activityLogService;
         this.paymentTransactionService = paymentTransactionService;
+        this.moduleAccessService = moduleAccessService;
     }
 
     @Transactional
     public PurchaseOrderResponse create(PurchaseOrderRequest req) {
         UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
         UUID userId = TenantContext.getUserId();
 
         Supplier supplier = null;
@@ -107,7 +111,9 @@ public class PurchaseOrderService {
     }
 
     public List<PurchaseOrderResponse> listAll() {
-        return purchaseOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(TenantContext.getBusinessId()).stream()
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
+        return purchaseOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
                 .map(this::toResponseWithItems)
                 .toList();
     }
@@ -175,7 +181,9 @@ public class PurchaseOrderService {
     }
 
     private PurchaseOrder getOwned(UUID id) {
-        return purchaseOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
+        return purchaseOrderRepository.findByIdAndBusinessId(id, businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Purchase order not found."));
     }
 

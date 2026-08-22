@@ -17,14 +17,18 @@ public class SupplierService {
 
     private final SupplierRepository supplierRepository;
     private final ActivityLogService activityLogService;
+    private final ModuleAccessService moduleAccessService;
 
-    public SupplierService(SupplierRepository supplierRepository, ActivityLogService activityLogService) {
+    public SupplierService(SupplierRepository supplierRepository, ActivityLogService activityLogService, ModuleAccessService moduleAccessService) {
         this.supplierRepository = supplierRepository;
         this.activityLogService = activityLogService;
+        this.moduleAccessService = moduleAccessService;
     }
 
     public List<SupplierResponse> listAll() {
-        return supplierRepository.findAllByBusinessIdOrderByNameAsc(TenantContext.getBusinessId()).stream()
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
+        return supplierRepository.findAllByBusinessIdOrderByNameAsc(businessId).stream()
                 .map(SupplierResponse::from)
                 .toList();
     }
@@ -35,8 +39,10 @@ public class SupplierService {
     }
 
     public SupplierResponse create(SupplierRequest req) {
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
         Supplier supplier = Supplier.builder()
-                .businessId(TenantContext.getBusinessId())
+                .businessId(businessId)
                 .name(req.name())
                 .phone(req.phone())
                 .email(req.email())

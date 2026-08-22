@@ -108,11 +108,15 @@ export default function ServiceOrdersPage() {
 
   const loadOrders = useCallback(async () => {
     if (!session) return;
-    const data = await api.listServiceOrders(session.token, {
-      serviceTypeId: typeFilter || undefined,
-      status: statusFilter || undefined,
-    });
-    setOrders(data);
+    try {
+      const data = await api.listServiceOrders(session.token, {
+        serviceTypeId: typeFilter || undefined,
+        status: statusFilter || undefined,
+      });
+      setOrders(data);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't load service orders.");
+    }
   }, [session, typeFilter, statusFilter]);
 
   const loadServiceTypes = useCallback(async () => {

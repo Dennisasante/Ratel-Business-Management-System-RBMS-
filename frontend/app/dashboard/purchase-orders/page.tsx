@@ -43,16 +43,20 @@ export default function PurchaseOrdersPage() {
 
   const loadAll = useCallback(async () => {
     if (!session) return;
-    const [p, cat, s, o] = await Promise.all([
-      api.listProducts(session.token),
-      api.listProductCategories(session.token),
-      api.listSuppliers(session.token),
-      api.listPurchaseOrders(session.token),
-    ]);
-    setProducts(p);
-    setCategories(cat);
-    setSuppliers(s);
-    setOrders(o);
+    try {
+      const [p, cat, s, o] = await Promise.all([
+        api.listProducts(session.token),
+        api.listProductCategories(session.token),
+        api.listSuppliers(session.token),
+        api.listPurchaseOrders(session.token),
+      ]);
+      setProducts(p);
+      setCategories(cat);
+      setSuppliers(s);
+      setOrders(o);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't load purchase orders.");
+    }
   }, [session]);
 
   const visibleProducts = products.filter((p) => {

@@ -97,6 +97,7 @@ public class BookingService {
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final ModuleAccessService moduleAccessService;
     private final String frontendUrl;
 
     public BookingService(
@@ -121,6 +122,7 @@ public class BookingService {
             ActivityLogService activityLogService,
             NotificationService notificationService,
             UserRepository userRepository,
+            ModuleAccessService moduleAccessService,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -144,6 +146,7 @@ public class BookingService {
         this.activityLogService = activityLogService;
         this.notificationService = notificationService;
         this.userRepository = userRepository;
+        this.moduleAccessService = moduleAccessService;
         this.frontendUrl = frontendUrl;
     }
 
@@ -389,6 +392,7 @@ public class BookingService {
     @Transactional
     public BookingCreatedResponse createStaffBooking(CreateStaffBookingRequest req) {
         UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "BOOKINGS");
 
         if ((req.serviceCatalogId() == null) == (req.packageId() == null)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Select a service.");

@@ -121,11 +121,21 @@ public class Business {
     @Column(name = "expiry_reminder_sent_at")
     private Instant expiryReminderSentAt;
 
-    // Simple text array of enabled module codes, e.g. INVENTORY, SALES, CUSTOMERS, EXPENSES
+    // Simple text array of enabled module codes. Was inert scaffolding for a
+    // long time (nothing enforced it) — now that ModuleAccessService actually
+    // gates on it, a new business must default to EVERYTHING on, not just the
+    // original narrow core set: this is meant as Super-Admin-initiated
+    // *hiding* of an optional module for a specific business, never an
+    // opt-in a new signup would silently start locked out of. See
+    // V44__backfill_enabled_modules.sql for why every pre-existing row also
+    // needed a one-time backfill to this same full set.
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "enabled_modules", columnDefinition = "text[]", nullable = false)
     @Builder.Default
-    private List<String> enabledModules = List.of("INVENTORY", "SALES", "CUSTOMERS", "EXPENSES");
+    private List<String> enabledModules = List.of(
+            "INVENTORY", "SALES", "CUSTOMERS", "EXPENSES",
+            "SERVICE_ORDERS", "CUSTOM_WIG_REQUESTS", "ECOMMERCE", "BOOKINGS", "SUPPLIERS_AND_PURCHASING"
+    );
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default

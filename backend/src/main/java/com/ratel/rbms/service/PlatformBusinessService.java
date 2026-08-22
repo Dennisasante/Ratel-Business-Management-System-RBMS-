@@ -7,6 +7,7 @@ import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
+import com.ratel.rbms.dto.PlatformBusinessModulesUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
 import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
@@ -55,10 +56,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -505,6 +509,37 @@ public class PlatformBusinessService {
 
         auditLogService.log(adminId, "Updated billing for \"" + business.getName() + "\""
                         + (restoredAccess ? " (restored from suspended to trialing)" : ""),
+                business.getId(), business.getName(), null);
+
+        return getDetail(business.getId());
+    }
+
+    // The permanent core set — every business gets these regardless of what
+    // the Super Admin picks, so a mistaken save can never brick core
+    // functionality. Kept out of the togglable list entirely (not just
+    // pre-checked) on the Super Admin UI.
+    private static final Set<String> CORE_MODULES = Set.of("INVENTORY", "SALES", "CUSTOMERS", "EXPENSES");
+
+    private static final Set<String> TOGGLEABLE_MODULES = Set.of(
+            "SERVICE_ORDERS", "CUSTOM_WIG_REQUESTS", "ECOMMERCE", "BOOKINGS", "SUPPLIERS_AND_PURCHASING"
+    );
+
+    public PlatformBusinessDetailResponse updateEnabledModules(UUID adminId, UUID businessId, PlatformBusinessModulesUpdateRequest req) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+
+        for (String code : req.enabledModules()) {
+            if (!TOGGLEABLE_MODULES.contains(code) && !CORE_MODULES.contains(code)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Unrecognized module: " + code);
+            }
+        }
+
+        Set<String> merged = new LinkedHashSet<>(CORE_MODULES);
+        merged.addAll(req.enabledModules().stream().filter(TOGGLEABLE_MODULES::contains).toList());
+        business.setEnabledModules(new ArrayList<>(merged));
+        business = businessRepository.save(business);
+
+        auditLogService.log(adminId, "Updated enabled modules for \"" + business.getName() + "\"",
                 business.getId(), business.getName(), null);
 
         return getDetail(business.getId());

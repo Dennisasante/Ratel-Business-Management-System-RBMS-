@@ -42,6 +42,11 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   ownerOnly?: boolean;
   external?: boolean;
+  // Matches a code in Business.enabledModules — a Super Admin can hide this
+  // module for a specific business (e.g. a gadget seller doesn't need
+  // Custom Wig Requests). Omitted entirely for the permanent core modules
+  // (Inventory/Sales/Customers/Expenses/Invoices), which are always visible.
+  moduleCode?: string;
 };
 
 // Grouped so related items sit together instead of one long flat list —
@@ -55,18 +60,18 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   },
   {
     label: "Bookings",
-    items: [{ href: "/dashboard/bookings", label: "Bookings", icon: CalendarCheck2 }],
+    items: [{ href: "/dashboard/bookings", label: "Bookings", icon: CalendarCheck2, moduleCode: "BOOKINGS" }],
   },
   {
     label: "Operations",
     items: [
       { href: "/dashboard/inventory", label: "Inventory", icon: Package },
       { href: "/dashboard/sales", label: "Sales / POS", icon: ShoppingCart },
-      { href: "/dashboard/service-orders", label: "Service Orders", icon: Wrench },
-      { href: "/dashboard/ecommerce-orders", label: "E-commerce Orders", icon: ShoppingBag },
-      { href: "/dashboard/custom-wig-requests", label: "Custom Wig Requests", icon: Sparkles },
-      { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck },
-      { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
+      { href: "/dashboard/service-orders", label: "Service Orders", icon: Wrench, moduleCode: "SERVICE_ORDERS" },
+      { href: "/dashboard/ecommerce-orders", label: "E-commerce Orders", icon: ShoppingBag, moduleCode: "ECOMMERCE" },
+      { href: "/dashboard/custom-wig-requests", label: "Custom Wig Requests", icon: Sparkles, moduleCode: "CUSTOM_WIG_REQUESTS" },
+      { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, moduleCode: "SUPPLIERS_AND_PURCHASING" },
+      { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ClipboardList, moduleCode: "SUPPLIERS_AND_PURCHASING" },
     ],
   },
   {
@@ -129,7 +134,11 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <nav className="flex-1 space-y-4 px-3 py-2 overflow-y-auto">
         {NAV_GROUPS.map((group, groupIndex) => {
-          const items = group.items.filter((item) => !item.ownerOnly || session?.role === "OWNER");
+          const items = group.items.filter(
+            (item) =>
+              (!item.ownerOnly || session?.role === "OWNER") &&
+              (!item.moduleCode || business?.enabledModules?.includes(item.moduleCode))
+          );
           if (items.length === 0) return null;
 
           return (

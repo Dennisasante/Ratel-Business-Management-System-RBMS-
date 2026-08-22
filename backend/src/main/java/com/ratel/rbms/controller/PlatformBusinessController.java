@@ -7,6 +7,7 @@ import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.dto.PaymentTransactionResponse;
 import com.ratel.rbms.dto.PlatformBusinessBillingUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessDetailResponse;
+import com.ratel.rbms.dto.PlatformBusinessModulesUpdateRequest;
 import com.ratel.rbms.dto.PlatformBusinessSummaryResponse;
 import com.ratel.rbms.dto.PlatformCustomerSummaryResponse;
 import com.ratel.rbms.dto.PlatformSaleSummaryResponse;
@@ -16,6 +17,7 @@ import com.ratel.rbms.dto.ServiceOrderResponse;
 import com.ratel.rbms.dto.SubscriptionPaymentResponse;
 import com.ratel.rbms.dto.UpdateUserStatusRequest;
 import com.ratel.rbms.service.PlatformBusinessService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -80,6 +82,11 @@ public class PlatformBusinessController {
     @PatchMapping("/{id}/billing")
     public PlatformBusinessDetailResponse updateBilling(@PathVariable UUID id, @RequestBody PlatformBusinessBillingUpdateRequest request) {
         return platformBusinessService.updateBilling(currentAdminId(), id, request);
+    }
+
+    @PatchMapping("/{id}/modules")
+    public PlatformBusinessDetailResponse updateEnabledModules(@PathVariable UUID id, @Valid @RequestBody PlatformBusinessModulesUpdateRequest request) {
+        return platformBusinessService.updateEnabledModules(currentAdminId(), id, request);
     }
 
     @DeleteMapping("/{id}")

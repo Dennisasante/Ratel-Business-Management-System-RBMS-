@@ -90,6 +90,7 @@ public class ServiceOrderService {
     private final PaystackService paystackService;
     private final PaymentTransactionService paymentTransactionService;
     private final ApprovalGateService approvalGateService;
+    private final ModuleAccessService moduleAccessService;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -107,7 +108,8 @@ public class ServiceOrderService {
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
-            ApprovalGateService approvalGateService
+            ApprovalGateService approvalGateService,
+            ModuleAccessService moduleAccessService
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -125,6 +127,7 @@ public class ServiceOrderService {
         this.paystackService = paystackService;
         this.paymentTransactionService = paymentTransactionService;
         this.approvalGateService = approvalGateService;
+        this.moduleAccessService = moduleAccessService;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -136,6 +139,7 @@ public class ServiceOrderService {
     @Transactional
     public ServiceOrderResponse create(ServiceOrderRequest req) {
         UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SERVICE_ORDERS");
 
         if (req.customerId() != null) {
             customerService.getOwned(req.customerId()); // validates ownership; response reloads it via toResponse()
@@ -207,6 +211,7 @@ public class ServiceOrderService {
 
     public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page) {
         UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SERVICE_ORDERS");
         List<ServiceOrder> orders = serviceOrderRepository.search(
                 businessId, serviceTypeId, status, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
         return orders.stream().map(this::toResponse).toList();
@@ -582,7 +587,9 @@ public class ServiceOrderService {
     }
 
     private ServiceOrder getOwned(UUID id) {
-        return serviceOrderRepository.findByIdAndBusinessId(id, TenantContext.getBusinessId())
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "SERVICE_ORDERS");
+        return serviceOrderRepository.findByIdAndBusinessId(id, businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service order not found."));
     }
 

@@ -45,6 +45,19 @@ const BILLING_STATUS_TONE: Record<string, "success" | "info" | "danger"> = {
   READ_ONLY: "danger",
 };
 
+// Mirrors PlatformBusinessService's CORE_MODULES/TOGGLEABLE_MODULES exactly.
+// Core modules are never shown as optional — a Super Admin can't disable a
+// business's basic functionality by mistake.
+const CORE_MODULE_CODES = ["INVENTORY", "SALES", "CUSTOMERS", "EXPENSES"];
+
+const TOGGLEABLE_MODULES: { code: string; label: string }[] = [
+  { code: "SERVICE_ORDERS", label: "Service Orders" },
+  { code: "CUSTOM_WIG_REQUESTS", label: "Custom Wig Requests" },
+  { code: "ECOMMERCE", label: "E-commerce Orders" },
+  { code: "BOOKINGS", label: "Bookings" },
+  { code: "SUPPLIERS_AND_PURCHASING", label: "Suppliers & Purchase Orders" },
+];
+
 const ROLE_LABEL: Record<string, string> = {
   OWNER: "Owner",
   MANAGER: "Administrator",
@@ -113,6 +126,11 @@ export default function PlatformBusinessDetailPage() {
   const [priceOverride, setPriceOverride] = useState<string>("");
   const [savingBilling, setSavingBilling] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
+
+  const [editingModules, setEditingModules] = useState(false);
+  const [moduleSelections, setModuleSelections] = useState<string[]>([]);
+  const [savingModules, setSavingModules] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!session || !params.id) return;
@@ -260,6 +278,32 @@ export default function PlatformBusinessDetailPage() {
       setBillingError(err instanceof ApiError ? err.message : "Couldn't save billing changes.");
     } finally {
       setSavingBilling(false);
+    }
+  }
+
+  function startEditingModules() {
+    if (!business) return;
+    setModuleSelections(business.enabledModules.filter((m) => TOGGLEABLE_MODULES.some((t) => t.code === m)));
+    setModulesError(null);
+    setEditingModules(true);
+  }
+
+  function toggleModule(code: string) {
+    setModuleSelections((prev) => (prev.includes(code) ? prev.filter((m) => m !== code) : [...prev, code]));
+  }
+
+  async function saveModules() {
+    if (!session || !business) return;
+    setSavingModules(true);
+    setModulesError(null);
+    try {
+      await api.updatePlatformBusinessModules(session.token, business.id, moduleSelections);
+      await load();
+      setEditingModules(false);
+    } catch (err) {
+      setModulesError(err instanceof ApiError ? err.message : "Couldn't save enabled modules.");
+    } finally {
+      setSavingModules(false);
     }
   }
 
@@ -469,14 +513,60 @@ export default function PlatformBusinessDetailPage() {
                 )}
 
                 <div className="mt-4">
-                  <p className="text-sm text-ink-500">Enabled modules</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {business.enabledModules.map((m) => (
-                      <Badge key={m} tone="accent">
-                        {m}
-                      </Badge>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-ink-500">Enabled modules</p>
+                    {!editingModules && (
+                      <button
+                        onClick={startEditingModules}
+                        className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline"
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
+                    )}
                   </div>
+
+                  {editingModules ? (
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg bg-canvas p-3">
+                      <div className="flex flex-col gap-2">
+                        {CORE_MODULE_CODES.map((code) => (
+                          <label key={code} className="flex items-center gap-2 text-sm text-ink-500">
+                            <input type="checkbox" checked disabled className="rounded border-border" />
+                            {code} <span className="text-xs">(always on)</span>
+                          </label>
+                        ))}
+                        {TOGGLEABLE_MODULES.map(({ code, label }) => (
+                          <label key={code} className="flex items-center gap-2 text-sm text-ink-900">
+                            <input
+                              type="checkbox"
+                              checked={moduleSelections.includes(code)}
+                              onChange={() => toggleModule(code)}
+                              className="rounded border-border"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+
+                      {modulesError && <p className="text-sm text-danger">{modulesError}</p>}
+
+                      <div className="flex gap-2">
+                        <Button onClick={saveModules} disabled={savingModules}>
+                          {savingModules ? "Saving..." : "Save"}
+                        </Button>
+                        <Button variant="secondary" onClick={() => setEditingModules(false)} disabled={savingModules}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {business.enabledModules.map((m) => (
+                        <Badge key={m} tone="accent">
+                          {m}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Card>
 

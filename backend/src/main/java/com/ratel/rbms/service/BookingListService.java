@@ -38,6 +38,7 @@ public class BookingListService {
     private final ServicePackageRepository servicePackageRepository;
     private final StaffMemberRepository staffMemberRepository;
     private final UserRepository userRepository;
+    private final ModuleAccessService moduleAccessService;
 
     public BookingListService(
             BookingRepository bookingRepository,
@@ -45,7 +46,8 @@ public class BookingListService {
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServicePackageRepository servicePackageRepository,
             StaffMemberRepository staffMemberRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            ModuleAccessService moduleAccessService
     ) {
         this.bookingRepository = bookingRepository;
         this.serviceOrderRepository = serviceOrderRepository;
@@ -53,10 +55,12 @@ public class BookingListService {
         this.servicePackageRepository = servicePackageRepository;
         this.staffMemberRepository = staffMemberRepository;
         this.userRepository = userRepository;
+        this.moduleAccessService = moduleAccessService;
     }
 
     public List<BookingListResponse> list(ServiceOrderStatus status) {
         UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, "BOOKINGS");
 
         List<Booking> bookings = bookingRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
 

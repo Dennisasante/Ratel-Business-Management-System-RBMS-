@@ -1940,6 +1940,13 @@ export const api = {
       token
     ),
 
+  updatePlatformBusinessModules: (token: string, id: string, enabledModules: string[]) =>
+    request<PlatformBusinessDetail>(
+      `/api/platform/businesses/${id}/modules`,
+      { method: "PATCH", body: JSON.stringify({ enabledModules }) },
+      token
+    ),
+
   deletePlatformBusiness: (token: string, id: string) =>
     request<void>(`/api/platform/businesses/${id}`, { method: "DELETE" }, token),
 
