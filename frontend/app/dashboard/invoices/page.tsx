@@ -107,7 +107,16 @@ export default function InvoicesPage() {
 
   async function handleDownload(invoice: Invoice | InvoiceSummary) {
     if (!session) return;
-    await api.downloadInvoicePdf(session.token, invoice.id, invoice.invoiceNumber);
+    setActionError(null);
+    try {
+      await api.downloadInvoicePdf(session.token, invoice.id, invoice.invoiceNumber);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't download this invoice.");
+      // The row we tried to download may no longer exist (e.g. deleted from
+      // another tab/session) — refresh so the list reflects reality instead
+      // of leaving a stale, now-broken row on screen.
+      await loadInvoices();
+    }
   }
 
   async function handleDelete(id: string) {
