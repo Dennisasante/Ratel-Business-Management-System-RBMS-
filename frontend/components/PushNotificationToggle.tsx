@@ -18,7 +18,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed" | "denied";
+type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed" | "denied" | "ios-not-installed";
+
+// iOS Safari only supports Web Push once the site has been added to the
+// Home Screen and reopened from there (iOS 16.4+) — from a regular browser
+// tab, PushManager exists (so the earlier feature-detection passes) but
+// subscribe() always fails with an opaque error. Checked separately so the
+// UI can explain the actual fix instead of a dead-end failure message.
+function isIosBrowserTab(): boolean {
+  if (typeof window === "undefined") return false;
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+  return isIos && !isStandalone;
+}
 
 // Never auto-triggered — permission prompts are one-shot and burning it on
 // page load (before the person knows what they're agreeing to) tends to get
@@ -33,6 +47,10 @@ export default function PushNotificationToggle({ token }: { token: string }) {
     async function check() {
       if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
         setStatus("unsupported");
+        return;
+      }
+      if (isIosBrowserTab()) {
+        setStatus("ios-not-installed");
         return;
       }
       if (Notification.permission === "denied") {
@@ -109,6 +127,15 @@ export default function PushNotificationToggle({ token }: { token: string }) {
 
   if (status === "unsupported") {
     return <p className="text-xs text-ink-500">Push notifications aren&apos;t supported on this browser/device.</p>;
+  }
+
+  if (status === "ios-not-installed") {
+    return (
+      <p className="text-xs text-ink-500">
+        On iPhone/iPad, push notifications only work once this app is added to your Home Screen: tap the Share icon in
+        Safari, choose &quot;Add to Home Screen,&quot; then open the app from there and try again.
+      </p>
+    );
   }
 
   if (status === "denied") {
