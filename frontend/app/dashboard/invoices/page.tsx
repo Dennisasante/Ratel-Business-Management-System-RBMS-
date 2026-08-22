@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Download } from "lucide-react";
+import { FileText, Plus, Download, MoreVertical, Eye, Send, Pencil, CheckCircle2, Copy, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, Invoice, InvoicePayload, InvoiceStatus, InvoiceSummary } from "@/lib/api";
 import Modal from "@/components/Modal";
@@ -42,6 +43,7 @@ export default function InvoicesPage() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -81,6 +83,13 @@ export default function InvoicesPage() {
     setViewingInvoice(full);
   }
 
+  async function openEdit(id: string) {
+    if (!session) return;
+    setActionError(null);
+    const full = await api.getInvoice(session.token, id);
+    setEditingInvoice(full);
+  }
+
   async function handleStatusChange(id: string, status: InvoiceStatus) {
     if (!session) return;
     setActionError(null);
@@ -117,6 +126,40 @@ export default function InvoicesPage() {
     }
   }
 
+  async function handleSend(id: string) {
+    if (!session) return;
+    setActionError(null);
+    setActionInfo(null);
+    setBusyId(id);
+    try {
+      const updated = await api.sendInvoice(session.token, id);
+      setViewingInvoice((v) => (v && v.id === id ? updated : v));
+      setActionInfo(`Invoice #${updated.invoiceNumber} sent to ${updated.customerEmail}.`);
+      await loadInvoices();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't send this invoice.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    if (!session) return;
+    setActionError(null);
+    setActionInfo(null);
+    setBusyId(id);
+    try {
+      const copy = await api.duplicateInvoice(session.token, id);
+      await loadInvoices();
+      setViewingInvoice(null);
+      setEditingInvoice(copy);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't duplicate this invoice.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -144,8 +187,9 @@ export default function InvoicesPage() {
 
       <Card>
         {actionError && <p className="px-5 pt-4 text-sm text-danger">{actionError}</p>}
+        {actionInfo && <p className="px-5 pt-4 text-sm text-info">{actionInfo}</p>}
         {fetching ? (
-          <TableSkeleton cols={6} />
+          <TableSkeleton cols={7} />
         ) : visibleInvoices.length === 0 ? (
           <EmptyState
             icon={FileText}
@@ -161,20 +205,21 @@ export default function InvoicesPage() {
           <Table>
             <THead>
               <Tr>
-                <Th>Invoice</Th>
+                <Th>Reference</Th>
                 <Th>Customer</Th>
-                <Th>Issue date</Th>
+                <Th>Date</Th>
                 <Th>Due date</Th>
                 <Th>Status</Th>
                 <Th className="text-right">Total</Th>
+                <Th></Th>
               </Tr>
             </THead>
             <TBody>
               {visibleInvoices.map((inv) => (
                 <Tr key={inv.id}>
                   <Td className="tabular font-medium">
-                    <button className="hover:underline" onClick={() => openView(inv.id)}>
-                      #{inv.invoiceNumber}
+                    <button className="text-accent-hover hover:underline" onClick={() => openView(inv.id)}>
+                      Invoice #{inv.invoiceNumber}
                     </button>
                   </Td>
                   <Td className="text-ink-500">{inv.customerName ?? "—"}</Td>
@@ -183,18 +228,68 @@ export default function InvoicesPage() {
                   <Td>
                     <Badge tone={STATUS_TONES[inv.status]}>{STATUS_LABELS[inv.status]}</Badge>
                   </Td>
+                  <Td className="tabular text-right font-medium">GH₵{inv.totalAmount.toFixed(2)}</Td>
                   <Td className="text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <span className="tabular font-medium">GH₵{inv.totalAmount.toFixed(2)}</span>
+                    <ActionsMenu>
+                      <button
+                        onClick={() => openView(inv.id)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas"
+                      >
+                        <Eye size={14} />
+                        View
+                      </button>
                       <button
                         onClick={() => handleDownload(inv)}
-                        className="text-ink-500 hover:text-accent-hover"
-                        title="Download PDF"
-                        aria-label="Download PDF"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas"
                       >
-                        <Download size={15} />
+                        <Download size={14} />
+                        Download
                       </button>
-                    </div>
+                      <button
+                        onClick={() => handleSend(inv.id)}
+                        disabled={busyId === inv.id}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Send size={14} />
+                        {busyId === inv.id ? "Sending..." : "Send"}
+                      </button>
+                      {inv.status === "DRAFT" && (
+                        <button
+                          onClick={() => openEdit(inv.id)}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas"
+                        >
+                          <Pencil size={14} />
+                          Edit
+                        </button>
+                      )}
+                      {inv.status !== "PAID" && (
+                        <button
+                          onClick={() => handleStatusChange(inv.id, "PAID")}
+                          disabled={busyId === inv.id}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-success hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <CheckCircle2 size={14} />
+                          Mark as Paid
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDuplicate(inv.id)}
+                        disabled={busyId === inv.id}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Copy size={14} />
+                        Duplicate
+                      </button>
+                      {inv.status === "DRAFT" && (
+                        <button
+                          onClick={() => setConfirmDeleteId(inv.id)}
+                          className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm font-medium text-danger hover:bg-canvas"
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      )}
+                    </ActionsMenu>
                   </Td>
                 </Tr>
               ))}
@@ -270,9 +365,15 @@ export default function InvoicesPage() {
               </select>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => handleDownload(viewingInvoice)} className="flex-1">
-                <Download size={15} className="mr-1.5" /> Download PDF
+                <Download size={15} className="mr-1.5" /> Download
+              </Button>
+              <Button variant="secondary" onClick={() => handleSend(viewingInvoice.id)} disabled={busyId === viewingInvoice.id} className="flex-1">
+                <Send size={15} className="mr-1.5" /> {busyId === viewingInvoice.id ? "Sending..." : "Send"}
+              </Button>
+              <Button variant="secondary" onClick={() => handleDuplicate(viewingInvoice.id)} disabled={busyId === viewingInvoice.id}>
+                <Copy size={15} className="mr-1.5" /> Duplicate
               </Button>
               {viewingInvoice.status === "DRAFT" && (
                 <>
@@ -322,5 +423,70 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
     >
       {label}
     </button>
+  );
+}
+
+// Same "⋯" overflow-menu idea as the Service Orders page, but portaled to
+// document.body instead of positioned `absolute` inside the row — the
+// Invoices table sits in a `overflow-x-auto` wrapper (Table.tsx), and per
+// the CSS spec that resolves overflow-y to `auto` too, which silently
+// clipped the dropdown for any row near the table's bottom edge (worst case:
+// a one-row table, where the menu had almost nowhere to render into). A
+// portal + `position: fixed` computed from the trigger's own bounding rect
+// escapes that ancestor entirely, same trick Modal.tsx already uses.
+function ActionsMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  function toggle() {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      // Right-aligned to the trigger, same as the old `right-0` positioning —
+      // 208px is this menu's own w-52.
+      setCoords({ top: rect.bottom + 4, left: rect.right - 208 });
+    }
+    setOpen((o) => !o);
+  }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggle}
+        aria-label="More actions"
+        className="rounded-lg p-1.5 text-ink-500 hover:bg-canvas hover:text-ink-900"
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            onClick={() => setOpen(false)}
+            style={{ position: "fixed", top: coords.top, left: coords.left }}
+            className="z-50 w-52 rounded-lg border border-border bg-surface py-1 text-left shadow-card"
+          >
+            {children}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

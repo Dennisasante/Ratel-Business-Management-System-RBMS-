@@ -3,6 +3,7 @@ package com.ratel.rbms.service;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -49,6 +50,22 @@ public class EmailService {
 
     public void sendDigest(String toEmail, String subject, String body) {
         send(toEmail, subject, body);
+    }
+
+    // Exposed so a caller can give the user real feedback ("email isn't set
+    // up yet") instead of a click that silently does nothing — unlike the
+    // password-reset/notification emails above, sending an invoice is a
+    // deliberate user action with an expected outcome.
+    public boolean isConfigured() {
+        return configured;
+    }
+
+    public void sendInvoice(String toEmail, String businessName, long invoiceNumber, String totalLabel, byte[] pdf) {
+        String subject = businessName + ": Invoice #" + invoiceNumber;
+        String body = "Hi,\n\n"
+                + "Please find attached Invoice #" + invoiceNumber + " from " + businessName + " for " + totalLabel + ".\n\n"
+                + "Thank you for your business.";
+        sendWithAttachment(toEmail, subject, body, "Invoice-" + invoiceNumber + ".pdf", pdf);
     }
 
     public void sendBillingReminder(String toEmail, String businessName, long daysRemaining, String periodLabel) {
@@ -207,6 +224,28 @@ public class EmailService {
             // Swallow rather than propagate: a broken SMTP config shouldn't surface
             // as a 500 to the end user, or reveal account existence via error timing.
             System.err.println("[RBMS] Failed to send email to " + to + ": " + e.getMessage());
+        }
+    }
+
+    // Callers that send an attachment (only invoices, for now) check
+    // isConfigured() themselves first and surface a real error to the user —
+    // unlike send() above, this one still throws on failure rather than
+    // swallowing, since InvoiceService needs to know whether it actually went out.
+    private void sendWithAttachment(String to, String subject, String body, String attachmentName, byte[] attachment) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            // "true" here is the multipart flag MimeMessageHelper needs before
+            // addAttachment() will work at all — the plain send() above never
+            // sets this since it has nothing to attach.
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            helper.setFrom(fromAddress, "Tallia");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(body);
+            helper.addAttachment(attachmentName, new ByteArrayResource(attachment));
+            mailSender.send(message);
+        } catch (MailException | MessagingException | UnsupportedEncodingException e) {
+            throw new RuntimeException("Couldn't send that email. Please try again.", e);
         }
     }
 }

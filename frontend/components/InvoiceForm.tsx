@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { ApiError, Customer, Invoice, InvoiceItemPayload, InvoicePayload } from "@/lib/api";
+import { ApiError, Customer, Invoice, InvoiceItemPayload, InvoicePayload, Product } from "@/lib/api";
 import CustomerPicker from "@/components/CustomerPicker";
+import ProductPicker from "@/components/ProductPicker";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
 
@@ -64,6 +65,23 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
 
   function addItem() {
     setItems((prev) => [...prev, emptyItem()]);
+  }
+
+  // Fills the single still-untouched row in place rather than appending a
+  // duplicate blank line under it; every pick after that just appends.
+  function addProduct(product: Product) {
+    const draft: ItemDraft = {
+      description: product.name,
+      quantity: "1",
+      unitPrice: String(product.sellingPrice),
+      discountAmount: "",
+    };
+    setItems((prev) => {
+      if (prev.length === 1 && !prev[0].description.trim() && !prev[0].unitPrice) {
+        return [draft];
+      }
+      return [...prev, draft];
+    });
   }
 
   function removeItem(index: number) {
@@ -140,6 +158,7 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
 
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-ink-700">Line items</label>
+        <ProductPicker token={token} onSelect={addProduct} />
         {items.map((item, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <div className="flex items-start gap-2">

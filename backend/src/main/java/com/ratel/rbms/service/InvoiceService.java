@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -34,19 +35,25 @@ public class InvoiceService {
     private final BusinessRepository businessRepository;
     private final CustomerRepository customerRepository;
     private final ActivityLogService activityLogService;
+    private final InvoicePdfService invoicePdfService;
+    private final EmailService emailService;
 
     public InvoiceService(
             InvoiceRepository invoiceRepository,
             InvoiceItemRepository invoiceItemRepository,
             BusinessRepository businessRepository,
             CustomerRepository customerRepository,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            InvoicePdfService invoicePdfService,
+            EmailService emailService
     ) {
         this.invoiceRepository = invoiceRepository;
         this.invoiceItemRepository = invoiceItemRepository;
         this.businessRepository = businessRepository;
         this.customerRepository = customerRepository;
         this.activityLogService = activityLogService;
+        this.invoicePdfService = invoicePdfService;
+        this.emailService = emailService;
     }
 
     public List<InvoiceSummaryResponse> listAll() {
@@ -167,6 +174,73 @@ public class InvoiceService {
         invoiceItemRepository.deleteAllByInvoiceId(id);
         invoiceRepository.delete(invoice);
         activityLogService.log("Deleted invoice #" + invoiceNumber, "INVOICE", id);
+    }
+
+    // Emails the same PDF Download produces, as an attachment. Flips a DRAFT
+    // invoice to SENT (matching what "Send" implies); re-sending an
+    // already-SENT/PAID/OVERDUE invoice just re-delivers it without touching
+    // status, since that's presumably a deliberate resend, not a first send.
+    @Transactional
+    public InvoiceResponse send(UUID id) {
+        Invoice invoice = getOwned(id);
+        if (invoice.getCustomerEmail() == null || invoice.getCustomerEmail().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This invoice has no customer email on file to send to.");
+        }
+        if (!emailService.isConfigured()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Email isn't set up for this business yet — ask your Owner to add SMTP settings.");
+        }
+
+        Business business = getBusiness(invoice.getBusinessId());
+        List<InvoiceItem> items = getItems(invoice.getId());
+        byte[] pdf = invoicePdfService.generate(business, invoice, items);
+        emailService.sendInvoice(invoice.getCustomerEmail(), business.getName(), invoice.getInvoiceNumber(),
+                business.getCurrency() + " " + invoice.getTotalAmount(), pdf);
+
+        if ("DRAFT".equals(invoice.getStatus())) {
+            invoice.setStatus("SENT");
+            invoice = invoiceRepository.save(invoice);
+        }
+
+        activityLogService.log("Sent invoice #" + invoice.getInvoiceNumber() + " to " + invoice.getCustomerEmail(), "INVOICE", invoice.getId());
+
+        return toResponse(invoice);
+    }
+
+    // A fresh DRAFT with the same customer/line items — today's issue date,
+    // no due date/status carried over, since those are specific to the
+    // original billing cycle, not the client relationship being repeated.
+    @Transactional
+    public InvoiceResponse duplicate(UUID id) {
+        Invoice original = getOwned(id);
+        List<InvoiceItem> originalItems = getItems(original.getId());
+        UUID businessId = original.getBusinessId();
+
+        businessRepository.findByIdForUpdate(businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        long nextNumber = invoiceRepository.findMaxInvoiceNumber(businessId) + 1;
+
+        Invoice copy = Invoice.builder()
+                .businessId(businessId)
+                .invoiceNumber(nextNumber)
+                .customerId(original.getCustomerId())
+                .customerName(original.getCustomerName())
+                .customerEmail(original.getCustomerEmail())
+                .customerPhone(original.getCustomerPhone())
+                .customerAddress(original.getCustomerAddress())
+                .issueDate(LocalDate.now())
+                .notes(original.getNotes())
+                .createdBy(TenantContext.getUserId())
+                .build();
+        copy = invoiceRepository.save(copy);
+
+        List<InvoiceItemRequest> itemRequests = originalItems.stream()
+                .map(i -> new InvoiceItemRequest(i.getDescription(), i.getQuantity(), i.getUnitPrice(), i.getDiscountAmount()))
+                .toList();
+        applyItems(copy, itemRequests);
+
+        activityLogService.log("Duplicated invoice #" + original.getInvoiceNumber() + " as #" + copy.getInvoiceNumber(), "INVOICE", copy.getId());
+
+        return toResponse(copy);
     }
 
     public Invoice getOwnedForPdf(UUID id) {

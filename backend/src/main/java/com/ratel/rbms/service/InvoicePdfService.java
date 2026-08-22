@@ -8,6 +8,7 @@ import com.lowagie.text.Image;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
+import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -22,8 +23,11 @@ import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 // A deliberately more polished document than ReceiptService's plain-text
 // receipt — this is customer-facing collateral a business hands to a client,
@@ -32,8 +36,19 @@ import java.util.List;
 public class InvoicePdfService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy");
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a").withZone(ZoneOffset.UTC);
     private static final Color BRAND_COLOR = new Color(0, 74, 173); // matches the app's accent token
-    private static final Color LIGHT_GRAY = new Color(243, 244, 246);
+    private static final Color BRAND_DARK = new Color(15, 32, 61); // header-row background — dark, not pure black
+    private static final Color BORDER_COLOR = new Color(214, 219, 226);
+    private static final Color ROW_ALT_COLOR = new Color(247, 249, 251);
+    private static final Color TOTAL_ROW_COLOR = new Color(234, 240, 249);
+
+    private static final java.util.Map<String, Color> STATUS_COLORS = java.util.Map.of(
+            "DRAFT", new Color(107, 114, 128),
+            "SENT", new Color(37, 99, 235),
+            "PAID", new Color(21, 128, 61),
+            "OVERDUE", new Color(185, 28, 28)
+    );
 
     private final String uploadDir;
 
@@ -42,41 +57,47 @@ public class InvoicePdfService {
     }
 
     public byte[] generate(Business business, Invoice invoice, List<InvoiceItem> items) {
-        Document document = new Document(PageSize.A4, 40, 40, 50, 50);
+        Document document = new Document(PageSize.A4, 40, 40, 40, 40);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 20, BRAND_COLOR);
-            Font businessFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+            Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, BRAND_DARK);
+            Font businessFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
             Font normalFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
             Font boldFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
+            Font tableHeaderFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9.5f, Color.WHITE);
             Font labelFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.GRAY);
-            Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 8);
-            Font totalFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
+            Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.GRAY);
+            Font totalFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, BRAND_DARK);
+            Font statusFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
 
-            document.add(buildHeader(business, invoice, brandFont, businessFont, normalFont, labelFont));
-            document.add(new Paragraph(" "));
-            document.add(buildBillTo(invoice, labelFont, normalFont));
-            document.add(new Paragraph(" "));
-            document.add(buildItemsTable(items, business.getCurrency(), boldFont, normalFont));
-            document.add(new Paragraph(" "));
+            document.add(buildHeader(business, invoice, brandFont, businessFont, normalFont, labelFont, statusFont));
+            document.add(ruleBelow());
+            document.add(spacer(14));
+            document.add(buildBillTo(invoice, labelFont, boldFont, normalFont));
+            document.add(spacer(16));
+            document.add(buildItemsTable(items, business.getCurrency(), tableHeaderFont, normalFont));
+            document.add(spacer(10));
             document.add(buildTotals(invoice, business.getCurrency(), normalFont, boldFont, totalFont));
 
             if (invoice.getNotes() != null && !invoice.getNotes().isBlank()) {
-                document.add(new Paragraph(" "));
-                Paragraph notesLabel = new Paragraph("Notes", boldFont);
-                document.add(notesLabel);
+                document.add(spacer(18));
+                document.add(new Paragraph("NOTES", labelFont));
                 document.add(new Paragraph(invoice.getNotes(), normalFont));
             }
 
-            document.add(new Paragraph(" "));
-            document.add(new Paragraph(" "));
+            document.add(spacer(28));
+            document.add(footerRule());
             Paragraph footer = new Paragraph("Powered by Tallia", smallFont);
             footer.setAlignment(Element.ALIGN_CENTER);
+            footer.setSpacingBefore(6);
             document.add(footer);
+            Paragraph generated = new Paragraph("Generated " + TIMESTAMP_FORMAT.format(Instant.now()), smallFont);
+            generated.setAlignment(Element.ALIGN_CENTER);
+            document.add(generated);
 
             document.close();
         } catch (Exception e) {
@@ -86,7 +107,39 @@ public class InvoicePdfService {
         return out.toByteArray();
     }
 
-    private PdfPTable buildHeader(Business business, Invoice invoice, Font brandFont, Font businessFont, Font normalFont, Font labelFont) throws Exception {
+    private Paragraph spacer(float size) {
+        Paragraph p = new Paragraph(" ");
+        p.setSpacingAfter(0);
+        p.setLeading(size);
+        return p;
+    }
+
+    private PdfPTable ruleBelow() {
+        PdfPTable rule = new PdfPTable(1);
+        rule.setWidthPercentage(100);
+        rule.setSpacingBefore(10);
+        PdfPCell cell = new PdfPCell();
+        cell.setFixedHeight(2.5f);
+        cell.setBackgroundColor(BRAND_DARK);
+        cell.setBorder(0);
+        rule.addCell(cell);
+        return rule;
+    }
+
+    private PdfPTable footerRule() {
+        PdfPTable rule = new PdfPTable(1);
+        rule.setWidthPercentage(100);
+        PdfPCell cell = new PdfPCell();
+        cell.setFixedHeight(0.75f);
+        cell.setBackgroundColor(BORDER_COLOR);
+        cell.setBorder(0);
+        rule.addCell(cell);
+        return rule;
+    }
+
+    private PdfPTable buildHeader(
+            Business business, Invoice invoice, Font brandFont, Font businessFont, Font normalFont, Font labelFont, Font statusFont
+    ) throws Exception {
         PdfPTable header = new PdfPTable(2);
         header.setWidthPercentage(100);
         header.setWidths(new float[]{1.3f, 1});
@@ -95,7 +148,7 @@ public class InvoicePdfService {
         left.setBorder(0);
         Image logo = loadLogo(business.getLogoUrl());
         if (logo != null) {
-            logo.scaleToFit(90, 90);
+            logo.scaleToFit(85, 85);
             left.addElement(logo);
             left.addElement(new Paragraph(" "));
         }
@@ -120,6 +173,7 @@ public class InvoicePdfService {
         Paragraph invoiceNumber = new Paragraph("#" + invoice.getInvoiceNumber(), businessFont);
         invoiceNumber.setAlignment(Element.ALIGN_RIGHT);
         right.addElement(invoiceNumber);
+        right.addElement(statusBadge(invoice.getStatus(), statusFont));
         right.addElement(new Paragraph(" "));
         right.addElement(labeledLine("Issue date", invoice.getIssueDate().format(DATE_FORMAT), labelFont, normalFont));
         if (invoice.getDueDate() != null) {
@@ -130,22 +184,43 @@ public class InvoicePdfService {
         return header;
     }
 
+    // A small colored pill (e.g. green "PAID", red "OVERDUE") right under the
+    // invoice number — the fastest thing a client's eye finds on the page.
+    private PdfPTable statusBadge(String status, Font statusFont) {
+        PdfPTable badgeWrapper = new PdfPTable(1);
+        badgeWrapper.setWidthPercentage(38);
+        badgeWrapper.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        badgeWrapper.setSpacingBefore(4);
+
+        PdfPCell cell = new PdfPCell(new Phrase(status.toUpperCase(Locale.ROOT), statusFont));
+        cell.setBorder(0);
+        cell.setBackgroundColor(STATUS_COLORS.getOrDefault(status, Color.GRAY));
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setPadding(4);
+        badgeWrapper.addCell(cell);
+        return badgeWrapper;
+    }
+
     private Paragraph labeledLine(String label, String value, Font labelFont, Font normalFont) {
         Paragraph p = new Paragraph();
         p.setAlignment(Element.ALIGN_RIGHT);
+        p.setSpacingBefore(3);
         p.add(new Phrase(label + ": ", labelFont));
         p.add(new Phrase(value, normalFont));
         return p;
     }
 
-    private PdfPTable buildBillTo(Invoice invoice, Font labelFont, Font normalFont) {
+    private PdfPTable buildBillTo(Invoice invoice, Font labelFont, Font boldFont, Font normalFont) {
         PdfPTable table = new PdfPTable(1);
         table.setWidthPercentage(100);
         PdfPCell cell = new PdfPCell();
-        cell.setBorder(0);
-        cell.setPadding(0);
+        cell.setBorder(Rectangle.LEFT);
+        cell.setBorderColor(BRAND_COLOR);
+        cell.setBorderWidth(2.5f);
+        cell.setPadding(10);
+        cell.setBackgroundColor(ROW_ALT_COLOR);
         cell.addElement(new Paragraph("BILL TO", labelFont));
-        cell.addElement(new Paragraph(invoice.getCustomerName() != null ? invoice.getCustomerName() : "—", normalFont));
+        cell.addElement(new Paragraph(invoice.getCustomerName() != null ? invoice.getCustomerName() : "—", boldFont));
         if (invoice.getCustomerAddress() != null && !invoice.getCustomerAddress().isBlank()) {
             cell.addElement(new Paragraph(invoice.getCustomerAddress(), normalFont));
         }
@@ -159,60 +234,77 @@ public class InvoicePdfService {
         return table;
     }
 
-    private PdfPTable buildItemsTable(List<InvoiceItem> items, String currency, Font boldFont, Font normalFont) {
+    private PdfPTable buildItemsTable(List<InvoiceItem> items, String currency, Font headerFont, Font normalFont) {
         PdfPTable table = new PdfPTable(5);
         table.setWidthPercentage(100);
         table.setWidths(new float[]{3.2f, 0.8f, 1.2f, 1, 1.2f});
 
-        addHeaderCell(table, "Description", boldFont);
-        addHeaderCell(table, "Qty", boldFont);
-        addHeaderCell(table, "Unit price", boldFont);
-        addHeaderCell(table, "Discount", boldFont);
-        addHeaderCell(table, "Subtotal", boldFont);
+        addHeaderCell(table, "Description", headerFont);
+        addHeaderCell(table, "Qty", headerFont);
+        addHeaderCell(table, "Unit price", headerFont);
+        addHeaderCell(table, "Discount", headerFont);
+        addHeaderCell(table, "Subtotal", headerFont);
 
+        boolean shaded = false;
         for (InvoiceItem item : items) {
-            table.addCell(new PdfPCell(new Phrase(item.getDescription(), normalFont)));
-            table.addCell(alignedCell(String.valueOf(item.getQuantity()), normalFont, Element.ALIGN_CENTER));
-            table.addCell(alignedCell(currency + " " + item.getUnitPrice(), normalFont, Element.ALIGN_RIGHT));
-            table.addCell(alignedCell(currency + " " + item.getDiscountAmount(), normalFont, Element.ALIGN_RIGHT));
-            table.addCell(alignedCell(currency + " " + item.getSubtotal(), normalFont, Element.ALIGN_RIGHT));
+            Color rowColor = shaded ? ROW_ALT_COLOR : Color.WHITE;
+            table.addCell(bodyCell(item.getDescription(), normalFont, Element.ALIGN_LEFT, rowColor));
+            table.addCell(bodyCell(String.valueOf(item.getQuantity()), normalFont, Element.ALIGN_CENTER, rowColor));
+            table.addCell(bodyCell(currency + " " + item.getUnitPrice(), normalFont, Element.ALIGN_RIGHT, rowColor));
+            table.addCell(bodyCell(currency + " " + item.getDiscountAmount(), normalFont, Element.ALIGN_RIGHT, rowColor));
+            table.addCell(bodyCell(currency + " " + item.getSubtotal(), normalFont, Element.ALIGN_RIGHT, rowColor));
+            shaded = !shaded;
         }
         return table;
     }
 
-    private PdfPCell alignedCell(String text, Font font, int alignment) {
+    private PdfPCell bodyCell(String text, Font font, int alignment, Color background) {
         PdfPCell cell = new PdfPCell(new Phrase(text, font));
         cell.setHorizontalAlignment(alignment);
+        cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        cell.setPadding(7);
+        cell.setBorderColor(BORDER_COLOR);
+        cell.setBackgroundColor(background);
         return cell;
     }
 
     private void addHeaderCell(PdfPTable table, String text, Font font) {
         PdfPCell cell = new PdfPCell(new Phrase(text, font));
-        cell.setBackgroundColor(LIGHT_GRAY);
+        cell.setBackgroundColor(BRAND_DARK);
+        cell.setPadding(8);
+        cell.setBorderColor(BRAND_DARK);
         table.addCell(cell);
     }
 
     private PdfPTable buildTotals(Invoice invoice, String currency, Font normalFont, Font boldFont, Font totalFont) {
         PdfPTable table = new PdfPTable(2);
-        table.setWidthPercentage(45);
+        table.setWidthPercentage(48);
         table.setHorizontalAlignment(Element.ALIGN_RIGHT);
         table.setWidths(new float[]{1, 1});
 
-        addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont);
-        addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont);
-        addTotalRow(table, "Total", currency + " " + invoice.getTotalAmount(), boldFont, totalFont);
+        addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont, false);
+        addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont, false);
+        addTotalRow(table, "Total due", currency + " " + invoice.getTotalAmount(), boldFont, totalFont, true);
         return table;
     }
 
-    private void addTotalRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont) {
+    private void addTotalRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont, boolean highlight) {
+        Color background = highlight ? TOTAL_ROW_COLOR : Color.WHITE;
+
         PdfPCell labelCell = new PdfPCell(new Phrase(label, labelFont));
-        labelCell.setBorder(0);
+        labelCell.setBorder(highlight ? Rectangle.TOP : 0);
+        labelCell.setBorderColor(BORDER_COLOR);
+        labelCell.setBackgroundColor(background);
         labelCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+        labelCell.setPadding(6);
         table.addCell(labelCell);
 
         PdfPCell valueCell = new PdfPCell(new Phrase(value, valueFont));
-        valueCell.setBorder(0);
+        valueCell.setBorder(highlight ? Rectangle.TOP : 0);
+        valueCell.setBorderColor(BORDER_COLOR);
+        valueCell.setBackgroundColor(background);
         valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        valueCell.setPadding(6);
         table.addCell(valueCell);
     }
 

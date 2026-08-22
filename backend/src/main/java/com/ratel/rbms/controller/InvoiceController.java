@@ -65,6 +65,16 @@ public class InvoiceController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/send")
+    public InvoiceResponse send(@PathVariable UUID id) {
+        return invoiceService.send(id);
+    }
+
+    @PostMapping("/{id}/duplicate")
+    public ResponseEntity<InvoiceResponse> duplicate(@PathVariable UUID id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(invoiceService.duplicate(id));
+    }
+
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> pdf(@PathVariable UUID id) {
         Invoice invoice = invoiceService.getOwnedForPdf(id);

@@ -1758,6 +1758,12 @@ export const api = {
   deleteInvoice: (token: string, id: string) =>
     request<void>(`/api/invoices/${id}`, { method: "DELETE" }, token),
 
+  sendInvoice: (token: string, id: string) =>
+    request<Invoice>(`/api/invoices/${id}/send`, { method: "POST" }, token),
+
+  duplicateInvoice: (token: string, id: string) =>
+    request<Invoice>(`/api/invoices/${id}/duplicate`, { method: "POST" }, token),
+
   downloadInvoicePdf: async (token: string, invoiceId: string, invoiceNumber: number) => {
     await downloadFile(`/api/invoices/${invoiceId}/pdf`, token, `invoice-${invoiceNumber}.pdf`, true);
   },
