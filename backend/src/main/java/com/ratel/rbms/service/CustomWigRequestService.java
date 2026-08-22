@@ -415,10 +415,21 @@ public class CustomWigRequestService {
     // skip": moving back to SUBMITTED is a real reopen (clears finalPrice/
     // ownerMessage, not a half-state); moving ACCEPTED back to QUOTED keeps
     // the existing quote intact since nothing about the price changed.
+    //
+    // ACCEPTED is where actual production begins (equivalent to a Service
+    // Order's RECEIVED) — IN_PROGRESS/COMPLETED/PICKED_UP after it mirror
+    // ServiceOrderService's own fulfillment stages exactly, including
+    // skip-ahead from ACCEPTED straight to COMPLETED and the COMPLETED<->
+    // PICKED_UP one-step-back edge. DECLINED deliberately stays reachable
+    // only pre-acceptance — once work has started there's no equivalent
+    // "cancelled" concept yet, matching the scope of what was asked for.
     private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
             "SUBMITTED", Set.of("DECLINED"),
             "QUOTED", Set.of("ACCEPTED", "DECLINED", "SUBMITTED"),
-            "ACCEPTED", Set.of("QUOTED", "DECLINED"),
+            "ACCEPTED", Set.of("QUOTED", "DECLINED", "IN_PROGRESS", "COMPLETED"),
+            "IN_PROGRESS", Set.of("ACCEPTED", "COMPLETED"),
+            "COMPLETED", Set.of("ACCEPTED", "IN_PROGRESS", "PICKED_UP"),
+            "PICKED_UP", Set.of("COMPLETED"),
             "DECLINED", Set.of("SUBMITTED")
     );
 
@@ -450,6 +461,11 @@ public class CustomWigRequestService {
         if (newStatus.equals("DECLINED")) {
             String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Tallia");
             emailService.sendCustomWigDeclined(request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), businessName, null);
+        } else if (newStatus.equals("COMPLETED") && request.getCustomerEmail() != null && !request.getCustomerEmail().isBlank()) {
+            // Guarded (unlike the DECLINED branch above) since this is a new
+            // path — no email on file just means no notification, not a crash.
+            String businessName = businessRepository.findById(request.getBusinessId()).map(Business::getName).orElse("Tallia");
+            emailService.sendCustomWigRequestReady(request.getCustomerEmail(), request.getCustomerName(), request.getRequestNumber(), businessName);
         }
 
         return toResponse(request);

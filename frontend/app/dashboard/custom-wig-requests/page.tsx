@@ -29,13 +29,22 @@ const STATUS_LABELS: Record<CustomWigRequestStatus, string> = {
   SUBMITTED: "Submitted",
   QUOTED: "Quoted",
   ACCEPTED: "Accepted",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  PICKED_UP: "Picked up",
   DECLINED: "Declined",
 };
 
+// Same tone choices as Service Orders' own IN_PROGRESS/COMPLETED/PICKED_UP —
+// reusing "success"/"violet" for ACCEPTED/QUOTED too is fine since a request
+// is only ever in one status at a time.
 const STATUS_TONES: Record<CustomWigRequestStatus, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
   SUBMITTED: "info",
   QUOTED: "violet",
   ACCEPTED: "success",
+  IN_PROGRESS: "accent",
+  COMPLETED: "success",
+  PICKED_UP: "violet",
   DECLINED: "danger",
 };
 
@@ -65,15 +74,27 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 // destination the backend actually accepts from a given status. Keep in
 // sync if the backend graph ever changes. SUBMITTED->QUOTED is deliberately
 // absent — that move needs a price, which only the "Send a quote" form
-// (inside the detail modal) can supply.
+// (inside the detail modal) can supply. ACCEPTED onward (IN_PROGRESS/
+// COMPLETED/PICKED_UP) mirrors Service Orders' own fulfillment stages.
 const ALLOWED_TRANSITIONS: Record<CustomWigRequestStatus, CustomWigRequestStatus[]> = {
   SUBMITTED: ["DECLINED"],
   QUOTED: ["ACCEPTED", "DECLINED", "SUBMITTED"],
-  ACCEPTED: ["QUOTED", "DECLINED"],
+  ACCEPTED: ["QUOTED", "DECLINED", "IN_PROGRESS", "COMPLETED"],
+  IN_PROGRESS: ["ACCEPTED", "COMPLETED"],
+  COMPLETED: ["ACCEPTED", "IN_PROGRESS", "PICKED_UP"],
+  PICKED_UP: ["COMPLETED"],
   DECLINED: ["SUBMITTED"],
 };
 
-const ALL_STAGES: CustomWigRequestStatus[] = ["SUBMITTED", "QUOTED", "ACCEPTED", "DECLINED"];
+const ALL_STAGES: CustomWigRequestStatus[] = [
+  "SUBMITTED",
+  "QUOTED",
+  "ACCEPTED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "PICKED_UP",
+  "DECLINED",
+];
 
 // Same self-contained dropdown pattern as Service Orders' StageMenu — every
 // stage except the current one is shown, ones not directly reachable are

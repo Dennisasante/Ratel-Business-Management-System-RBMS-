@@ -142,6 +142,14 @@ public class EmailService {
         send(toEmail, subject, body);
     }
 
+    public void sendCustomWigRequestReady(String toEmail, String customerName, long requestNumber, String businessName) {
+        String subject = businessName + ": your custom wig is ready for pickup";
+        String body = "Hi " + customerName + ",\n\n"
+                + "Your custom wig request #" + requestNumber + " at " + businessName + " is complete and ready for pickup.\n\n"
+                + "See you soon!";
+        send(toEmail, subject, body);
+    }
+
     // Owner-facing — sent to the business's own contact email so someone
     // actually sees the booking arrive, with a one-tap link to message the
     // customer straight away (no WhatsApp API needed, just a wa.me deep link).

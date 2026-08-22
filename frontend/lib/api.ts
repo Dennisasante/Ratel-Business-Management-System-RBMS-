@@ -1009,7 +1009,7 @@ export interface CustomItemAttributePayload {
   options: CustomItemAttributeOptionPayload[];
 }
 
-export type CustomWigRequestStatus = "SUBMITTED" | "QUOTED" | "ACCEPTED" | "DECLINED";
+export type CustomWigRequestStatus = "SUBMITTED" | "QUOTED" | "ACCEPTED" | "IN_PROGRESS" | "COMPLETED" | "PICKED_UP" | "DECLINED";
 
 export interface CustomWigRequest {
   id: string;
