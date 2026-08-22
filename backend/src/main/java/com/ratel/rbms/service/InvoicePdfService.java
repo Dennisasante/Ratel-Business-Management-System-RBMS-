@@ -304,9 +304,6 @@ public class InvoicePdfService {
         if (invoice.getCustomerPhone() != null) {
             cell.addElement(new Paragraph(invoice.getCustomerPhone(), normalFont));
         }
-        if (invoice.getCustomerTaxId() != null && !invoice.getCustomerTaxId().isBlank()) {
-            cell.addElement(new Paragraph("Tax ID: " + invoice.getCustomerTaxId(), normalFont));
-        }
         table.addCell(cell);
         return table;
     }

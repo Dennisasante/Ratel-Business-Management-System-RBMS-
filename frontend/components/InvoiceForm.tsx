@@ -40,7 +40,6 @@ export default function InvoiceForm({ token, invoice, defaultTerms, onSubmit }: 
   const [customerEmail, setCustomerEmail] = useState(invoice?.customerEmail ?? "");
   const [customerPhone, setCustomerPhone] = useState(invoice?.customerPhone ?? "");
   const [customerAddress, setCustomerAddress] = useState(invoice?.customerAddress ?? "");
-  const [customerTaxId, setCustomerTaxId] = useState(invoice?.customerTaxId ?? "");
   const [issueDate, setIssueDate] = useState(invoice?.issueDate ?? new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
@@ -135,7 +134,6 @@ export default function InvoiceForm({ token, invoice, defaultTerms, onSubmit }: 
         customerEmail: customerEmail.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerAddress: customerAddress.trim() || undefined,
-        customerTaxId: customerTaxId.trim() || undefined,
         issueDate,
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
@@ -163,13 +161,6 @@ export default function InvoiceForm({ token, invoice, defaultTerms, onSubmit }: 
         <FormField label="Email" name="customerEmail" type="email" value={customerEmail} onChange={setCustomerEmail} />
         <FormField label="Phone" name="customerPhone" value={customerPhone} onChange={setCustomerPhone} />
         <FormField label="Address" name="customerAddress" value={customerAddress} onChange={setCustomerAddress} />
-        <FormField
-          label="Customer Tax ID (optional)"
-          name="customerTaxId"
-          value={customerTaxId}
-          onChange={setCustomerTaxId}
-          placeholder="Their TIN/VAT number, if needed"
-        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

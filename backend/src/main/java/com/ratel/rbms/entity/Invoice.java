@@ -56,12 +56,6 @@ public class Invoice {
     @Column(name = "customer_address", length = 300)
     private String customerAddress;
 
-    // Optional — a B2B client's own TIN/VAT registration number, distinct
-    // from the issuing business's Business.taxId. Shown in the BILL TO block
-    // when present; many clients need this for their own VAT input credit.
-    @Column(name = "customer_tax_id", length = 50)
-    private String customerTaxId;
-
     @Column(name = "issue_date", nullable = false)
     private LocalDate issueDate;
 

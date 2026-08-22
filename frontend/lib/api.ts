@@ -345,7 +345,6 @@ export interface Invoice {
   customerEmail: string | null;
   customerPhone: string | null;
   customerAddress: string | null;
-  customerTaxId: string | null;
   issueDate: string;
   dueDate: string | null;
   notes: string | null;
@@ -384,7 +383,6 @@ export interface InvoicePayload {
   customerEmail?: string;
   customerPhone?: string;
   customerAddress?: string;
-  customerTaxId?: string;
   issueDate: string;
   dueDate?: string;
   notes?: string;

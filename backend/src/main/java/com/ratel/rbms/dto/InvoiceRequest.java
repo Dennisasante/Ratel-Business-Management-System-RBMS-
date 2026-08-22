@@ -20,10 +20,6 @@ public record InvoiceRequest(
         String customerPhone,
         String customerAddress,
 
-        // Optional — the client's own TIN/VAT number, distinct from the
-        // issuing business's own Business.taxId.
-        String customerTaxId,
-
         @NotNull(message = "Issue date is required")
         LocalDate issueDate,
 

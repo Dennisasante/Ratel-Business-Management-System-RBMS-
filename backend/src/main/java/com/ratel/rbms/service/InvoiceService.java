@@ -100,7 +100,6 @@ public class InvoiceService {
                 .customerEmail(customerEmail)
                 .customerPhone(customerPhone)
                 .customerAddress(req.customerAddress())
-                .customerTaxId(req.customerTaxId())
                 .issueDate(req.issueDate())
                 .dueDate(req.dueDate())
                 .notes(req.notes())
@@ -142,7 +141,6 @@ public class InvoiceService {
         invoice.setCustomerEmail(customerEmail);
         invoice.setCustomerPhone(customerPhone);
         invoice.setCustomerAddress(req.customerAddress());
-        invoice.setCustomerTaxId(req.customerTaxId());
         invoice.setIssueDate(req.issueDate());
         invoice.setDueDate(req.dueDate());
         invoice.setNotes(req.notes());
@@ -236,7 +234,6 @@ public class InvoiceService {
                 .customerEmail(original.getCustomerEmail())
                 .customerPhone(original.getCustomerPhone())
                 .customerAddress(original.getCustomerAddress())
-                .customerTaxId(original.getCustomerTaxId())
                 .issueDate(LocalDate.now())
                 .notes(original.getNotes())
                 .termsAndConditions(original.getTermsAndConditions())
