@@ -17,6 +17,8 @@ public record BusinessUpdateRequest(
 
         String contactPhone,
 
-        String taxId
+        String taxId,
+
+        String defaultTermsAndConditions
 ) {
 }

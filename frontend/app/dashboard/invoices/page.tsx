@@ -33,7 +33,7 @@ const STATUS_TONES: Record<InvoiceStatus, "neutral" | "accent" | "success" | "da
 const ALL_STATUSES: InvoiceStatus[] = ["DRAFT", "SENT", "PAID", "OVERDUE"];
 
 export default function InvoicesPage() {
-  const { session, loading } = useAuth();
+  const { session, business, loading } = useAuth();
   const router = useRouter();
 
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
@@ -42,6 +42,8 @@ export default function InvoicesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -81,6 +83,36 @@ export default function InvoicesPage() {
     setActionError(null);
     const full = await api.getInvoice(session.token, id);
     setViewingInvoice(full);
+    loadPreview(id);
+  }
+
+  // Fetches the actual rendered PDF as a blob and shows it inline via an
+  // <iframe> — a real preview of what the client will see, not just a plain
+  // list of the same numbers, and without triggering a save-to-disk the way
+  // Download does.
+  async function loadPreview(id: string) {
+    if (!session) return;
+    setPreviewLoading(true);
+    setPreviewUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
+    try {
+      const url = await api.getInvoicePdfBlobUrl(session.token, id);
+      setPreviewUrl(url);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Couldn't load the preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closeView() {
+    setViewingInvoice(null);
+    setPreviewUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
   }
 
   async function openEdit(id: string) {
@@ -97,6 +129,9 @@ export default function InvoicesPage() {
     try {
       const updated = await api.updateInvoiceStatus(session.token, id, status);
       setViewingInvoice((v) => (v && v.id === id ? updated : v));
+      // The status badge is part of the rendered PDF, so a stale preview
+      // would show the old status right after changing it.
+      if (viewingInvoice?.id === id) loadPreview(id);
       await loadInvoices();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't update this invoice.");
@@ -126,7 +161,7 @@ export default function InvoicesPage() {
     try {
       await api.deleteInvoice(session.token, id);
       setConfirmDeleteId(null);
-      setViewingInvoice(null);
+      closeView();
       await loadInvoices();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't delete this invoice.");
@@ -143,6 +178,7 @@ export default function InvoicesPage() {
     try {
       const updated = await api.sendInvoice(session.token, id);
       setViewingInvoice((v) => (v && v.id === id ? updated : v));
+      if (viewingInvoice?.id === id) loadPreview(id);
       setActionInfo(`Invoice #${updated.invoiceNumber} sent to ${updated.customerEmail}.`);
       await loadInvoices();
     } catch (err) {
@@ -160,7 +196,7 @@ export default function InvoicesPage() {
     try {
       const copy = await api.duplicateInvoice(session.token, id);
       await loadInvoices();
-      setViewingInvoice(null);
+      closeView();
       setEditingInvoice(copy);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't duplicate this invoice.");
@@ -309,7 +345,7 @@ export default function InvoicesPage() {
 
       {showForm && (
         <Modal title="New invoice" onClose={() => setShowForm(false)}>
-          <InvoiceForm token={session.token} onSubmit={handleCreate} />
+          <InvoiceForm token={session.token} defaultTerms={business?.defaultTermsAndConditions} onSubmit={handleCreate} />
         </Modal>
       )}
 
@@ -320,52 +356,31 @@ export default function InvoicesPage() {
       )}
 
       {viewingInvoice && (
-        <Modal title={`Invoice #${viewingInvoice.invoiceNumber}`} onClose={() => setViewingInvoice(null)}>
+        <Modal title={`Invoice #${viewingInvoice.invoiceNumber}`} onClose={closeView} maxWidthClassName="max-w-2xl">
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <Badge tone={STATUS_TONES[viewingInvoice.status]}>{STATUS_LABELS[viewingInvoice.status]}</Badge>
               <span className="text-sm text-ink-500">{viewingInvoice.issueDate}</span>
             </div>
 
-            <div className="text-sm">
-              <p className="font-medium text-ink-900">{viewingInvoice.customerName ?? "—"}</p>
-              {viewingInvoice.customerEmail && <p className="text-ink-500">{viewingInvoice.customerEmail}</p>}
-              {viewingInvoice.customerPhone && <p className="text-ink-500">{viewingInvoice.customerPhone}</p>}
-              {viewingInvoice.customerAddress && <p className="text-ink-500">{viewingInvoice.customerAddress}</p>}
-            </div>
-
-            <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
-              {viewingInvoice.items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-sm">
-                  <span className="whitespace-pre-line text-ink-700">
-                    {item.description} × {item.quantity}
-                  </span>
-                  <span className="tabular text-ink-500">GH₵{item.subtotal.toFixed(2)}</span>
-                </div>
-              ))}
-              {viewingInvoice.taxRate != null && (
-                <div className="flex items-center justify-between border-t border-border pt-1.5 text-sm text-ink-500">
-                  <span>Tax ({viewingInvoice.taxRate}%)</span>
-                  <span className="tabular">GH₵{viewingInvoice.taxAmount.toFixed(2)}</span>
-                </div>
+            {/* A real preview of the generated document — the same PDF
+                Download produces, shown inline instead of triggering a save. */}
+            <div className="overflow-hidden rounded-lg border border-border bg-canvas">
+              {previewLoading ? (
+                <div className="flex h-[65vh] items-center justify-center text-sm text-ink-500">Loading preview...</div>
+              ) : previewUrl ? (
+                <iframe src={previewUrl} title={`Invoice #${viewingInvoice.invoiceNumber} preview`} className="h-[65vh] w-full" />
+              ) : (
+                <div className="flex h-[65vh] items-center justify-center text-sm text-ink-500">Couldn&rsquo;t load the preview.</div>
               )}
-              {viewingInvoice.shippingAmount > 0 && (
-                <div className="flex items-center justify-between text-sm text-ink-500">
-                  <span>Shipping</span>
-                  <span className="tabular">GH₵{viewingInvoice.shippingAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
-                <span>Total</span>
-                <span className="tabular">GH₵{viewingInvoice.totalAmount.toFixed(2)}</span>
-              </div>
             </div>
-
-            {viewingInvoice.notes && (
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">Notes</p>
-                <p className="text-sm text-ink-700">{viewingInvoice.notes}</p>
-              </div>
+            {previewUrl && (
+              // Some browsers (mobile Safari/Android WebView in particular)
+              // don't reliably render an embedded PDF inside an <iframe> —
+              // this guarantees a working fallback regardless.
+              <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="-mt-2 self-end text-xs font-medium text-accent-hover hover:underline">
+                Open preview in a new tab
+              </a>
             )}
 
             {actionError && <p className="text-sm text-danger">{actionError}</p>}
@@ -402,7 +417,7 @@ export default function InvoicesPage() {
                     variant="secondary"
                     onClick={() => {
                       setEditingInvoice(viewingInvoice);
-                      setViewingInvoice(null);
+                      closeView();
                     }}
                   >
                     Edit

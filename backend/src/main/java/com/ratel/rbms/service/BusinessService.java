@@ -56,6 +56,7 @@ public class BusinessService {
         business.setContactEmail(req.contactEmail());
         business.setContactPhone(req.contactPhone());
         business.setTaxId(req.taxId());
+        business.setDefaultTermsAndConditions(req.defaultTermsAndConditions());
         business = businessRepository.save(business);
 
         activityLogService.log("Updated business profile", "BUSINESS", business.getId());

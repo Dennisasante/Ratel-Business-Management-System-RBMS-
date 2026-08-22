@@ -43,6 +43,7 @@ export interface BusinessSummary {
   logoUrl: string | null;
   signatureUrl: string | null;
   taxId: string | null;
+  defaultTermsAndConditions: string | null;
   billingStatus: "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
   planFeatures: PlanFeature[];
 }
@@ -344,9 +345,11 @@ export interface Invoice {
   customerEmail: string | null;
   customerPhone: string | null;
   customerAddress: string | null;
+  customerTaxId: string | null;
   issueDate: string;
   dueDate: string | null;
   notes: string | null;
+  termsAndConditions: string | null;
   status: InvoiceStatus;
   subtotal: number;
   discountAmount: number;
@@ -381,9 +384,11 @@ export interface InvoicePayload {
   customerEmail?: string;
   customerPhone?: string;
   customerAddress?: string;
+  customerTaxId?: string;
   issueDate: string;
   dueDate?: string;
   notes?: string;
+  termsAndConditions?: string;
   taxRate?: number;
   shippingAmount?: number;
   items: InvoiceItemPayload[];
@@ -669,6 +674,7 @@ export interface BusinessUpdatePayload {
   contactEmail?: string;
   contactPhone?: string;
   taxId?: string;
+  defaultTermsAndConditions?: string;
 }
 
 export interface StaffCommission {
@@ -1789,6 +1795,18 @@ export const api = {
 
   downloadInvoicePdf: async (token: string, invoiceId: string, invoiceNumber: number) => {
     await downloadFile(`/api/invoices/${invoiceId}/pdf`, token, `invoice-${invoiceNumber}.pdf`, true);
+  },
+
+  // For an in-app preview (an <iframe>, not a new tab/download) — caller owns
+  // the returned object URL and must URL.revokeObjectURL it when done.
+  getInvoicePdfBlobUrl: async (_token: string, invoiceId: string): Promise<string> => {
+    const res = await fetch(`/api/invoices/${invoiceId}/pdf`, { credentials: "same-origin" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Couldn't load the preview");
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
   },
 
   getReportSummary: (token: string, from?: string, to?: string) => {

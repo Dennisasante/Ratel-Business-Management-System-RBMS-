@@ -11,6 +11,10 @@ import Button from "@/components/ui/Button";
 interface InvoiceFormProps {
   token: string;
   invoice?: Invoice;
+  // Business.defaultTermsAndConditions — only used to pre-fill a brand new
+  // invoice (ignored when editing an existing one, which already carries its
+  // own snapshotted value).
+  defaultTerms?: string | null;
   onSubmit: (payload: InvoicePayload) => Promise<void>;
 }
 
@@ -30,15 +34,17 @@ function emptyItem(): ItemDraft {
 // system at all. CustomerPicker just pre-fills the plain fields below; those
 // stay independently editable either way, since Invoice snapshots the
 // name/email/phone/address rather than only joining through customerId.
-export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormProps) {
+export default function InvoiceForm({ token, invoice, defaultTerms, onSubmit }: InvoiceFormProps) {
   const [customerId, setCustomerId] = useState<string | undefined>(invoice?.customerId ?? undefined);
   const [customerName, setCustomerName] = useState(invoice?.customerName ?? "");
   const [customerEmail, setCustomerEmail] = useState(invoice?.customerEmail ?? "");
   const [customerPhone, setCustomerPhone] = useState(invoice?.customerPhone ?? "");
   const [customerAddress, setCustomerAddress] = useState(invoice?.customerAddress ?? "");
+  const [customerTaxId, setCustomerTaxId] = useState(invoice?.customerTaxId ?? "");
   const [issueDate, setIssueDate] = useState(invoice?.issueDate ?? new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
+  const [termsAndConditions, setTermsAndConditions] = useState(invoice ? invoice.termsAndConditions ?? "" : defaultTerms ?? "");
   const [taxRate, setTaxRate] = useState(invoice?.taxRate != null ? String(invoice.taxRate) : "");
   const [shippingAmount, setShippingAmount] = useState(invoice?.shippingAmount ? String(invoice.shippingAmount) : "");
   const [items, setItems] = useState<ItemDraft[]>(
@@ -129,9 +135,11 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         customerEmail: customerEmail.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerAddress: customerAddress.trim() || undefined,
+        customerTaxId: customerTaxId.trim() || undefined,
         issueDate,
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
+        termsAndConditions: termsAndConditions.trim() || undefined,
         taxRate: taxRate ? Number(taxRate) : undefined,
         shippingAmount: shippingAmount ? Number(shippingAmount) : undefined,
         items: itemPayloads,
@@ -155,6 +163,13 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         <FormField label="Email" name="customerEmail" type="email" value={customerEmail} onChange={setCustomerEmail} />
         <FormField label="Phone" name="customerPhone" value={customerPhone} onChange={setCustomerPhone} />
         <FormField label="Address" name="customerAddress" value={customerAddress} onChange={setCustomerAddress} />
+        <FormField
+          label="Customer Tax ID (optional)"
+          name="customerTaxId"
+          value={customerTaxId}
+          onChange={setCustomerTaxId}
+          placeholder="Their TIN/VAT number, if needed"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -228,7 +243,7 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
 
       <div className="grid grid-cols-2 gap-3">
         <FormField
-          label="Tax rate % (optional)"
+          label="VAT rate % (optional)"
           name="taxRate"
           type="number"
           value={taxRate}
@@ -252,7 +267,7 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         </div>
         {Number(taxRate) > 0 && (
           <div className="flex items-center justify-between text-ink-500">
-            <span>Tax ({taxRate}%)</span>
+            <span>VAT ({taxRate}%)</span>
             <span className="tabular">GH₵{taxAmount.toFixed(2)}</span>
           </div>
         )}
@@ -274,7 +289,18 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          placeholder="Payment terms, thank-you note, etc."
+          placeholder="A thank-you note, reference number, etc."
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-ink-700">Terms &amp; Conditions (optional)</label>
+        <textarea
+          value={termsAndConditions}
+          onChange={(e) => setTermsAndConditions(e.target.value)}
+          rows={3}
+          placeholder="Warranty terms, payment conditions, etc."
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
       </div>

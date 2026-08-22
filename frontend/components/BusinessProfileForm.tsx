@@ -27,6 +27,7 @@ export default function BusinessProfileForm({
     contactEmail: initial.contactEmail ?? "",
     contactPhone: initial.contactPhone ?? "",
     taxId: initial.taxId ?? "",
+    defaultTermsAndConditions: initial.defaultTermsAndConditions ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +48,7 @@ export default function BusinessProfileForm({
         contactEmail: form.contactEmail || undefined,
         contactPhone: form.contactPhone || undefined,
         taxId: form.taxId || undefined,
+        defaultTermsAndConditions: form.defaultTermsAndConditions || undefined,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -86,6 +88,18 @@ export default function BusinessProfileForm({
         onChange={(v) => set("taxId", v)}
         placeholder="TIN or VAT registration number"
       />
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-ink-700">Default Terms &amp; Conditions (optional)</label>
+        <textarea
+          value={form.defaultTermsAndConditions}
+          onChange={(e) => set("defaultTermsAndConditions", e.target.value)}
+          rows={3}
+          placeholder="e.g. Warranty terms, payment conditions..."
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        />
+        <p className="text-xs text-ink-500">Pre-fills onto every new invoice — you can still edit or clear it per invoice.</p>
+      </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

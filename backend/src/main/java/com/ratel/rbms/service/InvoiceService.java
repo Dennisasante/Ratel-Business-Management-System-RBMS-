@@ -77,7 +77,7 @@ public class InvoiceService {
         // same business could both compute the same "next" number and collide
         // on the unique (business_id, invoice_number) constraint. Same pattern
         // BillingService.verifyPayment() already uses for its own read-then-increment.
-        businessRepository.findByIdForUpdate(businessId)
+        Business business = businessRepository.findByIdForUpdate(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
         long nextNumber = invoiceRepository.findMaxInvoiceNumber(businessId) + 1;
 
@@ -100,9 +100,11 @@ public class InvoiceService {
                 .customerEmail(customerEmail)
                 .customerPhone(customerPhone)
                 .customerAddress(req.customerAddress())
+                .customerTaxId(req.customerTaxId())
                 .issueDate(req.issueDate())
                 .dueDate(req.dueDate())
                 .notes(req.notes())
+                .termsAndConditions(req.termsAndConditions() != null ? req.termsAndConditions() : business.getDefaultTermsAndConditions())
                 .taxRate(req.taxRate())
                 .shippingAmount(req.shippingAmount() != null ? req.shippingAmount() : BigDecimal.ZERO)
                 .createdBy(TenantContext.getUserId())
@@ -140,9 +142,11 @@ public class InvoiceService {
         invoice.setCustomerEmail(customerEmail);
         invoice.setCustomerPhone(customerPhone);
         invoice.setCustomerAddress(req.customerAddress());
+        invoice.setCustomerTaxId(req.customerTaxId());
         invoice.setIssueDate(req.issueDate());
         invoice.setDueDate(req.dueDate());
         invoice.setNotes(req.notes());
+        invoice.setTermsAndConditions(req.termsAndConditions());
         invoice.setTaxRate(req.taxRate());
         invoice.setShippingAmount(req.shippingAmount() != null ? req.shippingAmount() : BigDecimal.ZERO);
         invoice = invoiceRepository.save(invoice);
@@ -232,8 +236,10 @@ public class InvoiceService {
                 .customerEmail(original.getCustomerEmail())
                 .customerPhone(original.getCustomerPhone())
                 .customerAddress(original.getCustomerAddress())
+                .customerTaxId(original.getCustomerTaxId())
                 .issueDate(LocalDate.now())
                 .notes(original.getNotes())
+                .termsAndConditions(original.getTermsAndConditions())
                 .taxRate(original.getTaxRate())
                 .shippingAmount(original.getShippingAmount())
                 .createdBy(TenantContext.getUserId())

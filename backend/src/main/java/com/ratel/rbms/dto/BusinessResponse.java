@@ -19,6 +19,7 @@ public record BusinessResponse(
         String logoUrl,
         String signatureUrl,
         String taxId,
+        String defaultTermsAndConditions,
         // Every business-scoped user (not just Owners) needs to know this, so
         // the read-only banner shows up for staff too — that's why it rides
         // along here rather than only on the Owner-restricted /billing/status.
@@ -44,6 +45,7 @@ public record BusinessResponse(
                 b.getLogoUrl(),
                 b.getSignatureUrl(),
                 b.getTaxId(),
+                b.getDefaultTermsAndConditions(),
                 b.getBillingStatus().name(),
                 planFeatures
         );

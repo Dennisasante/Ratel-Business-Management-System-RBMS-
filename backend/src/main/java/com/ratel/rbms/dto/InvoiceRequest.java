@@ -20,6 +20,10 @@ public record InvoiceRequest(
         String customerPhone,
         String customerAddress,
 
+        // Optional — the client's own TIN/VAT number, distinct from the
+        // issuing business's own Business.taxId.
+        String customerTaxId,
+
         @NotNull(message = "Issue date is required")
         LocalDate issueDate,
 
@@ -28,9 +32,13 @@ public record InvoiceRequest(
 
         String notes,
 
-        // Nullable — no tax charged at all is the common case. Applied over
+        // Nullable — falls back to Business.defaultTermsAndConditions on
+        // create() when not supplied; always respected as-is on update().
+        String termsAndConditions,
+
+        // Nullable — no VAT charged at all is the common case. Applied over
         // (subtotal - discountAmount) when present.
-        @DecimalMin(value = "0", message = "Tax rate can't be negative")
+        @DecimalMin(value = "0", message = "VAT rate can't be negative")
         BigDecimal taxRate,
 
         @DecimalMin(value = "0", message = "Shipping can't be negative")

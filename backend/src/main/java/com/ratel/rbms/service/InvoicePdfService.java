@@ -9,8 +9,10 @@ import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.Invoice;
@@ -62,7 +64,12 @@ public class InvoicePdfService {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         try {
-            PdfWriter.getInstance(document, out);
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            // Drawn at a fixed spot on every page regardless of how much
+            // content precedes it — without this, a short invoice (one line
+            // item, no notes) left a large blank gap below the totals box
+            // that read as unfinished/"isolated" rather than a designed page.
+            writer.setPageEvent(new BottomBarEvent());
             document.open();
 
             Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, BRAND_DARK);
@@ -88,6 +95,14 @@ public class InvoicePdfService {
                 document.add(spacer(18));
                 document.add(new Paragraph("NOTES", labelFont));
                 document.add(new Paragraph(invoice.getNotes(), normalFont));
+            }
+
+            if (invoice.getTermsAndConditions() != null && !invoice.getTermsAndConditions().isBlank()) {
+                document.add(spacer(14));
+                document.add(thinRule());
+                document.add(spacer(8));
+                document.add(new Paragraph("TERMS & CONDITIONS", labelFont));
+                document.add(new Paragraph(invoice.getTermsAndConditions(), normalFont));
             }
 
             Image signature = loadImage(business.getSignatureUrl());
@@ -165,6 +180,21 @@ public class InvoicePdfService {
         return wrapper;
     }
 
+    // A lighter divider than ruleBelow()/footerRule() — sits above the
+    // Terms & Conditions block the way the reference invoice used a plain
+    // horizontal line above its own terms section.
+    private PdfPTable thinRule() {
+        PdfPTable rule = new PdfPTable(1);
+        rule.setWidthPercentage(40);
+        rule.setHorizontalAlignment(Element.ALIGN_LEFT);
+        PdfPCell cell = new PdfPCell();
+        cell.setFixedHeight(0.75f);
+        cell.setBackgroundColor(BORDER_COLOR);
+        cell.setBorder(0);
+        rule.addCell(cell);
+        return rule;
+    }
+
     private PdfPTable footerRule() {
         PdfPTable rule = new PdfPTable(1);
         rule.setWidthPercentage(100);
@@ -208,6 +238,8 @@ public class InvoicePdfService {
 
         PdfPCell right = new PdfPCell();
         right.setBorder(0);
+        right.setBackgroundColor(ROW_ALT_COLOR);
+        right.setPadding(12);
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
         Paragraph invoiceTitle = new Paragraph("INVOICE", brandFont);
         invoiceTitle.setAlignment(Element.ALIGN_RIGHT);
@@ -271,6 +303,9 @@ public class InvoicePdfService {
         }
         if (invoice.getCustomerPhone() != null) {
             cell.addElement(new Paragraph(invoice.getCustomerPhone(), normalFont));
+        }
+        if (invoice.getCustomerTaxId() != null && !invoice.getCustomerTaxId().isBlank()) {
+            cell.addElement(new Paragraph("Tax ID: " + invoice.getCustomerTaxId(), normalFont));
         }
         table.addCell(cell);
         return table;
@@ -346,11 +381,11 @@ public class InvoicePdfService {
 
         addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont, false);
         addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont, false);
-        // Hidden entirely (not shown as 0%) when the invoice never had a tax
+        // Hidden entirely (not shown as 0%) when the invoice never had a VAT
         // rate set at all — the common case for a business that doesn't
-        // charge tax shouldn't see a clutter row for it.
+        // charge VAT shouldn't see a clutter row for it.
         if (invoice.getTaxRate() != null) {
-            String label = "Tax (" + invoice.getTaxRate().stripTrailingZeros().toPlainString() + "%)";
+            String label = "VAT (" + invoice.getTaxRate().stripTrailingZeros().toPlainString() + "%)";
             addTotalRow(table, label, currency + " " + invoice.getTaxAmount(), normalFont, normalFont, false);
         }
         if (invoice.getShippingAmount() != null && invoice.getShippingAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -399,6 +434,25 @@ public class InvoicePdfService {
             return Image.getInstance(Files.readAllBytes(path));
         } catch (Exception e) {
             return null; // a missing/corrupt image shouldn't block invoice generation
+        }
+    }
+
+    // Fixed-position accent bar drawn directly onto every page's content
+    // stream, independent of how much flowed content precedes it — a page
+    // with just one line item and no notes would otherwise end with a large
+    // blank gap under the totals box, reading as unfinished rather than a
+    // deliberately designed (if short) document.
+    private static class BottomBarEvent extends PdfPageEventHelper {
+        @Override
+        public void onEndPage(PdfWriter writer, Document document) {
+            PdfContentByte canvas = writer.getDirectContentUnder();
+            float barHeight = 4f;
+            float y = document.bottom() - 18;
+            canvas.saveState();
+            canvas.setColorFill(BRAND_DARK);
+            canvas.rectangle(document.left(), y, document.right() - document.left(), barHeight);
+            canvas.fill();
+            canvas.restoreState();
         }
     }
 }

@@ -58,6 +58,12 @@ public class Business {
     @Column(name = "tax_id", length = 50)
     private String taxId;
 
+    // Reusable default (warranty/payment terms etc.) — snapshotted onto each
+    // new Invoice.termsAndConditions at creation time rather than joined
+    // live, so editing this later never rewrites an already-issued invoice.
+    @Column(name = "default_terms_and_conditions", columnDefinition = "TEXT")
+    private String defaultTermsAndConditions;
+
     private String location;
 
     @Column(length = 150)
