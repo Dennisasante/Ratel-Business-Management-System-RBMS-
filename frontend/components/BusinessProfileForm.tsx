@@ -26,6 +26,7 @@ export default function BusinessProfileForm({
     location: initial.location ?? "",
     contactEmail: initial.contactEmail ?? "",
     contactPhone: initial.contactPhone ?? "",
+    taxId: initial.taxId ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +46,7 @@ export default function BusinessProfileForm({
         location: form.location || undefined,
         contactEmail: form.contactEmail || undefined,
         contactPhone: form.contactPhone || undefined,
+        taxId: form.taxId || undefined,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -77,6 +79,13 @@ export default function BusinessProfileForm({
       <FormField label="Location" name="location" value={form.location} onChange={(v) => set("location", v)} />
       <FormField label="Contact email" name="contactEmail" type="email" value={form.contactEmail} onChange={(v) => set("contactEmail", v)} />
       <FormField label="Contact phone" name="contactPhone" value={form.contactPhone} onChange={(v) => set("contactPhone", v)} />
+      <FormField
+        label="Tax ID (optional)"
+        name="taxId"
+        value={form.taxId}
+        onChange={(v) => set("taxId", v)}
+        placeholder="TIN or VAT registration number"
+      />
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

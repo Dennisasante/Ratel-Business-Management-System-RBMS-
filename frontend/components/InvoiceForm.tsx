@@ -39,6 +39,8 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
   const [issueDate, setIssueDate] = useState(invoice?.issueDate ?? new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
+  const [taxRate, setTaxRate] = useState(invoice?.taxRate != null ? String(invoice.taxRate) : "");
+  const [shippingAmount, setShippingAmount] = useState(invoice?.shippingAmount ? String(invoice.shippingAmount) : "");
   const [items, setItems] = useState<ItemDraft[]>(
     invoice
       ? invoice.items.map((i) => ({
@@ -95,7 +97,9 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
     return Math.max(qty * price - discount, 0);
   }
 
-  const total = items.reduce((sum, item) => sum + lineSubtotal(item), 0);
+  const itemsTotal = items.reduce((sum, item) => sum + lineSubtotal(item), 0);
+  const taxAmount = (itemsTotal * (Number(taxRate) || 0)) / 100;
+  const total = itemsTotal + taxAmount + (Number(shippingAmount) || 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,6 +132,8 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         issueDate,
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
+        taxRate: taxRate ? Number(taxRate) : undefined,
+        shippingAmount: shippingAmount ? Number(shippingAmount) : undefined,
         items: itemPayloads,
       });
     } catch (err) {
@@ -162,11 +168,12 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         {items.map((item, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <div className="flex items-start gap-2">
-              <input
+              <textarea
                 value={item.description}
                 onChange={(e) => updateItem(index, { description: e.target.value })}
-                placeholder="Description"
-                className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                placeholder={"Description — e.g. product name\nsecond line for specs/details (optional)"}
+                rows={2}
+                className="flex-1 resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
               {items.length > 1 && (
                 <button
@@ -219,9 +226,46 @@ export default function InvoiceForm({ token, invoice, onSubmit }: InvoiceFormPro
         </button>
       </div>
 
-      <div className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2">
-        <span className="text-sm font-medium text-ink-700">Total</span>
-        <span className="tabular text-base font-semibold text-ink-900">GH₵{total.toFixed(2)}</span>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField
+          label="Tax rate % (optional)"
+          name="taxRate"
+          type="number"
+          value={taxRate}
+          onChange={setTaxRate}
+          placeholder="e.g. 15"
+        />
+        <FormField
+          label="Shipping (optional)"
+          name="shippingAmount"
+          type="number"
+          value={shippingAmount}
+          onChange={setShippingAmount}
+          placeholder="0.00"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5 rounded-lg bg-canvas px-3 py-2 text-sm">
+        <div className="flex items-center justify-between text-ink-500">
+          <span>Items</span>
+          <span className="tabular">GH₵{itemsTotal.toFixed(2)}</span>
+        </div>
+        {Number(taxRate) > 0 && (
+          <div className="flex items-center justify-between text-ink-500">
+            <span>Tax ({taxRate}%)</span>
+            <span className="tabular">GH₵{taxAmount.toFixed(2)}</span>
+          </div>
+        )}
+        {Number(shippingAmount) > 0 && (
+          <div className="flex items-center justify-between text-ink-500">
+            <span>Shipping</span>
+            <span className="tabular">GH₵{Number(shippingAmount).toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t border-border pt-1.5 font-semibold text-ink-900">
+          <span>Total</span>
+          <span className="tabular text-base">GH₵{total.toFixed(2)}</span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">

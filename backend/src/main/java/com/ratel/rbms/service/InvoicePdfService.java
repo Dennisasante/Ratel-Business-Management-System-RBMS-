@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -89,6 +90,12 @@ public class InvoicePdfService {
                 document.add(new Paragraph(invoice.getNotes(), normalFont));
             }
 
+            Image signature = loadImage(business.getSignatureUrl());
+            if (signature != null) {
+                document.add(spacer(24));
+                document.add(buildSignatureBlock(signature, labelFont));
+            }
+
             document.add(spacer(28));
             document.add(footerRule());
             Paragraph footer = new Paragraph("Powered by Tallia", smallFont);
@@ -126,6 +133,38 @@ public class InvoicePdfService {
         return rule;
     }
 
+    // Optional — only rendered when the business has uploaded one (see
+    // Business.signatureUrl / BusinessService.uploadSignature). Right-aligned
+    // over a thin rule with a small caption underneath, so it reads as a
+    // signature block rather than a stray floating image.
+    private PdfPTable buildSignatureBlock(Image signature, Font labelFont) throws Exception {
+        signature.scaleToFit(140, 55);
+
+        PdfPTable wrapper = new PdfPTable(1);
+        wrapper.setWidthPercentage(35);
+        wrapper.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+        PdfPCell imageCell = new PdfPCell(signature, false);
+        imageCell.setBorder(0);
+        imageCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        imageCell.setPaddingBottom(4);
+        wrapper.addCell(imageCell);
+
+        PdfPCell lineCell = new PdfPCell();
+        lineCell.setBorder(Rectangle.TOP);
+        lineCell.setBorderColor(BORDER_COLOR);
+        lineCell.setFixedHeight(1f);
+        wrapper.addCell(lineCell);
+
+        PdfPCell captionCell = new PdfPCell(new Phrase("Authorized Signature", labelFont));
+        captionCell.setBorder(0);
+        captionCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        captionCell.setPaddingTop(4);
+        wrapper.addCell(captionCell);
+
+        return wrapper;
+    }
+
     private PdfPTable footerRule() {
         PdfPTable rule = new PdfPTable(1);
         rule.setWidthPercentage(100);
@@ -146,7 +185,7 @@ public class InvoicePdfService {
 
         PdfPCell left = new PdfPCell();
         left.setBorder(0);
-        Image logo = loadLogo(business.getLogoUrl());
+        Image logo = loadImage(business.getLogoUrl());
         if (logo != null) {
             logo.scaleToFit(85, 85);
             left.addElement(logo);
@@ -161,6 +200,9 @@ public class InvoicePdfService {
         }
         if (business.getContactPhone() != null) {
             left.addElement(new Paragraph(business.getContactPhone(), normalFont));
+        }
+        if (business.getTaxId() != null && !business.getTaxId().isBlank()) {
+            left.addElement(new Paragraph("Tax ID: " + business.getTaxId(), normalFont));
         }
         header.addCell(left);
 
@@ -248,7 +290,7 @@ public class InvoicePdfService {
         boolean shaded = false;
         for (InvoiceItem item : items) {
             Color rowColor = shaded ? ROW_ALT_COLOR : Color.WHITE;
-            table.addCell(bodyCell(item.getDescription(), normalFont, Element.ALIGN_LEFT, rowColor));
+            table.addCell(descriptionCell(item.getDescription(), normalFont, rowColor));
             table.addCell(bodyCell(String.valueOf(item.getQuantity()), normalFont, Element.ALIGN_CENTER, rowColor));
             table.addCell(bodyCell(currency + " " + item.getUnitPrice(), normalFont, Element.ALIGN_RIGHT, rowColor));
             table.addCell(bodyCell(currency + " " + item.getDiscountAmount(), normalFont, Element.ALIGN_RIGHT, rowColor));
@@ -256,6 +298,26 @@ public class InvoicePdfService {
             shaded = !shaded;
         }
         return table;
+    }
+
+    // The line-item description is the one field a business might genuinely
+    // want multi-line (a product name plus a couple of spec lines) — a plain
+    // Phrase doesn't reliably break on an embedded "\n", so this splits it
+    // into one Paragraph per line instead, same idiom as the multi-line
+    // BILL TO / header cells above.
+    private PdfPCell descriptionCell(String text, Font font, Color background) {
+        PdfPCell cell = new PdfPCell();
+        cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        cell.setPadding(7);
+        cell.setBorderColor(BORDER_COLOR);
+        cell.setBackgroundColor(background);
+        String[] lines = text.split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            Paragraph p = new Paragraph(lines[i], font);
+            if (i > 0) p.setSpacingBefore(2);
+            cell.addElement(p);
+        }
+        return cell;
     }
 
     private PdfPCell bodyCell(String text, Font font, int alignment, Color background) {
@@ -284,6 +346,16 @@ public class InvoicePdfService {
 
         addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont, false);
         addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont, false);
+        // Hidden entirely (not shown as 0%) when the invoice never had a tax
+        // rate set at all — the common case for a business that doesn't
+        // charge tax shouldn't see a clutter row for it.
+        if (invoice.getTaxRate() != null) {
+            String label = "Tax (" + invoice.getTaxRate().stripTrailingZeros().toPlainString() + "%)";
+            addTotalRow(table, label, currency + " " + invoice.getTaxAmount(), normalFont, normalFont, false);
+        }
+        if (invoice.getShippingAmount() != null && invoice.getShippingAmount().compareTo(BigDecimal.ZERO) > 0) {
+            addTotalRow(table, "Shipping", currency + " " + invoice.getShippingAmount(), normalFont, normalFont, false);
+        }
         addTotalRow(table, "Total due", currency + " " + invoice.getTotalAmount(), boldFont, totalFont, true);
         return table;
     }
@@ -308,24 +380,25 @@ public class InvoicePdfService {
         table.addCell(valueCell);
     }
 
-    // Reads the logo straight off local disk — logoUrl is always a relative
-    // "/uploads/..." path served by WebConfig's static mapping, never a
-    // remote URL, so no HTTP round-trip is needed. Same strip-the-prefix
-    // idiom as ServiceOrderPhotoService.delete(); also strips the cache-bust
-    // "?v=..." query string BusinessService.uploadLogo() appends.
-    private Image loadLogo(String logoUrl) {
-        if (logoUrl == null || logoUrl.isBlank()) {
+    // Reads a business-uploaded image (logo or signature) straight off local
+    // disk — both URLs are always a relative "/uploads/..." path served by
+    // WebConfig's static mapping, never a remote URL, so no HTTP round-trip
+    // is needed. Same strip-the-prefix idiom as ServiceOrderPhotoService.delete();
+    // also strips the cache-bust "?v=..." query string BusinessService's
+    // uploadLogo()/uploadSignature() append.
+    private Image loadImage(String url) {
+        if (url == null || url.isBlank()) {
             return null;
         }
         try {
-            String relativePath = logoUrl.replaceFirst("^/uploads/", "").replaceFirst("\\?.*$", "");
+            String relativePath = url.replaceFirst("^/uploads/", "").replaceFirst("\\?.*$", "");
             Path path = Paths.get(uploadDir, relativePath);
             if (!Files.exists(path)) {
                 return null;
             }
             return Image.getInstance(Files.readAllBytes(path));
         } catch (Exception e) {
-            return null; // a missing/corrupt logo shouldn't block invoice generation
+            return null; // a missing/corrupt image shouldn't block invoice generation
         }
     }
 }

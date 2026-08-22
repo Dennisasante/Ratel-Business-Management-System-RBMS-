@@ -55,6 +55,7 @@ public class BusinessService {
         business.setLocation(req.location());
         business.setContactEmail(req.contactEmail());
         business.setContactPhone(req.contactPhone());
+        business.setTaxId(req.taxId());
         business = businessRepository.save(business);
 
         activityLogService.log("Updated business profile", "BUSINESS", business.getId());
@@ -115,6 +116,45 @@ public class BusinessService {
         business = businessRepository.save(business);
 
         activityLogService.log("Updated the business logo", "BUSINESS", business.getId());
+
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
+    }
+
+    // Same upload-once-reused-everywhere idea as uploadLogo() above — an
+    // optional signature image shown on generated invoices. Deliberately
+    // duplicated rather than sharing a helper with uploadLogo(), matching
+    // this codebase's established convention of not abstracting across two
+    // call sites until a third shows up.
+    public BusinessResponse uploadSignature(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No file was uploaded.");
+        }
+        if (!ALLOWED_TYPES.contains(file.getContentType())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Signature must be a PNG, JPEG, or WEBP image.");
+        }
+
+        Business business = getOwned();
+
+        String extension = switch (file.getContentType()) {
+            case "image/png" -> ".png";
+            case "image/webp" -> ".webp";
+            default -> ".jpg";
+        };
+        String filename = business.getId() + extension;
+
+        try {
+            Path signaturesDir = Paths.get(uploadDir, "signatures");
+            Files.createDirectories(signaturesDir);
+            Path target = signaturesDir.resolve(filename);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Couldn't save the signature. Please try again.");
+        }
+
+        business.setSignatureUrl("/uploads/signatures/" + filename + "?v=" + System.currentTimeMillis());
+        business = businessRepository.save(business);
+
+        activityLogService.log("Updated the business signature", "BUSINESS", business.getId());
 
         return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
     }

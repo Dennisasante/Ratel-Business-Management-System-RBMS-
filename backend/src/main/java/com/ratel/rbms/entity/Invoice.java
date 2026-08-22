@@ -79,6 +79,24 @@ public class Invoice {
     @Builder.Default
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
+    // Nullable — no tax charged at all is the common case for a small
+    // business. Applied over (subtotal - discountAmount), stored as a
+    // percentage e.g. 20.00 for 20%.
+    @Column(name = "tax_rate", precision = 5, scale = 2)
+    private BigDecimal taxRate;
+
+    // Computed and stored (same reasoning as subtotal/discountAmount/
+    // totalAmount below) rather than re-derived from taxRate at PDF/read
+    // time, so a later rate change on the invoice can't retroactively alter
+    // an already-issued document's numbers.
+    @Column(name = "tax_amount", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
+    @Column(name = "shipping_amount", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal shippingAmount = BigDecimal.ZERO;
+
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;

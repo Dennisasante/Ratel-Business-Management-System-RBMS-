@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -102,6 +103,8 @@ public class InvoiceService {
                 .issueDate(req.issueDate())
                 .dueDate(req.dueDate())
                 .notes(req.notes())
+                .taxRate(req.taxRate())
+                .shippingAmount(req.shippingAmount() != null ? req.shippingAmount() : BigDecimal.ZERO)
                 .createdBy(TenantContext.getUserId())
                 .build();
         invoice = invoiceRepository.save(invoice);
@@ -140,6 +143,8 @@ public class InvoiceService {
         invoice.setIssueDate(req.issueDate());
         invoice.setDueDate(req.dueDate());
         invoice.setNotes(req.notes());
+        invoice.setTaxRate(req.taxRate());
+        invoice.setShippingAmount(req.shippingAmount() != null ? req.shippingAmount() : BigDecimal.ZERO);
         invoice = invoiceRepository.save(invoice);
 
         invoiceItemRepository.deleteAllByInvoiceId(invoice.getId());
@@ -229,6 +234,8 @@ public class InvoiceService {
                 .customerAddress(original.getCustomerAddress())
                 .issueDate(LocalDate.now())
                 .notes(original.getNotes())
+                .taxRate(original.getTaxRate())
+                .shippingAmount(original.getShippingAmount())
                 .createdBy(TenantContext.getUserId())
                 .build();
         copy = invoiceRepository.save(copy);
@@ -288,9 +295,19 @@ public class InvoiceService {
             invoiceItemRepository.save(item);
         }
 
+        // Tax applies over (subtotal - discount), not the raw subtotal —
+        // shipping is added after, untaxed (a simplifying assumption; this
+        // isn't a full tax-jurisdiction engine).
+        BigDecimal taxableBase = subtotal.subtract(discountTotal);
+        BigDecimal taxAmount = invoice.getTaxRate() != null
+                ? taxableBase.multiply(invoice.getTaxRate()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal shipping = invoice.getShippingAmount() != null ? invoice.getShippingAmount() : BigDecimal.ZERO;
+
         invoice.setSubtotal(subtotal);
         invoice.setDiscountAmount(discountTotal);
-        invoice.setTotalAmount(subtotal.subtract(discountTotal));
+        invoice.setTaxAmount(taxAmount);
+        invoice.setTotalAmount(taxableBase.add(taxAmount).add(shipping));
         invoiceRepository.save(invoice);
     }
 

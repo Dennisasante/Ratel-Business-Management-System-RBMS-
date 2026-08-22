@@ -22,6 +22,9 @@ public record InvoiceResponse(
         String status,
         BigDecimal subtotal,
         BigDecimal discountAmount,
+        BigDecimal taxRate,
+        BigDecimal taxAmount,
+        BigDecimal shippingAmount,
         BigDecimal totalAmount,
         List<InvoiceItemResponse> items,
         Instant createdAt
@@ -41,6 +44,9 @@ public record InvoiceResponse(
                 invoice.getStatus(),
                 invoice.getSubtotal(),
                 invoice.getDiscountAmount(),
+                invoice.getTaxRate(),
+                invoice.getTaxAmount(),
+                invoice.getShippingAmount(),
                 invoice.getTotalAmount(),
                 items,
                 invoice.getCreatedAt()

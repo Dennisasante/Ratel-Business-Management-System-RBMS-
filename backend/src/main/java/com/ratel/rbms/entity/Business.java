@@ -46,6 +46,18 @@ public class Business {
     @Column(length = 500)
     private String logoUrl;
 
+    // An uploaded signature image (e.g. a scanned/photographed handwritten
+    // signature), shown on generated invoices — same "upload once, reused
+    // everywhere" idea as logoUrl. Optional: invoices render fine without one.
+    @Column(name = "signature_url", length = 500)
+    private String signatureUrl;
+
+    // GRA TIN/VAT registration number or equivalent — shown on generated
+    // invoices next to the business's own contact details. Free text (not a
+    // format-validated field) since requirements vary by country/business type.
+    @Column(name = "tax_id", length = 50)
+    private String taxId;
+
     private String location;
 
     @Column(length = 150)

@@ -41,6 +41,8 @@ export interface BusinessSummary {
   subscriptionPlan: string;
   enabledModules: string[];
   logoUrl: string | null;
+  signatureUrl: string | null;
+  taxId: string | null;
   billingStatus: "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
   planFeatures: PlanFeature[];
 }
@@ -348,6 +350,9 @@ export interface Invoice {
   status: InvoiceStatus;
   subtotal: number;
   discountAmount: number;
+  taxRate: number | null;
+  taxAmount: number;
+  shippingAmount: number;
   totalAmount: number;
   items: InvoiceItem[];
   createdAt: string;
@@ -379,6 +384,8 @@ export interface InvoicePayload {
   issueDate: string;
   dueDate?: string;
   notes?: string;
+  taxRate?: number;
+  shippingAmount?: number;
   items: InvoiceItemPayload[];
 }
 
@@ -661,6 +668,7 @@ export interface BusinessUpdatePayload {
   location?: string;
   contactEmail?: string;
   contactPhone?: string;
+  taxId?: string;
 }
 
 export interface StaffCommission {
@@ -1435,6 +1443,21 @@ export const api = {
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch("/api/business/logo", {
+      method: "POST",
+      credentials: "same-origin",
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Upload failed");
+    }
+    return res.json();
+  },
+
+  uploadBusinessSignature: async (_token: string, file: File): Promise<BusinessSummary> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/business/signature", {
       method: "POST",
       credentials: "same-origin",
       body: formData,

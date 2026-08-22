@@ -48,4 +48,10 @@ public class BusinessController {
     public BusinessResponse uploadLogo(@RequestParam("file") MultipartFile file) {
         return businessService.uploadLogo(file);
     }
+
+    @PostMapping("/signature")
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
+    public BusinessResponse uploadSignature(@RequestParam("file") MultipartFile file) {
+        return businessService.uploadSignature(file);
+    }
 }

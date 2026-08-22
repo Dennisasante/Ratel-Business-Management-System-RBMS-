@@ -20,8 +20,11 @@ export default function ProfilePage() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugInput, setSlugInput] = useState("");
@@ -48,6 +51,22 @@ export default function ProfilePage() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleSignatureSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !session) return;
+    setSignatureError(null);
+    setUploadingSignature(true);
+    try {
+      await api.uploadBusinessSignature(session.token, file);
+      await refreshBusiness();
+    } catch (err) {
+      setSignatureError(err instanceof ApiError ? err.message : "Couldn't upload that image.");
+    } finally {
+      setUploadingSignature(false);
+      if (signatureInputRef.current) signatureInputRef.current.value = "";
     }
   }
 
@@ -165,6 +184,10 @@ export default function ProfilePage() {
             <dt className="text-ink-500">Contact phone</dt>
             <dd className="font-medium text-ink-900">{business?.contactPhone ?? "—"}</dd>
           </div>
+          <div className="flex justify-between border-b border-border pb-3">
+            <dt className="text-ink-500">Tax ID</dt>
+            <dd className="font-medium text-ink-900">{business?.taxId ?? "—"}</dd>
+          </div>
           <div className="flex justify-between">
             <dt className="text-ink-500">Currency</dt>
             <dd className="font-medium text-ink-900">{business?.currency}</dd>
@@ -181,6 +204,42 @@ export default function ProfilePage() {
             ))}
           </div>
         </div>
+
+        {canEdit && (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-sm font-medium text-ink-900">Signature</p>
+            <p className="mt-0.5 text-xs text-ink-500">Shown on generated invoices — optional.</p>
+            <div className="mt-2 flex items-center gap-4">
+              {business?.signatureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={business.signatureUrl} alt="" className="h-12 w-28 rounded-lg border border-border bg-canvas object-contain" />
+              ) : (
+                <div className="flex h-12 w-28 items-center justify-center rounded-lg border border-dashed border-border text-xs text-ink-400">
+                  None yet
+                </div>
+              )}
+              <div>
+                <input
+                  ref={signatureInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleSignatureSelected}
+                  className="hidden"
+                  id="signature-upload"
+                />
+                <label
+                  htmlFor="signature-upload"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-canvas"
+                >
+                  <Upload size={13} />
+                  {uploadingSignature ? "Uploading..." : business?.signatureUrl ? "Change signature" : "Upload signature"}
+                </label>
+                <p className="mt-1 text-xs text-ink-500">PNG, JPEG, or WEBP, up to 3MB</p>
+                {signatureError && <p className="mt-1 text-xs text-danger">{signatureError}</p>}
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card className="max-w-2xl p-5">

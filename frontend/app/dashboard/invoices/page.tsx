@@ -337,12 +337,24 @@ export default function InvoicesPage() {
             <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
               {viewingInvoice.items.map((item) => (
                 <div key={item.id} className="flex items-center justify-between text-sm">
-                  <span className="text-ink-700">
+                  <span className="whitespace-pre-line text-ink-700">
                     {item.description} × {item.quantity}
                   </span>
                   <span className="tabular text-ink-500">GH₵{item.subtotal.toFixed(2)}</span>
                 </div>
               ))}
+              {viewingInvoice.taxRate != null && (
+                <div className="flex items-center justify-between border-t border-border pt-1.5 text-sm text-ink-500">
+                  <span>Tax ({viewingInvoice.taxRate}%)</span>
+                  <span className="tabular">GH₵{viewingInvoice.taxAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {viewingInvoice.shippingAmount > 0 && (
+                <div className="flex items-center justify-between text-sm text-ink-500">
+                  <span>Shipping</span>
+                  <span className="tabular">GH₵{viewingInvoice.shippingAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
                 <span>Total</span>
                 <span className="tabular">GH₵{viewingInvoice.totalAmount.toFixed(2)}</span>
