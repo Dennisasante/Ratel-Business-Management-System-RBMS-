@@ -48,6 +48,12 @@ services:
       MAIL_FROM: ${MAIL_FROM:-no-reply@ratel.app}
       PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
       PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-}
+      # Generate once with `npx web-push generate-vapid-keys`. VAPID_PUBLIC_KEY
+      # also feeds the frontend build below (NEXT_PUBLIC_VAPID_PUBLIC_KEY) —
+      # one source value, so the two can never drift out of sync.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       UPLOAD_DIR: /app/uploads
       # Only takes effect if no Super Admin exists yet — safe to leave set
       # after the first run (see DEPLOY.md).
@@ -67,6 +73,7 @@ services:
         NEXT_PUBLIC_API_URL: ${BACKEND_URL}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-}
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     restart: unless-stopped
     depends_on: [backend]
     networks: [ratel]
