@@ -73,7 +73,14 @@ export default function PushNotificationToggle({ token }: { token: string }) {
       });
       setStatus("subscribed");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't enable push notifications on this device.");
+      // Surfaces the real DOMException name/message (e.g. "NotAllowedError:
+      // Registration failed - push service error") rather than a generic
+      // fallback — pushManager.subscribe() fails in enough different,
+      // device-specific ways (iOS requiring the PWA be installed first,
+      // a misconfigured VAPID key, a blocked push service, etc.) that the
+      // real message is the fastest way to tell which one it is.
+      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
+      setError(`Couldn't enable push notifications on this device: ${message}`);
     } finally {
       setBusy(false);
     }
