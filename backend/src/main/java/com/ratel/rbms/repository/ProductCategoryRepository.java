@@ -14,4 +14,6 @@ public interface ProductCategoryRepository extends JpaRepository<ProductCategory
     Optional<ProductCategory> findByIdAndBusinessId(UUID id, UUID businessId);
 
     boolean existsByBusinessIdAndNameIgnoreCase(UUID businessId, String name);
+
+    Optional<ProductCategory> findByBusinessIdAndNameIgnoreCase(UUID businessId, String name);
 }

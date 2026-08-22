@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Package, Plus, AlertTriangle, Search, Archive as ArchiveIcon, Tags } from "lucide-react";
+import Link from "next/link";
+import { Package, Plus, AlertTriangle, Search, Archive as ArchiveIcon, Tags, Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -176,6 +177,11 @@ export default function InventoryPage() {
         }
         actions={
           <>
+            <Link href="/dashboard/inventory/import">
+              <Button variant="secondary">
+                <Upload size={16} /> Import
+              </Button>
+            </Link>
             <Button variant="secondary" onClick={() => setModal({ type: "categories" })}>
               <Tags size={16} /> Categories
             </Button>

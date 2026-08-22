@@ -161,6 +161,38 @@ export interface ProductPayload {
   publishToWebsite?: boolean;
 }
 
+export interface ImportRow {
+  rowNumber: number;
+  name: string | null;
+  category: string | null;
+  sku: string | null;
+  costPrice: number | null;
+  sellingPrice: number | null;
+  quantity: number | null;
+  lowStockThreshold: number | null;
+  supplierName: string | null;
+  valid: boolean;
+  errors: string[];
+}
+
+export interface ImportPreviewResponse {
+  rows: ImportRow[];
+  validCount: number;
+  errorCount: number;
+}
+
+export interface ImportSkip {
+  rowNumber: number;
+  name: string | null;
+  reason: string;
+}
+
+export interface ImportResultResponse {
+  importedCount: number;
+  skippedCount: number;
+  skipped: ImportSkip[];
+}
+
 export interface StockAdjustmentPayload {
   movementType: MovementType;
   quantity: number;
@@ -1483,6 +1515,32 @@ export const api = {
     }
     return res.json();
   },
+
+  downloadImportTemplate: async (token: string) => {
+    await downloadFile("/api/products/import/template", token, "inventory-import-template.csv");
+  },
+
+  previewProductImport: async (_token: string, file: File): Promise<ImportPreviewResponse> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/products/import/preview", {
+      method: "POST",
+      credentials: "same-origin",
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Couldn't read that file.");
+    }
+    return res.json();
+  },
+
+  confirmProductImport: (token: string, rows: ImportRow[]) =>
+    request<ImportResultResponse>(
+      "/api/products/import/confirm",
+      { method: "POST", body: JSON.stringify({ rows }) },
+      token
+    ),
 
   listProductCategories: (token: string) => request<ProductCategory[]>("/api/product-categories", {}, token),
 
