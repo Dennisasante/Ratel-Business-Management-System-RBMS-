@@ -507,6 +507,7 @@ public class BookingService {
                 .price(price)
                 .assignedStaffId(req.assignedStaffId())
                 .scheduledAt(req.scheduledAt())
+                .createdBy(TenantContext.getUserId())
                 .build();
         order = serviceOrderRepository.save(order);
         createServiceOrderItem(businessId, order.getId(), serviceTypeId, serviceCatalogId, serviceName, price);

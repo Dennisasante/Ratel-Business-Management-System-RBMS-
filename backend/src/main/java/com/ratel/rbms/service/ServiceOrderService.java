@@ -617,10 +617,15 @@ public class ServiceOrderService {
                 ? staffMemberRepository.findById(order.getAssignedStaffId()).map(StaffMember::getFullName)
                         .orElseGet(() -> userRepository.findById(order.getAssignedStaffId()).map(User::getFullName).orElse(null))
                 : null;
+        Booking booking = bookingRepository.findByServiceOrderId(order.getId()).orElse(null);
+        // A public-widget booking has no authenticated user at all (see
+        // BookingService.createBooking()) — createdBy is legitimately null,
+        // not missing data, so this reads as "the customer booked it
+        // themselves" rather than the unqualified "Unknown" that used to
+        // show here and reads like a data problem.
         String createdByName = order.getCreatedBy() != null
                 ? userRepository.findById(order.getCreatedBy()).map(User::getFullName).orElse("Unknown")
-                : "Unknown";
-        Booking booking = bookingRepository.findByServiceOrderId(order.getId()).orElse(null);
+                : booking != null ? "Customer (booked online)" : "Unknown";
         String bookingPaymentStatus = booking != null ? booking.getPaymentStatus() : null;
         String bookingWhatsappLink = booking != null
                 ? whatsAppLinkService.buildLink(booking.getCustomerWhatsapp(),
