@@ -578,6 +578,7 @@ export interface ServiceOrder {
   status: ServiceOrderStatus;
   customerId: string | null;
   customerName: string | null;
+  customerPhone: string | null;
   serviceCatalogId: string | null;
   serviceCatalogName: string | null;
   notes: string | null;

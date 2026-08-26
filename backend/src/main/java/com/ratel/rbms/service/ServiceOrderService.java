@@ -638,10 +638,15 @@ public class ServiceOrderService {
                                 : "Hi " + customer.getFullName() + ", this is regarding your order #" + order.getOrderNumber() + ".")
                 : null;
 
+        String customerPhone = customer != null && customer.getPhone() != null && !customer.getPhone().isBlank()
+                ? customer.getPhone()
+                : booking != null ? booking.getCustomerWhatsapp() : null;
+
         return ServiceOrderResponse.from(
                 order,
                 type != null ? type.getName() : null,
                 customer != null ? customer.getFullName() : null,
+                customerPhone,
                 catalogItem != null ? catalogItem.getName() : null,
                 itemResponses,
                 assignedStaffName,

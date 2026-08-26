@@ -3,7 +3,20 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Wrench, BarChart3, Mail, ListTree, CalendarDays, MessageCircle, MoreVertical, Move, ChevronRight } from "lucide-react";
+import {
+  Plus,
+  Wrench,
+  BarChart3,
+  Mail,
+  ListTree,
+  CalendarDays,
+  MessageCircle,
+  MoreVertical,
+  Move,
+  ChevronRight,
+  Phone,
+  Printer,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -105,6 +118,7 @@ export default function ServiceOrdersPage() {
 
   const [paystackConfigured, setPaystackConfigured] = useState(false);
   const [collectingPaymentOrder, setCollectingPaymentOrder] = useState<ServiceOrder | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<ServiceOrder | null>(null);
 
   const loadOrders = useCallback(async () => {
     if (!session) return;
@@ -190,6 +204,14 @@ export default function ServiceOrdersPage() {
       setCollectingPaymentOrder(null);
     }
   }
+
+  // Keep the open detail modal's data current after a stage change/resend
+  // made from inside it triggers a reload of `orders`.
+  useEffect(() => {
+    if (!viewingOrder) return;
+    const fresh = orders.find((o) => o.id === viewingOrder.id);
+    if (fresh && fresh !== viewingOrder) setViewingOrder(fresh);
+  }, [orders, viewingOrder]);
 
   async function handleResendEmail(order: ServiceOrder) {
     if (!session) return;
@@ -304,9 +326,9 @@ export default function ServiceOrdersPage() {
                 return (
                   <Tr key={o.id}>
                     <Td className="tabular font-medium">
-                      <Link href={`/receipt/service-order/${o.id}`} target="_blank" className="text-accent-hover hover:underline">
+                      <button onClick={() => setViewingOrder(o)} className="text-accent-hover hover:underline">
                         #{o.orderNumber}
-                      </Link>
+                      </button>
                     </Td>
                     <Td className="text-ink-500">
                       <span className="block">{o.serviceTypeName ?? "—"}</span>
@@ -345,13 +367,6 @@ export default function ServiceOrdersPage() {
                           pending={pendingAction === `${o.id}:status`}
                           onSelect={(status) => handleSetStatus(o, status)}
                         />
-                        <Link
-                          href={`/receipt/service-order/${o.id}`}
-                          target="_blank"
-                          className="text-sm font-medium text-accent-hover hover:underline"
-                        >
-                          View
-                        </Link>
                         <button
                           onClick={() => setModal({ type: "edit", order: o })}
                           className="text-sm font-medium text-ink-700 hover:underline"
@@ -366,31 +381,37 @@ export default function ServiceOrdersPage() {
                             {o.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
                           </button>
                         )}
-                        {((o.bookingWhatsappLink || o.customerWhatsappLink) || canResend) && (
-                          <ActionsMenu>
-                            {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
-                              <a
-                                href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-success hover:bg-canvas"
-                              >
-                                <MessageCircle size={14} />
-                                Message on WhatsApp
-                              </a>
-                            )}
-                            {canResend && (
-                              <button
-                                onClick={() => handleResendEmail(o)}
-                                disabled={pendingAction === `${o.id}:resend`}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Mail size={14} />
-                                {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
-                              </button>
-                            )}
-                          </ActionsMenu>
-                        )}
+                        <ActionsMenu>
+                          {(o.bookingWhatsappLink || o.customerWhatsappLink) && (
+                            <a
+                              href={o.bookingWhatsappLink ?? o.customerWhatsappLink ?? undefined}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-success hover:bg-canvas"
+                            >
+                              <MessageCircle size={14} />
+                              Message on WhatsApp
+                            </a>
+                          )}
+                          {canResend && (
+                            <button
+                              onClick={() => handleResendEmail(o)}
+                              disabled={pendingAction === `${o.id}:resend`}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Mail size={14} />
+                              {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
+                            </button>
+                          )}
+                          <Link
+                            href={`/receipt/service-order/${o.id}`}
+                            target="_blank"
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-canvas"
+                          >
+                            <Printer size={14} />
+                            Print receipt
+                          </Link>
+                        </ActionsMenu>
                       </div>
                     </Td>
                   </Tr>
@@ -424,6 +445,24 @@ export default function ServiceOrdersPage() {
         </Modal>
       )}
 
+      {viewingOrder && (
+        <OrderDetailModal
+          order={viewingOrder}
+          pendingAction={pendingAction}
+          onClose={() => setViewingOrder(null)}
+          onSetStatus={handleSetStatus}
+          onResendEmail={handleResendEmail}
+          onEdit={(o) => {
+            setViewingOrder(null);
+            setModal({ type: "edit", order: o });
+          }}
+          onCollectPayment={(o) => {
+            setViewingOrder(null);
+            setCollectingPaymentOrder(o);
+          }}
+        />
+      )}
+
       {collectingPaymentOrder && (
         <Modal
           title={`Collect payment — Order #${collectingPaymentOrder.orderNumber}`}
@@ -446,6 +485,181 @@ export default function ServiceOrdersPage() {
         </Modal>
       )}
     </div>
+  );
+}
+
+// Replicates the Custom Wig Request detail modal's shape: a read-only
+// summary of everything about the order (date/time, customer, phone, items,
+// staff, payment) with the same inline actions the table row offers,
+// rather than sending the tap straight to the print-receipt page. The
+// receipt itself isn't gone — it's tucked into "Print receipt" below.
+function OrderDetailModal({
+  order,
+  pendingAction,
+  onClose,
+  onSetStatus,
+  onResendEmail,
+  onEdit,
+  onCollectPayment,
+}: {
+  order: ServiceOrder;
+  pendingAction: string | null;
+  onClose: () => void;
+  onSetStatus: (order: ServiceOrder, status: ServiceOrderStatus) => void;
+  onResendEmail: (order: ServiceOrder) => void;
+  onEdit: (order: ServiceOrder) => void;
+  onCollectPayment: (order: ServiceOrder) => void;
+}) {
+  const allowedFromHere = ALLOWED_TRANSITIONS[order.status];
+  const moveOptions = ALL_STAGES.filter((s) => s !== order.status).map((s) => ({
+    status: s,
+    allowed: allowedFromHere.includes(s),
+  }));
+  const canResend = order.status === "COMPLETED" || order.status === "PICKED_UP";
+  const whatsappLink = order.bookingWhatsappLink ?? order.customerWhatsappLink;
+
+  return (
+    <Modal title={`Order #${order.orderNumber}`} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={STATUS_TONES[order.status]}>{STATUS_LABELS[order.status]}</Badge>
+            {order.bookingPaymentStatus && order.bookingPaymentStatus !== "PAID" && (
+              <Badge tone={order.bookingPaymentStatus === "FAILED" ? "danger" : "neutral"}>
+                {order.bookingPaymentStatus === "FAILED" ? "Payment failed" : "Awaiting payment"}
+              </Badge>
+            )}
+            {!order.bookingPaymentStatus && (
+              <Badge tone={PAYMENT_STATUS_TONES[order.paymentStatus] ?? "neutral"}>
+                {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
+              </Badge>
+            )}
+          </div>
+          <span className="text-sm text-ink-500">{new Date(order.receivedAt).toLocaleString()}</span>
+        </div>
+
+        <div className="flex flex-col gap-1 text-sm">
+          <p className="font-medium text-ink-900">{order.customerName ?? "Walk-in"}</p>
+          {order.customerPhone && (
+            <a href={`tel:${order.customerPhone}`} className="flex items-center gap-1.5 text-ink-500 hover:underline">
+              <Phone size={13} />
+              {order.customerPhone}
+            </a>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+          <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-ink-500">
+            {order.serviceTypeName ?? "Service"}
+          </p>
+          {order.items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between text-sm">
+              <span className="text-ink-700">{item.serviceName}</span>
+              <span className="tabular text-ink-500">GH₵{item.price.toFixed(2)}</span>
+            </div>
+          ))}
+          {order.discountAmount > 0 && (
+            <div className="flex items-center justify-between text-sm text-ink-500">
+              <span>Discount</span>
+              <span className="tabular">-GH₵{order.discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+            <span>Total</span>
+            <span className="tabular">GH₵{order.price.toFixed(2)}</span>
+          </div>
+          {order.amountPaid > 0 && (
+            <div className="flex items-center justify-between text-sm text-ink-500">
+              <span>Paid</span>
+              <span className="tabular">GH₵{order.amountPaid.toFixed(2)}</span>
+            </div>
+          )}
+          {order.balanceDue > 0 && (
+            <div className="flex items-center justify-between text-sm text-ink-500">
+              <span>Balance due</span>
+              <span className="tabular">GH₵{order.balanceDue.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Assigned to</p>
+            <p className="text-ink-700">{order.assignedStaffName ?? "Unassigned"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Created by</p>
+            <p className="text-ink-700">{order.createdByName}</p>
+          </div>
+          {order.scheduledAt && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Scheduled</p>
+              <p className="text-ink-700">{new Date(order.scheduledAt).toLocaleString()}</p>
+            </div>
+          )}
+          {order.pickedUpAt && (
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Picked up</p>
+              <p className="text-ink-700">{new Date(order.pickedUpAt).toLocaleString()}</p>
+            </div>
+          )}
+        </div>
+
+        {order.notes && (
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">Notes</p>
+            <p className="text-sm text-ink-700">{order.notes}</p>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
+          <StageMenu
+            options={moveOptions}
+            pending={pendingAction === `${order.id}:status`}
+            onSelect={(status) => onSetStatus(order, status)}
+          />
+          <button onClick={() => onEdit(order)} className="text-sm font-medium text-ink-700 hover:underline">
+            Edit
+          </button>
+          {!order.bookingPaymentStatus && order.paymentStatus !== "REFUNDED" && (
+            <button onClick={() => onCollectPayment(order)} className="text-sm font-medium text-accent-hover hover:underline">
+              {order.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
+            </button>
+          )}
+          {canResend && (
+            <button
+              onClick={() => onResendEmail(order)}
+              disabled={pendingAction === `${order.id}:resend`}
+              className="flex items-center gap-1.5 text-sm font-medium text-ink-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mail size={14} />
+              {pendingAction === `${order.id}:resend` ? "Sending..." : "Resend email"}
+            </button>
+          )}
+        </div>
+
+        {whatsappLink && (
+          <a
+            href={whatsappLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-medium text-white hover:bg-success/90"
+          >
+            <MessageCircle size={15} />
+            Message customer on WhatsApp
+          </a>
+        )}
+
+        <Link
+          href={`/receipt/service-order/${order.id}`}
+          target="_blank"
+          className="flex items-center justify-center gap-1.5 text-xs font-medium text-ink-500 hover:underline"
+        >
+          <Printer size={13} />
+          Print receipt
+        </Link>
+      </div>
+    </Modal>
   );
 }
 

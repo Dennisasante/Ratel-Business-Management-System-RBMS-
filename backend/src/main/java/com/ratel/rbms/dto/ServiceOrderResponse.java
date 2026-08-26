@@ -15,6 +15,10 @@ public record ServiceOrderResponse(
         String status,
         UUID customerId,
         String customerName,
+        // Raw phone — customer.phone if a Customer is linked, else the
+        // originating booking's customerWhatsapp for a booking-only order.
+        // Distinct from customerWhatsappLink below, which is a wa.me URL.
+        String customerPhone,
         UUID serviceCatalogId,
         String serviceCatalogName,
         String notes,
@@ -52,6 +56,7 @@ public record ServiceOrderResponse(
             ServiceOrder o,
             String serviceTypeName,
             String customerName,
+            String customerPhone,
             String serviceCatalogName,
             List<ServiceOrderItemResponse> items,
             String assignedStaffName,
@@ -69,6 +74,7 @@ public record ServiceOrderResponse(
                 o.getStatus().name(),
                 o.getCustomerId(),
                 customerName,
+                customerPhone,
                 o.getServiceCatalogId(),
                 serviceCatalogName,
                 o.getNotes(),
