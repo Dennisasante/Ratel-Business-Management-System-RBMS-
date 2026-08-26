@@ -24,4 +24,14 @@ public final class PhoneUtils {
         if (digits.length() == 9) return "0" + digits;
         return digits;
     }
+
+    // True only for a real Ghana number in one of the four accepted shapes —
+    // normalize() never rejects anything (it falls back to the stripped
+    // digits for dedupe purposes), so a 5-digit or otherwise malformed input
+    // still needs to be caught separately at the point of intake (e.g. a
+    // public booking form) rather than silently becoming a bogus Customer.
+    public static boolean isValid(String rawPhone) {
+        String normalized = normalize(rawPhone);
+        return normalized != null && normalized.length() == 10 && normalized.startsWith("0");
+    }
 }

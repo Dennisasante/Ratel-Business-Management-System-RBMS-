@@ -40,6 +40,20 @@ function formatTimeLabel(hhmmss: string) {
 
 const DAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// Mirrors PhoneUtils.isValid on the backend — accepts 0XXXXXXXXX,
+// 233XXXXXXXXX, +233XXXXXXXXX, 00233XXXXXXXXX, or a bare 9-digit number.
+// Just for instant feedback here; the backend re-validates regardless
+// since customers are tied together by this number and a bogus one
+// (a 5-digit entry, say) would create a Customer nothing can ever match.
+function isValidGhanaPhone(raw: string): boolean {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 9) return true;
+  if (digits.length === 10 && digits.startsWith("0")) return true;
+  if (digits.length === 12 && digits.startsWith("233")) return true;
+  if (digits.length === 14 && digits.startsWith("00233")) return true;
+  return false;
+}
+
 function workingHoursHint(config: BookingWidgetConfig) {
   const sorted = [...config.workingHours].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
   const groups: { days: number[]; startTime: string; endTime: string }[] = [];
@@ -244,6 +258,10 @@ export default function HostedBookingPage() {
     if (!config || !selectedService) return;
     if (selectedService.requiresLocation && !customerLocation.trim()) {
       setSubmitError("Please share your location for this service.");
+      return;
+    }
+    if (!isValidGhanaPhone(customerWhatsapp)) {
+      setSubmitError("Enter a valid phone number.");
       return;
     }
     setSubmitError(null);

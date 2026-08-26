@@ -251,6 +251,14 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Select a service.");
         }
 
+        // Customers are tied together by this number (see PhoneUtils.normalize /
+        // findFirstByBusinessIdAndPhoneNormalized below) — a bogus number like a
+        // 5-digit entry would create a Customer nothing can ever be matched
+        // against again, so it's rejected here rather than only normalized.
+        if (!PhoneUtils.isValid(req.customerWhatsapp())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a valid phone number.");
+        }
+
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
         validateWorkingWindow(businessId, integrations, req.scheduledAt());
 
