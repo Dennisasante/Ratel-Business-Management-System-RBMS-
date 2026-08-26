@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { History } from "lucide-react";
 import { usePlatformAuth } from "@/lib/platformAuth";
-import { api, ActivityLogEntry } from "@/lib/api";
+import { api, ActivityLogEntry, PlatformBusinessSummary } from "@/lib/api";
 import PlatformShell from "@/components/platform/PlatformShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
@@ -25,6 +25,7 @@ export default function PlatformActivityPage() {
   const { session } = usePlatformAuth();
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [options, setOptions] = useState<ActivityLogEntry[]>([]);
+  const [allBusinesses, setAllBusinesses] = useState<PlatformBusinessSummary[]>([]);
   const [fetching, setFetching] = useState(true);
 
   const [businessId, setBusinessId] = useState("");
@@ -44,21 +45,31 @@ export default function PlatformActivityPage() {
     );
   }, [session, businessId, userId, from, to]);
 
-  // Unfiltered pull once, just to populate the dropdown options.
+  // Unfiltered pull once, just to populate the staff dropdown options.
   useEffect(() => {
     if (!session) return;
     api.listPlatformActivityLogs(session.token).then(setOptions);
+  }, [session]);
+
+  // Every business, not just ones with recent activity — a capped recent-logs
+  // sample would silently omit a quiet business from the dropdown, making it
+  // impossible to ever select (looked like "the business filter doesn't work").
+  useEffect(() => {
+    if (!session) return;
+    api.listPlatformBusinesses(session.token).then(setAllBusinesses);
   }, [session]);
 
   useEffect(() => {
     load().finally(() => setFetching(false));
   }, [load]);
 
-  const businesses = useMemo(() => {
-    const map = new Map<string, string>();
-    options.forEach((l) => l.businessId && l.businessName && map.set(l.businessId, l.businessName));
-    return Array.from(map.entries());
-  }, [options]);
+  const businesses = useMemo(
+    () =>
+      allBusinesses
+        .map((b) => [b.id, b.name] as [string, string])
+        .sort((a, b) => a[1].localeCompare(b[1])),
+    [allBusinesses]
+  );
 
   const staff = useMemo(() => {
     const map = new Map<string, string>();

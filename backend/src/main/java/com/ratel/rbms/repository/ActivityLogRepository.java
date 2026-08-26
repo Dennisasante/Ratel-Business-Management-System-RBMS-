@@ -27,11 +27,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, UUID> 
     // also optional so the same query serves both the business-scoped
     // endpoint (always passes its own businessId) and the Super Admin's
     // platform-wide one (passes null to search everyone, or a specific id).
+    // Every param is compared once and cast-null-checked once (never a bare
+    // repeated ":param IS NULL"): Postgres/Hibernate infers each occurrence of
+    // a named parameter's type independently, so a nullable UUID/Instant left
+    // untyped on its IS NULL occurrence fails to bind (see the same fix on
+    // ProductRepository.search / PaymentTransactionRepository.search).
     @Query("SELECT a FROM ActivityLog a WHERE "
-            + "(:businessId IS NULL OR a.businessId = :businessId) AND "
-            + "(:userId IS NULL OR a.userId = :userId) AND "
-            + "(:from IS NULL OR a.createdAt >= :from) AND "
-            + "(:to IS NULL OR a.createdAt <= :to) "
+            + "(a.businessId = :businessId OR CAST(:businessId AS uuid) IS NULL) AND "
+            + "(a.userId = :userId OR CAST(:userId AS uuid) IS NULL) AND "
+            + "(a.createdAt >= :from OR CAST(:from AS timestamp) IS NULL) AND "
+            + "(a.createdAt <= :to OR CAST(:to AS timestamp) IS NULL) "
             + "ORDER BY a.createdAt DESC")
     List<ActivityLog> search(
             @Param("businessId") UUID businessId,
