@@ -4,15 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
+import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.EcommerceOrder;
 import com.ratel.rbms.entity.EcommerceOrderItem;
 import com.ratel.rbms.entity.Product;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.EcommerceOrderItemRepository;
 import com.ratel.rbms.repository.EcommerceOrderRepository;
 import com.ratel.rbms.repository.ProductRepository;
+import com.ratel.rbms.util.PhoneUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +51,7 @@ public class WooCommerceSyncService {
     private final EmailService emailService;
     private final ObjectMapper objectMapper;
     private final String backendUrl;
+    private final CustomerRepository customerRepository;
 
     public WooCommerceSyncService(
             BusinessRepository businessRepository,
@@ -59,7 +63,8 @@ public class WooCommerceSyncService {
             PlanFeatureService planFeatureService,
             EmailService emailService,
             ObjectMapper objectMapper,
-            @Value("${app.backend-url}") String backendUrl
+            @Value("${app.backend-url}") String backendUrl,
+            CustomerRepository customerRepository
     ) {
         this.businessRepository = businessRepository;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
@@ -71,6 +76,23 @@ public class WooCommerceSyncService {
         this.emailService = emailService;
         this.objectMapper = objectMapper;
         this.backendUrl = backendUrl;
+        this.customerRepository = customerRepository;
+    }
+
+    // Same phone-tying pattern as BookingService/CustomWigRequestService — a
+    // Woo order is linked to the same Customer record other modules resolve
+    // by phone, rather than an island of its own. Returns null for a blank
+    // phone (WooCommerce billing data can omit one entirely).
+    private UUID resolveCustomerId(UUID businessId, String customerName, String phone, String email) {
+        if (phone == null || phone.isBlank()) return null;
+        return customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(phone))
+                .orElseGet(() -> customerRepository.save(Customer.builder()
+                        .businessId(businessId)
+                        .fullName(customerName == null || customerName.isBlank() ? "Unknown" : customerName)
+                        .phone(phone)
+                        .email(email)
+                        .build()))
+                .getId();
     }
 
     @Transactional
@@ -110,10 +132,13 @@ public class WooCommerceSyncService {
         var existing = ecommerceOrderRepository.findByBusinessIdAndWooOrderId(businessId, wooOrderId);
         boolean isNew = existing.isEmpty();
         EcommerceOrder order = existing.orElseGet(() -> EcommerceOrder.builder().businessId(businessId).wooOrderId(wooOrderId).build());
+        String customerPhone = billing.path("phone").asText(null);
+        String customerEmail = billing.path("email").asText(null);
         order.setOrderNumber(node.path("number").asText(String.valueOf(wooOrderId)));
         order.setCustomerName(customerName.isBlank() ? null : customerName);
-        order.setCustomerEmail(billing.path("email").asText(null));
-        order.setCustomerPhone(billing.path("phone").asText(null));
+        order.setCustomerEmail(customerEmail);
+        order.setCustomerPhone(customerPhone);
+        order.setCustomerId(resolveCustomerId(businessId, customerName, customerPhone, customerEmail));
         order.setTotalAmount(new BigDecimal(node.path("total").asText("0")));
         order.setCurrency(node.path("currency").asText("GHS"));
         order.setRawPayload(rawBody);

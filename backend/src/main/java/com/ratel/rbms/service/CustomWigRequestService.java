@@ -20,6 +20,7 @@ import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.CustomItemAttribute;
 import com.ratel.rbms.entity.CustomItemAttributeOption;
+import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.CustomWigRequest;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.PendingApproval;
@@ -30,9 +31,11 @@ import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomItemAttributeOptionRepository;
 import com.ratel.rbms.repository.CustomItemAttributeRepository;
 import com.ratel.rbms.repository.CustomWigRequestRepository;
+import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.PaymentTransactionRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
+import com.ratel.rbms.util.PhoneUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -81,6 +84,7 @@ public class CustomWigRequestService {
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final ApprovalGateService approvalGateService;
     private final ModuleAccessService moduleAccessService;
+    private final CustomerRepository customerRepository;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -100,7 +104,8 @@ public class CustomWigRequestService {
             NotificationService notificationService,
             PaymentTransactionRepository paymentTransactionRepository,
             ApprovalGateService approvalGateService,
-            ModuleAccessService moduleAccessService
+            ModuleAccessService moduleAccessService,
+            CustomerRepository customerRepository
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -120,6 +125,23 @@ public class CustomWigRequestService {
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.approvalGateService = approvalGateService;
         this.moduleAccessService = moduleAccessService;
+        this.customerRepository = customerRepository;
+    }
+
+    // Same phone-tying pattern as BookingService.createBooking() — a request
+    // is linked to the same Customer record Sales/Service Orders/Bookings
+    // resolve by phone, rather than an island of its own. Returns null for a
+    // blank phone (the staff manual-entry path allows one).
+    private UUID resolveCustomerId(UUID businessId, String customerName, String phone, String email) {
+        if (phone == null || phone.isBlank()) return null;
+        return customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(phone))
+                .orElseGet(() -> customerRepository.save(Customer.builder()
+                        .businessId(businessId)
+                        .fullName(customerName)
+                        .phone(phone)
+                        .email(email)
+                        .build()))
+                .getId();
     }
 
     // ---- Public side ----
@@ -176,6 +198,12 @@ public class CustomWigRequestService {
         if (req.customerWhatsapp() == null || req.customerWhatsapp().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "A WhatsApp number is required.");
         }
+        // Same reasoning as BookingService.createBooking(): this number is
+        // what ties the customer's history together, so a bogus one (a
+        // 5-digit entry, say) can't be allowed through.
+        if (!PhoneUtils.isValid(req.customerWhatsapp())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a valid phone number.");
+        }
         if (req.selections() == null || req.selections().isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Choose at least one option.");
         }
@@ -189,8 +217,11 @@ public class CustomWigRequestService {
 
         String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
 
+        UUID customerId = resolveCustomerId(businessId, req.customerName(), req.customerWhatsapp(), req.customerEmail());
+
         CustomWigRequest request = CustomWigRequest.builder()
                 .businessId(businessId)
+                .customerId(customerId)
                 .customerName(req.customerName())
                 .customerEmail(req.customerEmail())
                 .customerWhatsapp(req.customerWhatsapp())
@@ -312,9 +343,11 @@ public class CustomWigRequestService {
         }
 
         String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
+        UUID customerId = resolveCustomerId(businessId, req.customerName(), req.customerWhatsapp(), req.customerEmail());
 
         CustomWigRequest request = CustomWigRequest.builder()
                 .businessId(businessId)
+                .customerId(customerId)
                 .customerName(req.customerName())
                 .customerEmail(blankToNull(req.customerEmail()))
                 .customerWhatsapp(blankToNull(req.customerWhatsapp()))

@@ -54,6 +54,13 @@ public class CustomWigRequest {
     @Column(name = "customer_whatsapp", length = 20)
     private String customerWhatsapp;
 
+    // Links to the same Customer record Sales/Service Orders/Bookings resolve
+    // by phone — nullable because a staff-entered request may have no phone
+    // on hand at all. customerName/Email/Whatsapp above stay as the snapshot
+    // of what was actually typed at submission time; this is purely the tie.
+    @Column(name = "customer_id")
+    private UUID customerId;
+
     // Free text — "Instagram DM", "Walk-in", "Phone call". Null for requests
     // submitted through the public widget, where the channel is implicitly
     // "website" and not worth asking the customer to state.

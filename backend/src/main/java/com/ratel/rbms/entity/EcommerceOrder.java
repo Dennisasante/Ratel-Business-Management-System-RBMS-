@@ -54,6 +54,13 @@ public class EcommerceOrder {
     @Column(name = "customer_phone", length = 20)
     private String customerPhone;
 
+    // Links to the same Customer record Sales/Service Orders/Bookings resolve
+    // by phone — nullable since WooCommerce billing data may omit a phone
+    // entirely. customerName/Email/Phone above stay as the raw Woo snapshot;
+    // this is purely the tie.
+    @Column(name = "customer_id")
+    private UUID customerId;
+
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
