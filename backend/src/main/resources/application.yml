@@ -95,6 +95,13 @@ app:
     # Runs once a day, shortly after the digest — flips lapsed trials/subscriptions
     # to read-only and sends the 3-day-out renewal reminder.
     expiry-cron: ${BILLING_EXPIRY_CRON:0 30 6 * * *}
+  ai:
+    # Tallia AI (Phase 1) — direct OpenAI Chat Completions calls, see
+    # OpenAiProvider. Blank key means the feature is structurally present
+    # but unusable, same posture as app.vapid below when unset — never
+    # crashes startup, just can't actually answer until configured.
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-model: ${OPENAI_MODEL:gpt-4o-mini}
   vapid:
     # Generate once with `npx web-push generate-vapid-keys`. If public/private
     # key are blank, PushNotificationService silently no-ops (same posture as

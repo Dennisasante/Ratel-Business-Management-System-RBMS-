@@ -1,5 +1,6 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.AvailabilityCheckResponse;
 import com.ratel.rbms.dto.BookableServiceResponse;
 import com.ratel.rbms.dto.BookingCreatedResponse;
 import com.ratel.rbms.dto.BookingDetailResponse;
@@ -58,6 +59,7 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -223,6 +225,60 @@ public class BookingService {
                 ))
         );
         return results;
+    }
+
+    // Added for Tallia AI's getServiceDetails tool — a thin filter over the
+    // same safe, already-public listBookableServices() rather than a new
+    // repository query, so it can never expose anything that list doesn't
+    // already expose (e.g. an inactive or not-bookable-online item).
+    public Optional<BookableServiceResponse> getBookableServiceDetail(UUID businessId, UUID id) {
+        return listBookableServices(businessId).stream()
+                .filter(s -> id.equals(s.serviceCatalogId()) || id.equals(s.packageId()))
+                .findFirst();
+    }
+
+    // Added for Tallia AI's checkAvailability tool. Deliberately does NOT
+    // reimplement the availability algorithm — it resolves the same
+    // duration/maxConcurrentBookings/overlap-candidates inputs createBooking()
+    // already resolves, then calls the exact same validateWorkingWindow()/
+    // validateCapacity() private methods createBooking() calls, just without
+    // ever inserting anything. A rejection there normally throws ApiException
+    // (that's the right behavior for an actual booking attempt); here it's
+    // caught and turned into a plain available=false/reason result instead,
+    // since "not available" is an expected, common answer for a check, not
+    // an error.
+    public AvailabilityCheckResponse checkAvailability(UUID businessId, UUID serviceCatalogId, UUID packageId, Instant scheduledAt) {
+        try {
+            BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
+            validateWorkingWindow(businessId, integrations, scheduledAt);
+
+            if (packageId != null) {
+                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(packageId, businessId)
+                        .filter(ServicePackage::isActive)
+                        .filter(ServicePackage::isBookableOnline)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
+                Instant requestEnd = scheduledAt.plusSeconds(pkg.getDurationMinutes() * 60L);
+                Instant searchFrom = scheduledAt.minusSeconds(pkg.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                        businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, scheduledAt);
+            } else if (serviceCatalogId != null) {
+                ServiceCatalogItem item = serviceCatalogItemRepository.findByIdAndBusinessId(serviceCatalogId, businessId)
+                        .filter(ServiceCatalogItem::isActive)
+                        .filter(ServiceCatalogItem::isBookableOnline)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+                Instant requestEnd = scheduledAt.plusSeconds(item.getDurationMinutes() * 60L);
+                Instant searchFrom = scheduledAt.minusSeconds(item.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                        businessId, item.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(item.getDurationMinutes(), item.getMaxConcurrentBookings(), candidates, scheduledAt);
+            } else {
+                return AvailabilityCheckResponse.unavailable("Select a service.");
+            }
+            return AvailabilityCheckResponse.ok();
+        } catch (ApiException e) {
+            return AvailabilityCheckResponse.unavailable(e.getMessage());
+        }
     }
 
     private List<String> includedItemLabels(UUID packageId) {

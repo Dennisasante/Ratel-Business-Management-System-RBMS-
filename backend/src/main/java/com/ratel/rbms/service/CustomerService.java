@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -96,6 +97,44 @@ public class CustomerService {
         customer = customerRepository.save(customer);
         activityLogService.log("Added customer \"" + customer.getFullName() + "\"", "CUSTOMER", customer.getId());
         return toResponse(customer, customer.getBusinessId());
+    }
+
+    // Added for Tallia AI's findCustomer tool — read-only lookup, never
+    // creates. Returns empty rather than throwing when nothing matches or
+    // the phone doesn't parse, since "not found" is an ordinary answer here,
+    // not an error.
+    public Optional<CustomerResponse> findByPhone(String phone) {
+        if (phone == null || phone.isBlank() || !PhoneUtils.isValid(phone)) {
+            return Optional.empty();
+        }
+        UUID businessId = TenantContext.getBusinessId();
+        return customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(phone))
+                .map(c -> toResponse(c, businessId));
+    }
+
+    // Added for Tallia AI's findCustomer/createCustomer tools — the AI layer
+    // must never be able to spawn a duplicate Customer for a phone number
+    // that already resolves to one, so this is find-or-create rather than
+    // create()'s own create-or-409. Same phone validation and normalization
+    // as every other resolution path (Booking/CustomWigRequest/EcommerceOrder).
+    public CustomerResponse findOrCreate(String fullName, String phone, String email, String source) {
+        UUID businessId = TenantContext.getBusinessId();
+        if (phone == null || phone.isBlank() || !PhoneUtils.isValid(phone)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a valid phone number.");
+        }
+        Customer customer = customerRepository.findFirstByBusinessIdAndPhoneNormalized(businessId, PhoneUtils.normalize(phone))
+                .orElseGet(() -> {
+                    Customer created = customerRepository.save(Customer.builder()
+                            .businessId(businessId)
+                            .fullName(fullName == null || fullName.isBlank() ? "Customer" : fullName.trim())
+                            .phone(phone)
+                            .email(email)
+                            .source(source)
+                            .build());
+                    activityLogService.log("Added customer \"" + created.getFullName() + "\"", "CUSTOMER", created.getId());
+                    return created;
+                });
+        return toResponse(customer, businessId);
     }
 
     private CustomerResponse toResponse(Customer customer, UUID businessId) {

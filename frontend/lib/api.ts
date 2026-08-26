@@ -392,6 +392,94 @@ export interface InvoicePayload {
   items: InvoiceItemPayload[];
 }
 
+export interface AiSettings {
+  active: boolean;
+  agentName: string;
+  greeting: string | null;
+  tone: string | null;
+  systemInstructions: string | null;
+  humanHandoffEnabled: boolean;
+  humanHandoffMessage: string | null;
+}
+
+export interface AiSettingsPayload {
+  active: boolean;
+  agentName: string;
+  greeting?: string;
+  tone?: string;
+  systemInstructions?: string;
+  humanHandoffEnabled: boolean;
+  humanHandoffMessage?: string;
+}
+
+export interface AiOverview {
+  active: boolean;
+  agentName: string;
+  conversationCount: number;
+  escalatedCount: number;
+  actionCount: number;
+  knowledgeEntryCount: number;
+}
+
+// Suggested values: FAQ, BUSINESS_INFO, SERVICE, POLICY, RESTAURANT, HOTEL,
+// EVENTS, BEACH, OTHER — plain string, matching the backend's own
+// not-a-native-enum convention.
+export type AiKnowledgeCategory = string;
+
+export interface AiKnowledgeEntry {
+  id: string;
+  title: string;
+  content: string;
+  category: AiKnowledgeCategory;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiKnowledgeEntryPayload {
+  title: string;
+  content: string;
+  category: AiKnowledgeCategory;
+  active: boolean;
+}
+
+export type AiConversationChannel = "WEB_DEMO" | "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "PHONE" | "SMS" | "EMAIL";
+export type AiConversationStatus = "ACTIVE" | "ESCALATED" | "CLOSED";
+
+export interface AiConversationSummary {
+  id: string;
+  customerId: string | null;
+  customerName: string | null;
+  channel: AiConversationChannel;
+  status: AiConversationStatus;
+  startedAt: string;
+  lastMessageAt: string;
+}
+
+export interface AiMessage {
+  id: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
+  content: string;
+  createdAt: string;
+}
+
+export interface AiConversationDetail extends AiConversationSummary {
+  messages: AiMessage[];
+}
+
+export interface AiToolCallSummary {
+  toolName: string;
+  status: "SUCCEEDED" | "FAILED" | "BLOCKED";
+  summary: string;
+}
+
+export interface AiChatResponse {
+  conversationId: string;
+  assistantMessage: string;
+  conversationStatus: AiConversationStatus;
+  toolCalls: AiToolCallSummary[];
+}
+
 export interface ReportSummary {
   from: string;
   to: string;
@@ -2364,6 +2452,35 @@ export const api = {
 
   unsubscribeFromPush: (token: string, endpoint: string) =>
     request<void>(`/api/push-subscriptions?endpoint=${encodeURIComponent(endpoint)}`, { method: "DELETE" }, token),
+
+  getAiOverview: (token: string) => request<AiOverview>("/api/ai/overview", {}, token),
+
+  getAiSettings: (token: string) => request<AiSettings>("/api/ai/settings", {}, token),
+
+  updateAiSettings: (token: string, payload: AiSettingsPayload) =>
+    request<AiSettings>("/api/ai/settings", { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  listAiKnowledgeEntries: (token: string) => request<AiKnowledgeEntry[]>("/api/ai/knowledge", {}, token),
+
+  createAiKnowledgeEntry: (token: string, payload: AiKnowledgeEntryPayload) =>
+    request<AiKnowledgeEntry>("/api/ai/knowledge", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  updateAiKnowledgeEntry: (token: string, id: string, payload: AiKnowledgeEntryPayload) =>
+    request<AiKnowledgeEntry>(`/api/ai/knowledge/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  deactivateAiKnowledgeEntry: (token: string, id: string) =>
+    request<AiKnowledgeEntry>(`/api/ai/knowledge/${id}/deactivate`, { method: "PATCH" }, token),
+
+  listAiConversations: (token: string) => request<AiConversationSummary[]>("/api/ai/conversations", {}, token),
+
+  getAiConversation: (token: string, id: string) => request<AiConversationDetail>(`/api/ai/conversations/${id}`, {}, token),
+
+  sendAiChatMessage: (token: string, conversationId: string | null, message: string) =>
+    request<AiChatResponse>(
+      "/api/ai/chat",
+      { method: "POST", body: JSON.stringify({ conversationId, message }) },
+      token
+    ),
 };
 
 export { ApiError };

@@ -521,7 +521,7 @@ public class PlatformBusinessService {
     private static final Set<String> CORE_MODULES = Set.of("INVENTORY", "SALES", "CUSTOMERS", "EXPENSES");
 
     private static final Set<String> TOGGLEABLE_MODULES = Set.of(
-            "SERVICE_ORDERS", "CUSTOM_WIG_REQUESTS", "ECOMMERCE", "BOOKINGS", "SUPPLIERS_AND_PURCHASING"
+            "SERVICE_ORDERS", "CUSTOM_WIG_REQUESTS", "ECOMMERCE", "BOOKINGS", "SUPPLIERS_AND_PURCHASING", "AI"
     );
 
     public PlatformBusinessDetailResponse updateEnabledModules(UUID adminId, UUID businessId, PlatformBusinessModulesUpdateRequest req) {
