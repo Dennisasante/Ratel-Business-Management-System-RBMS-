@@ -17,6 +17,7 @@ import {
   AiMessage,
   AiActionEntry,
   AiToolCallSummary,
+  AiChannelStatus,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import UpsellBanner from "@/components/UpsellBanner";
@@ -28,7 +29,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 
-type Tab = "overview" | "settings" | "knowledge" | "conversations" | "test";
+type Tab = "overview" | "settings" | "knowledge" | "conversations" | "channels" | "test";
 
 const CONVERSATION_STATUS_TONE: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
   ACTIVE: "info",
@@ -92,6 +93,7 @@ export default function AiDashboardPage() {
             <TabChip label="Settings" active={tab === "settings"} onClick={() => setTab("settings")} />
             <TabChip label="Knowledge Base" active={tab === "knowledge"} onClick={() => setTab("knowledge")} />
             <TabChip label="Conversations" active={tab === "conversations"} onClick={() => setTab("conversations")} />
+            <TabChip label="Channels" active={tab === "channels"} onClick={() => setTab("channels")} />
             <TabChip label="Test AI" active={tab === "test"} onClick={() => setTab("test")} />
           </div>
 
@@ -103,6 +105,7 @@ export default function AiDashboardPage() {
               {tab === "settings" && <SettingsTab token={session.token} canConfigure={canConfigure} onSaved={loadOverview} />}
               {tab === "knowledge" && <KnowledgeTab token={session.token} canConfigure={canConfigure} onChanged={loadOverview} />}
               {tab === "conversations" && <ConversationsTab token={session.token} />}
+              {tab === "channels" && <ChannelsTab token={session.token} />}
               {tab === "test" && <TestAiTab token={session.token} onTurnCompleted={loadOverview} />}
             </>
           )}
@@ -160,6 +163,50 @@ function OverviewTab({ overview }: { overview: AiOverview | null }) {
         <StatCard label="AI actions" value={overview.actionCount} />
         <StatCard label="Bookings by AI" value={overview.bookingsCreatedByAi} />
         <StatCard label="Knowledge entries" value={overview.knowledgeEntryCount} />
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Channels — read-only status only (no channel-binding management UI yet;
+// no external channel integration exists in this phase). Never a fake
+// "Connect" button for a channel that doesn't actually work.
+// ---------------------------------------------------------------------------
+
+function ChannelsTab({ token }: { token: string }) {
+  const [channels, setChannels] = useState<AiChannelStatus[] | null>(null);
+
+  useEffect(() => {
+    api.listAiChannels(token).then(setChannels);
+  }, [token]);
+
+  if (!channels) return <TableSkeleton cols={2} />;
+
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <div>
+        <p className="text-sm font-semibold text-ink-900">Channels</p>
+        <p className="text-xs text-ink-500">
+          Where customers can currently reach Tallia AI. Web Demo (the Test AI tab) is always available once AI is
+          on — other channels are coming in a future update.
+        </p>
+      </div>
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        {channels.map((c) => (
+          <div key={c.channel} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-canvas text-ink-500">
+                <MessageCircle size={16} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-ink-900">{c.label}</p>
+                <p className="text-xs text-ink-500">{c.statusMessage}</p>
+              </div>
+            </div>
+            <Badge tone={c.connected ? "success" : "neutral"}>{c.connected ? "Connected" : "Not connected"}</Badge>
+          </div>
+        ))}
       </div>
     </Card>
   );

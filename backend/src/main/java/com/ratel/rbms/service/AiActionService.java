@@ -25,6 +25,16 @@ public class AiActionService {
 
     @Transactional
     public AiAction started(UUID businessId, UUID conversationId, UUID messageId, String toolName, String argumentsJson) {
+        return started(businessId, conversationId, messageId, toolName, argumentsJson, null, null, null);
+    }
+
+    // Phase 3A: the same start, additionally stamping channel/channel
+    // binding/external message id for full audit traceability (§18) — e.g.
+    // tracing a WhatsApp message all the way through to the booking it
+    // created. All three null for WEB_DEMO, exactly as before this phase.
+    @Transactional
+    public AiAction started(UUID businessId, UUID conversationId, UUID messageId, String toolName, String argumentsJson,
+                             String channel, UUID channelBindingId, String externalMessageId) {
         return aiActionRepository.save(AiAction.builder()
                 .businessId(businessId)
                 .conversationId(conversationId)
@@ -32,6 +42,9 @@ public class AiActionService {
                 .toolName(toolName)
                 .argumentsJson(argumentsJson)
                 .status("STARTED")
+                .channel(channel)
+                .channelBindingId(channelBindingId)
+                .externalMessageId(externalMessageId)
                 .build());
     }
 
@@ -56,6 +69,12 @@ public class AiActionService {
     // the model attempted rather than silently dropped.
     @Transactional
     public void blocked(UUID businessId, UUID conversationId, UUID messageId, String toolName, String argumentsJson) {
+        blocked(businessId, conversationId, messageId, toolName, argumentsJson, null, null, null);
+    }
+
+    @Transactional
+    public void blocked(UUID businessId, UUID conversationId, UUID messageId, String toolName, String argumentsJson,
+                         String channel, UUID channelBindingId, String externalMessageId) {
         aiActionRepository.save(AiAction.builder()
                 .businessId(businessId)
                 .conversationId(conversationId)
@@ -63,6 +82,9 @@ public class AiActionService {
                 .toolName(toolName)
                 .argumentsJson(argumentsJson)
                 .status("BLOCKED")
+                .channel(channel)
+                .channelBindingId(channelBindingId)
+                .externalMessageId(externalMessageId)
                 .build());
     }
 }

@@ -489,6 +489,13 @@ export interface AiChatResponse {
   toolCalls: AiToolCallSummary[];
 }
 
+export interface AiChannelStatus {
+  channel: AiConversationChannel;
+  label: string;
+  connected: boolean;
+  statusMessage: string;
+}
+
 export interface ReportSummary {
   from: string;
   to: string;
@@ -2490,6 +2497,8 @@ export const api = {
       { method: "POST", body: JSON.stringify({ conversationId, message }) },
       token
     ),
+
+  listAiChannels: (token: string) => request<AiChannelStatus[]>("/api/ai/channels", {}, token),
 };
 
 export { ApiError };

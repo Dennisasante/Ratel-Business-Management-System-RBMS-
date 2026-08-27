@@ -45,6 +45,19 @@ public class AiMessage {
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
+    // ---- Phase 3A: channel idempotency — both nullable/additive, unset on
+    // every WEB_DEMO message. channelBindingId is denormalized directly onto
+    // this row (same reasoning as businessId above) so
+    // findByChannelBindingIdAndExternalMessageId never needs a join through
+    // ai_conversations. The pair is uniquely constrained at the DB level
+    // (see V50) — this is what makes "the same external message is never
+    // processed twice" a guarantee, not just application discipline.
+    @Column(name = "channel_binding_id")
+    private UUID channelBindingId;
+
+    @Column(name = "external_message_id", length = 200)
+    private String externalMessageId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

@@ -9,12 +9,17 @@ import com.ratel.rbms.entity.AiKnowledgeEntry;
 import com.ratel.rbms.entity.AiMessage;
 import com.ratel.rbms.entity.AiSettings;
 import com.ratel.rbms.entity.Business;
+import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.AiMessageRepository;
 import com.ratel.rbms.repository.AiSettingsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
+import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +31,17 @@ import java.util.UUID;
  * repository directly except through AiConversationService/AiKnowledgeService,
  * and never lets the model's tool-call arguments reach anything besides
  * AiToolService.execute() — see that class for the actual allow-list.
+ *
+ * Phase 3A split this into two halves, per the channel-abstraction spec:
+ * {@link #chat(AiChatRequest)} keeps its exact original signature/behavior
+ * (WEB_DEMO only, resolves its own conversation from an authenticated
+ * request) for backward compatibility with every existing caller and test.
+ * {@link #processTurn} is the new channel-agnostic core — it knows nothing
+ * about WEB_DEMO, WhatsApp, or any other channel; it only ever receives an
+ * already-resolved AiConversation and plain text. Both
+ * {@link #chat(AiChatRequest)} and {@link AiChannelRouter} call into it, so
+ * every channel (present or future) gets identical AI reasoning — never a
+ * per-channel reimplementation (see spec §2).
  */
 @Service
 public class AiChatService {
@@ -40,6 +56,20 @@ public class AiChatService {
     // limit of 5) while still being nowhere near "unbounded."
     private static final int MAX_TOOL_ITERATIONS = 8;
 
+    // Server-side message size limit (§21) — never relies on the frontend's
+    // own validation alone. Generous enough for a genuine customer message,
+    // nowhere near enough for someone trying to build an oversized prompt.
+    private static final int MAX_MESSAGE_LENGTH = 4000;
+
+    // How many of the conversation's own persisted messages are ever sent
+    // to the LLM provider (§22). A malicious or very long-running customer
+    // conversation can't turn into an unbounded prompt this way — but
+    // nothing is ever deleted from the database because of this limit; the
+    // full history stays available to AiConversationService.history() /
+    // the Conversations detail view. 40 messages is ~20 back-and-forth
+    // turns, comfortably more than a real booking flow ever needs.
+    private static final int MAX_HISTORY_MESSAGES = 40;
+
     private final AiSettingsRepository aiSettingsRepository;
     private final BusinessRepository businessRepository;
     private final AiKnowledgeService aiKnowledgeService;
@@ -48,6 +78,8 @@ public class AiChatService {
     private final AiToolService aiToolService;
     private final AiProvider aiProvider;
     private final ModuleAccessService moduleAccessService;
+    private final AiMessageRepository aiMessageRepository;
+    private final RateLimiterService rateLimiterService;
 
     public AiChatService(
             AiSettingsRepository aiSettingsRepository,
@@ -57,7 +89,9 @@ public class AiChatService {
             AiActionService aiActionService,
             AiToolService aiToolService,
             AiProvider aiProvider,
-            ModuleAccessService moduleAccessService
+            ModuleAccessService moduleAccessService,
+            AiMessageRepository aiMessageRepository,
+            RateLimiterService rateLimiterService
     ) {
         this.aiSettingsRepository = aiSettingsRepository;
         this.businessRepository = businessRepository;
@@ -67,6 +101,8 @@ public class AiChatService {
         this.aiToolService = aiToolService;
         this.aiProvider = aiProvider;
         this.moduleAccessService = moduleAccessService;
+        this.aiMessageRepository = aiMessageRepository;
+        this.rateLimiterService = rateLimiterService;
     }
 
     @Transactional
@@ -81,7 +117,55 @@ public class AiChatService {
                 ? aiConversationService.getOwnedEntity(req.conversationId(), businessId)
                 : aiConversationService.createConversation(businessId, "WEB_DEMO");
 
-        AiMessage userMessage = aiConversationService.appendMessage(businessId, conversation.getId(), "USER", req.message());
+        return processTurn(businessId, conversation, req.message(), null);
+    }
+
+    /**
+     * The channel-agnostic core turn: append the customer's message, run
+     * the system-prompt/tool-call loop, persist and return the answer.
+     * Contains no channel-specific branching whatsoever — {@code
+     * conversation.getChannel()} is only ever read (for the system prompt
+     * and for attribution strings downstream in AiToolService), never
+     * switched on here.
+     *
+     * externalMessageId is null for WEB_DEMO. When non-null and this
+     * conversation has a channel binding, the same external message is
+     * never processed twice (§14/§33): a second delivery of the identical
+     * external_message_id short-circuits to the already-computed answer
+     * without appending another message, calling the provider again, or
+     * re-running any tool — see the idempotency check just below.
+     */
+    @Transactional
+    public AiChatResponse processTurn(UUID businessId, AiConversation conversation, String messageText, String externalMessageId) {
+        moduleAccessService.requireModule(businessId, "AI");
+
+        if (messageText == null || messageText.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Message can't be empty");
+        }
+        if (messageText.length() > MAX_MESSAGE_LENGTH) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Message is too long (max " + MAX_MESSAGE_LENGTH + " characters).");
+        }
+
+        UUID channelBindingId = conversation.getChannelBindingId();
+        if (channelBindingId != null && externalMessageId != null) {
+            AiMessage alreadyProcessed = aiMessageRepository
+                    .findByChannelBindingIdAndExternalMessageId(channelBindingId, externalMessageId)
+                    .orElse(null);
+            if (alreadyProcessed != null) {
+                return idempotentReplay(conversation, alreadyProcessed);
+            }
+        }
+
+        // Lightweight abuse protection (§20) — reuses the existing
+        // in-memory RateLimiterService, same as every other public-facing
+        // write path (BookingService/CustomWigRequestService). Generous
+        // enough for a genuine multi-turn conversation, tight enough to
+        // stop a rapid-fire flood from one business's traffic.
+        rateLimiterService.checkAllowed("ai-chat-turn:" + businessId, 60, Duration.ofMinutes(5));
+        rateLimiterService.recordAttempt("ai-chat-turn:" + businessId);
+
+        AiMessage userMessage = aiConversationService.appendMessage(
+                businessId, conversation.getId(), "USER", messageText, channelBindingId, externalMessageId);
 
         if (!aiProvider.isConfigured()) {
             String message = "Tallia AI isn't set up on this server yet — an administrator needs to configure the AI provider.";
@@ -112,13 +196,15 @@ public class AiChatService {
                     // Never executed. Recorded as BLOCKED, and the model is
                     // told plainly it can't use that tool rather than the
                     // call silently vanishing.
-                    aiActionService.blocked(businessId, conversation.getId(), userMessage.getId(), call.name(), call.argumentsJson());
+                    aiActionService.blocked(businessId, conversation.getId(), userMessage.getId(), call.name(), call.argumentsJson(),
+                            conversation.getChannel(), channelBindingId, externalMessageId);
                     providerConversation.add(AiProviderMessage.toolResult(call.id(), "{\"error\":\"That tool isn't available.\"}"));
                     toolSummaries.add(new AiToolCallSummary(call.name(), "BLOCKED", "Not a registered tool — never executed."));
                     continue;
                 }
 
-                AiAction action = aiActionService.started(businessId, conversation.getId(), userMessage.getId(), call.name(), call.argumentsJson());
+                AiAction action = aiActionService.started(businessId, conversation.getId(), userMessage.getId(), call.name(), call.argumentsJson(),
+                        conversation.getChannel(), channelBindingId, externalMessageId);
                 AiToolService.ToolResult toolResult = aiToolService.execute(businessId, conversation, call.name(), call.argumentsJson());
 
                 if (toolResult.success()) {
@@ -145,6 +231,22 @@ public class AiChatService {
 
         AiConversation refreshed = aiConversationService.getOwnedEntity(conversation.getId(), businessId);
         return new AiChatResponse(conversation.getId(), finalAnswer, refreshed.getStatus(), toolSummaries);
+    }
+
+    // The mandatory duplicate-external-message guard (§14/§33): a second
+    // delivery of the same external_message_id returns the reply already
+    // recorded right after the original user message, touching nothing —
+    // no new message row, no second provider call, no tool re-executed, no
+    // second notification. toolCalls comes back empty here deliberately:
+    // this is a replay of an already-settled turn, not a new one to
+    // present tool activity for.
+    private AiChatResponse idempotentReplay(AiConversation conversation, AiMessage originalUserMessage) {
+        AiMessage reply = aiConversationService.history(conversation.getId()).stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && !m.getCreatedAt().isBefore(originalUserMessage.getCreatedAt()))
+                .findFirst()
+                .orElse(null);
+        String text = reply != null ? reply.getContent() : "";
+        return new AiChatResponse(conversation.getId(), text, conversation.getStatus(), List.of());
     }
 
     // Server-assembled only — the customer/test-chat side never supplies or
@@ -205,9 +307,20 @@ public class AiChatService {
         return prompt.toString();
     }
 
+    // Bounded to the last MAX_HISTORY_MESSAGES rows (§22) — the provider
+    // never sees more than that regardless of how long the conversation has
+    // run. Nothing is deleted; AiConversationService.history() (used by the
+    // Conversations detail view) always returns the complete, unbounded
+    // history — this limit only affects what gets forwarded to the LLM
+    // call in THIS method.
     private List<AiProviderMessage> buildProviderHistory(UUID conversationId) {
+        List<AiMessage> fullHistory = aiConversationService.history(conversationId);
+        List<AiMessage> bounded = fullHistory.size() > MAX_HISTORY_MESSAGES
+                ? fullHistory.subList(fullHistory.size() - MAX_HISTORY_MESSAGES, fullHistory.size())
+                : fullHistory;
+
         List<AiProviderMessage> messages = new ArrayList<>();
-        for (AiMessage m : aiConversationService.history(conversationId)) {
+        for (AiMessage m : bounded) {
             String role = switch (m.getRole()) {
                 case "USER" -> "user";
                 case "ASSISTANT" -> "assistant";

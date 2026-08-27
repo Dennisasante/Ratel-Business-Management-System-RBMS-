@@ -78,6 +78,22 @@ public class AiAction {
     @Column(name = "resulting_entity_id")
     private UUID resultingEntityId;
 
+    // ---- Phase 3A: channel audit context — all three nullable/additive,
+    // unset for every WEB_DEMO action (unchanged from Phase 1/2). Lets a
+    // mutation be traced end-to-end: external message -> AI response ->
+    // this tool call -> resulting booking, on whichever channel it came in
+    // on (§18 of the spec). channel is a plain varchar copy of the
+    // conversation's AiChannel name, same "String, not a foreign enum"
+    // posture as every other status/category column in this schema.
+    @Column(length = 20)
+    private String channel;
+
+    @Column(name = "channel_binding_id")
+    private UUID channelBindingId;
+
+    @Column(name = "external_message_id", length = 200)
+    private String externalMessageId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

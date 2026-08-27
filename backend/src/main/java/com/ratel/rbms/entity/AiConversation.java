@@ -51,6 +51,21 @@ public class AiConversation {
     @Column(name = "assigned_user_id")
     private UUID assignedUserId;
 
+    // ---- Phase 3A: channel identity — all three nullable/additive. A
+    // WEB_DEMO conversation leaves every one of these null and behaves
+    // exactly as it did in Phase 1/2. Populated only when this conversation
+    // was routed in through AiChannelRouter.routeExternal(...).
+    @Column(name = "external_conversation_id", length = 200)
+    private String externalConversationId;
+
+    @Column(name = "external_user_id", length = 200)
+    private String externalUserId;
+
+    // Plain UUID, no @ManyToOne — same "tracking pointer, not a mapped
+    // relationship" posture as customerId/assignedUserId above.
+    @Column(name = "channel_binding_id")
+    private UUID channelBindingId;
+
     @Column(name = "started_at", nullable = false)
     @Builder.Default
     private Instant startedAt = Instant.now();
