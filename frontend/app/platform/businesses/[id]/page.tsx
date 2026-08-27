@@ -58,6 +58,7 @@ const TOGGLEABLE_MODULES: { code: string; label: string }[] = [
   { code: "ECOMMERCE", label: "E-commerce Orders" },
   { code: "BOOKINGS", label: "Bookings" },
   { code: "SUPPLIERS_AND_PURCHASING", label: "Suppliers & Purchase Orders" },
+  { code: "AI", label: "Tallia AI" },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
