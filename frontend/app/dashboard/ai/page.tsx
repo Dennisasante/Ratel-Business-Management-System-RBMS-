@@ -169,9 +169,10 @@ function OverviewTab({ overview }: { overview: AiOverview | null }) {
 }
 
 // ---------------------------------------------------------------------------
-// Channels — read-only status only (no channel-binding management UI yet;
-// no external channel integration exists in this phase). Never a fake
-// "Connect" button for a channel that doesn't actually work.
+// Channels — read-only status only. WhatsApp connection itself is Super-
+// Admin-configured (Platform > Businesses > this business), not from here —
+// no fake "Connect" button for a channel this dashboard can't actually wire
+// up on its own.
 // ---------------------------------------------------------------------------
 
 function ChannelsTab({ token }: { token: string }) {
@@ -189,7 +190,8 @@ function ChannelsTab({ token }: { token: string }) {
         <p className="text-sm font-semibold text-ink-900">Channels</p>
         <p className="text-xs text-ink-500">
           Where customers can currently reach Tallia AI. Web Demo (the Test AI tab) is always available once AI is
-          on — other channels are coming in a future update.
+          on. WhatsApp is connected by Ratel on request — contact support once you have a WhatsApp Business number
+          ready.
         </p>
       </div>
       <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -202,6 +204,12 @@ function ChannelsTab({ token }: { token: string }) {
               <div>
                 <p className="text-sm font-medium text-ink-900">{c.label}</p>
                 <p className="text-xs text-ink-500">{c.statusMessage}</p>
+                {c.connected && (c.displayName || c.phoneNumberId) && (
+                  <p className="text-xs text-ink-400">
+                    {c.displayName ?? "—"}
+                    {c.phoneNumberId ? ` · ${c.phoneNumberId}` : ""}
+                  </p>
+                )}
               </div>
             </div>
             <Badge tone={c.connected ? "success" : "neutral"}>{c.connected ? "Connected" : "Not connected"}</Badge>

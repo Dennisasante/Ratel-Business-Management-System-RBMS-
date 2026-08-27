@@ -20,6 +20,8 @@ import {
   ServiceOrder,
   SubscriptionPaymentSummary,
   SubscriptionPlan,
+  WhatsAppBinding,
+  WhatsAppConnectionTestResult,
 } from "@/lib/api";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import PlatformShell from "@/components/platform/PlatformShell";
@@ -602,6 +604,8 @@ export default function PlatformBusinessDetailPage() {
                   </li>
                 </ul>
               </Card>
+
+              <WhatsAppChannelCard businessId={business.id} token={session!.token} />
               </div>
 
               <Card className="p-5">
@@ -1240,5 +1244,275 @@ function CustomWigRequestDetailView({ request }: { request: CustomWigRequestDeta
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp channel binding (Tallia AI, Phase 3B) — developer/admin-configured
+// connection only, no Meta OAuth onboarding. Self-contained: fetches and
+// manages its own binding independently of the rest of this page's `business`
+// state, since it's a genuinely separate resource. The access token is
+// write-only — never fetched back, never shown again after saving; "Not set"
+// vs "Configured" is all this card can ever say about it.
+// ---------------------------------------------------------------------------
+
+interface WhatsAppFormState {
+  whatsappBusinessAccountId: string;
+  phoneNumberId: string;
+  displayName: string;
+  accessToken: string;
+  active: boolean;
+}
+
+function WhatsAppChannelCard({ businessId, token }: { businessId: string; token: string }) {
+  const [binding, setBinding] = useState<WhatsAppBinding | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<WhatsAppFormState>({
+    whatsappBusinessAccountId: "",
+    phoneNumberId: "",
+    displayName: "",
+    accessToken: "",
+    active: true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<WhatsAppConnectionTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setTestResult(null);
+    try {
+      const b = await api.getWhatsAppBinding(token, businessId);
+      setBinding(b);
+      setNotConfigured(false);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setBinding(null);
+        setNotConfigured(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [token, businessId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function startCreate() {
+    setForm({ whatsappBusinessAccountId: "", phoneNumberId: "", displayName: "", accessToken: "", active: true });
+    setError(null);
+    setEditing(true);
+  }
+
+  function startEdit() {
+    if (!binding) return;
+    setForm({
+      whatsappBusinessAccountId: binding.whatsappBusinessAccountId ?? "",
+      phoneNumberId: binding.phoneNumberId,
+      displayName: binding.displayName ?? "",
+      accessToken: "",
+      active: binding.active,
+    });
+    setError(null);
+    setEditing(true);
+  }
+
+  async function save() {
+    setError(null);
+    if (notConfigured && !form.accessToken) {
+      setError("Access token is required to connect a new number.");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (notConfigured) {
+        await api.createWhatsAppBinding(token, businessId, {
+          whatsappBusinessAccountId: form.whatsappBusinessAccountId || undefined,
+          phoneNumberId: form.phoneNumberId,
+          displayName: form.displayName || undefined,
+          accessToken: form.accessToken,
+          active: form.active,
+        });
+      } else {
+        await api.updateWhatsAppBinding(token, businessId, {
+          whatsappBusinessAccountId: form.whatsappBusinessAccountId || undefined,
+          phoneNumberId: form.phoneNumberId || undefined,
+          displayName: form.displayName || undefined,
+          accessToken: form.accessToken || undefined,
+          active: form.active,
+        });
+      }
+      await load();
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save the WhatsApp binding.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleActive() {
+    if (!binding) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setWhatsAppBindingActive(token, businessId, !binding.active);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't update the binding.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await api.testWhatsAppBindingConnection(token, businessId));
+    } catch (err) {
+      setTestResult({
+        success: false,
+        displayPhoneNumber: null,
+        verifiedName: null,
+        errorMessage: err instanceof ApiError ? err.message : "Couldn't test the connection.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const inputClass =
+    "rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-ink-900">WhatsApp Channel (Tallia AI)</h2>
+        {!editing && !loading && (
+          <button
+            onClick={notConfigured ? startCreate : startEdit}
+            className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline"
+          >
+            <Pencil size={12} /> {notConfigured ? "Connect" : "Edit"}
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-ink-500">
+        Connects this business&apos;s own WhatsApp Business phone number to Tallia AI via the official WhatsApp
+        Cloud API. Developer-configured only — there&apos;s no self-service onboarding yet.
+      </p>
+
+      {loading ? (
+        <p className="mt-3 text-sm text-ink-500">Loading...</p>
+      ) : editing ? (
+        <div className="mt-3 flex flex-col gap-3 rounded-lg bg-canvas p-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-ink-700">WhatsApp Business Account ID</label>
+            <input
+              value={form.whatsappBusinessAccountId}
+              onChange={(e) => setForm({ ...form, whatsappBusinessAccountId: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-ink-700">Phone Number ID</label>
+            <input
+              required
+              value={form.phoneNumberId}
+              onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-ink-700">Display name</label>
+            <input
+              value={form.displayName}
+              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-ink-700">
+              Access token {notConfigured ? "" : "(leave blank to keep the current one)"}
+            </label>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder={notConfigured ? "" : "Unchanged"}
+              value={form.accessToken}
+              onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-ink-700">
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+            Active
+          </label>
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+            <Button variant="secondary" onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : notConfigured ? (
+        <p className="mt-3 text-sm text-ink-500">Not connected yet.</p>
+      ) : binding ? (
+        <div className="mt-3">
+          <dl className="space-y-3 text-sm">
+            <div className="flex justify-between border-b border-border pb-3">
+              <dt className="text-ink-500">Status</dt>
+              <dd>
+                <Badge tone={binding.active ? "success" : "neutral"}>{binding.active ? "Active" : "Inactive"}</Badge>
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-border pb-3">
+              <dt className="text-ink-500">Display name</dt>
+              <dd className="font-medium text-ink-900">{binding.displayName ?? "—"}</dd>
+            </div>
+            <div className="flex justify-between border-b border-border pb-3">
+              <dt className="text-ink-500">Phone Number ID</dt>
+              <dd className="font-medium text-ink-900">{binding.phoneNumberId}</dd>
+            </div>
+            <div className="flex justify-between border-b border-border pb-3">
+              <dt className="text-ink-500">Access token</dt>
+              <dd className="font-medium text-ink-900">{binding.configured ? "Configured" : "Not set"}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-ink-500">Last updated</dt>
+              <dd className="font-medium text-ink-900">{new Date(binding.updatedAt).toLocaleString()}</dd>
+            </div>
+          </dl>
+
+          {testResult && (
+            <p className={`mt-3 text-xs ${testResult.success ? "text-success" : "text-danger"}`}>
+              {testResult.success
+                ? `Connection OK — ${testResult.verifiedName ?? testResult.displayPhoneNumber ?? "verified"}`
+                : testResult.errorMessage ?? "Connection test failed."}
+            </p>
+          )}
+          {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+
+          <div className="mt-3 flex gap-2">
+            <Button variant="secondary" onClick={testConnection} disabled={testing}>
+              {testing ? "Testing..." : "Test connection"}
+            </Button>
+            <Button variant="secondary" onClick={toggleActive} disabled={saving}>
+              {binding.active ? "Deactivate" : "Activate"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </Card>
   );
 }

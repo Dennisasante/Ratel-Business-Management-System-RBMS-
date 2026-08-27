@@ -126,3 +126,24 @@ app:
     public-key: ${VAPID_PUBLIC_KEY:}
     private-key: ${VAPID_PRIVATE_KEY:}
     subject: ${VAPID_SUBJECT:mailto:support@example.com}
+  whatsapp:
+    # Tallia AI (Phase 3B) — WhatsApp Cloud API / Meta Graph API. These are
+    # PLATFORM-level config (shared by every business's WhatsApp binding);
+    # each business's own phone-number-ID/access-token lives encrypted on
+    # its own AiChannelBinding row instead (see WhatsAppChannelAdapter) —
+    # never a second secret-storage mechanism.
+    #
+    # The Graph API version string lives here ONLY — never hardcoded in a
+    # controller/service — so bumping it later is a one-line config change.
+    graph-api-version: ${WHATSAPP_GRAPH_API_VERSION:v21.0}
+    # Arbitrary string you choose yourself and enter into Meta's "Verify
+    # Token" field when configuring the webhook — proves the verification
+    # GET request actually came from your own Meta App config, not a guess.
+    webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+    # Meta App Secret (App Dashboard > Settings > Basic) — used to verify
+    # the X-Hub-Signature-256 HMAC on every inbound webhook POST. Blank
+    # means webhook signature verification always fails closed (every
+    # inbound event rejected) rather than silently accepting unsigned
+    # payloads — same "unusable until configured, never insecure-by-default"
+    # posture as every other optional credential in this file.
+    app-secret: ${META_APP_SECRET:}

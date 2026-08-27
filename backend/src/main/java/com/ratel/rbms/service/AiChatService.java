@@ -167,6 +167,21 @@ public class AiChatService {
         AiMessage userMessage = aiConversationService.appendMessage(
                 businessId, conversation.getId(), "USER", messageText, channelBindingId, externalMessageId);
 
+        // Human handoff (Phase 3B §25): once ESCALATED, the AI stops making
+        // autonomous decisions on this conversation — every channel's own
+        // customer keeps getting a reply (so a WhatsApp customer, for
+        // instance, isn't left hanging), but it's a fixed message, never
+        // another LLM call or tool execution. Documented gap: there is no
+        // "human reopens the conversation" transition yet (no live-agent
+        // inbox exists per spec — see the Phase 3B final report) — a
+        // conversation stays ESCALATED until someone changes it directly;
+        // building that reactivation flow is out of scope for this phase.
+        if ("ESCALATED".equals(conversation.getStatus())) {
+            String handoffMessage = "This conversation has been handed off to a team member — they'll respond to you directly.";
+            aiConversationService.appendMessage(businessId, conversation.getId(), "ASSISTANT", handoffMessage);
+            return new AiChatResponse(conversation.getId(), handoffMessage, conversation.getStatus(), List.of());
+        }
+
         if (!aiProvider.isConfigured()) {
             String message = "Tallia AI isn't set up on this server yet — an administrator needs to configure the AI provider.";
             aiConversationService.appendMessage(businessId, conversation.getId(), "ASSISTANT", message);

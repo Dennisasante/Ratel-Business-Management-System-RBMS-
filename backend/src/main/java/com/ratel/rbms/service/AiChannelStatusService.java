@@ -9,15 +9,17 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Backs the dashboard's read-only "Channels" section — deliberately just a
  * status list, not a management API (spec §26/§27): no create/edit/delete
- * of a channel binding is exposed here, and no fake "Connect" button exists
- * on the frontend for a channel this phase doesn't implement. Every channel
- * besides WEB_DEMO always reports "not connected" today, because nothing in
- * Phase 3A ever creates a real AiChannelBinding row.
+ * of a channel binding is exposed here (WhatsApp bindings are Super-Admin-
+ * configured only, see PlatformWhatsAppBindingController), and no fake
+ * "Connect" button exists on the frontend for a channel this phase doesn't
+ * implement. Every channel besides WEB_DEMO/WHATSAPP always reports "not
+ * connected," because nothing creates a binding for them yet.
  */
 @Service
 public class AiChannelStatusService {
@@ -34,17 +36,32 @@ public class AiChannelStatusService {
         UUID businessId = TenantContext.getBusinessId();
         moduleAccessService.requireModule(businessId, "AI");
 
-        List<AiChannelBinding> bindings = aiChannelBindingRepository.findAllByBusinessId(businessId);
+        Map<AiChannel, AiChannelBinding> bindingsByChannel = new java.util.HashMap<>();
+        for (AiChannelBinding b : aiChannelBindingRepository.findAllByBusinessId(businessId)) {
+            bindingsByChannel.put(b.getChannel(), b);
+        }
 
         List<AiChannelStatusResponse> result = new ArrayList<>();
         for (AiChannel channel : AiChannel.values()) {
             if (channel == AiChannel.WEB_DEMO) {
-                result.add(new AiChannelStatusResponse("WEB_DEMO", "Web Demo", true, "Connected"));
+                result.add(AiChannelStatusResponse.webDemo());
                 continue;
             }
-            boolean connected = bindings.stream().anyMatch(b -> b.getChannel() == channel && b.isActive());
-            result.add(new AiChannelStatusResponse(channel.name(), label(channel), connected,
-                    connected ? "Connected" : "Not connected — not yet implemented"));
+
+            AiChannelBinding binding = bindingsByChannel.get(channel);
+            if (binding == null) {
+                result.add(AiChannelStatusResponse.notImplemented(channel.name(), label(channel)));
+                continue;
+            }
+
+            boolean configured = binding.getCredentialsEncrypted() != null && !binding.getCredentialsEncrypted().isBlank();
+            boolean connected = configured && binding.isActive();
+            String statusMessage = !configured
+                    ? "Not configured yet"
+                    : binding.isActive() ? "Connected" : "Configured but inactive";
+            result.add(new AiChannelStatusResponse(
+                    channel.name(), label(channel), connected, statusMessage, binding.isActive(),
+                    binding.getExternalAccountId(), binding.getDisplayName(), binding.getUpdatedAt()));
         }
         return result;
     }

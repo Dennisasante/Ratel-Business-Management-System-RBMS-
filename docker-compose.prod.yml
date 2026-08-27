@@ -61,6 +61,13 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # WhatsApp Cloud API (Phase 3B) — platform-level only; each business's
+      # own Phone Number ID/access token lives encrypted on its own
+      # AiChannelBinding row instead (Super-Admin-configured, see
+      # backend/README.md).
+      WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION:-v21.0}
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
       # Demo-data seeding endpoint — leave unset/false in production.
       DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-false}
       UPLOAD_DIR: /app/uploads

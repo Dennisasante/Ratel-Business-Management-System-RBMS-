@@ -6,11 +6,13 @@ import com.ratel.rbms.entity.AiConversation;
 import com.ratel.rbms.entity.enums.AiChannel;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.AiChannelBindingRepository;
+import com.ratel.rbms.repository.AiMessageRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -29,17 +31,23 @@ public class AiChannelRouter {
     private final AiConversationService aiConversationService;
     private final AiChatService aiChatService;
     private final ModuleAccessService moduleAccessService;
+    private final AiMessageRepository aiMessageRepository;
+    private final AiChannelDeliveryService aiChannelDeliveryService;
 
     public AiChannelRouter(
             AiChannelBindingRepository aiChannelBindingRepository,
             AiConversationService aiConversationService,
             AiChatService aiChatService,
-            ModuleAccessService moduleAccessService
+            ModuleAccessService moduleAccessService,
+            AiMessageRepository aiMessageRepository,
+            AiChannelDeliveryService aiChannelDeliveryService
     ) {
         this.aiChannelBindingRepository = aiChannelBindingRepository;
         this.aiConversationService = aiConversationService;
         this.aiChatService = aiChatService;
         this.moduleAccessService = moduleAccessService;
+        this.aiMessageRepository = aiMessageRepository;
+        this.aiChannelDeliveryService = aiChannelDeliveryService;
     }
 
     /**
@@ -85,6 +93,15 @@ public class AiChannelRouter {
         UUID businessId = binding.getBusinessId();
         moduleAccessService.requireModule(businessId, "AI");
 
+        // Read BEFORE processTurn runs (spec §21: the idempotency check must
+        // happen before LLM invocation, tool execution, AND outbound send) —
+        // this is the exact same repository lookup processTurn itself makes
+        // authoritatively; consulting it here too only ever decides whether
+        // THIS router bothers delivering a reply afterward, it never gates
+        // AI processing on its own.
+        boolean alreadyProcessed = message.externalMessageId() != null
+                && aiMessageRepository.findByChannelBindingIdAndExternalMessageId(binding.getId(), message.externalMessageId()).isPresent();
+
         AiConversation conversation = message.externalConversationId() != null
                 ? aiConversationService.resolveOrCreateExternalConversation(
                         businessId, binding.getId(), message.channel().name(),
@@ -92,10 +109,28 @@ public class AiChannelRouter {
                 : aiConversationService.createConversation(
                         businessId, message.channel().name(), binding.getId(), null, message.externalUserId());
 
-        // Idempotency (§14/§33) is enforced inside processTurn itself,
+        // Idempotency (§14/§33) is ALSO enforced inside processTurn itself,
         // keyed on this conversation's channelBindingId + externalMessageId
         // — a second delivery of the same external message short-circuits
-        // there without this router needing its own duplicate check.
-        return aiChatService.processTurn(businessId, conversation, message.text(), message.externalMessageId());
+        // there without ever touching the provider/tools again.
+        AiChatResponse response = aiChatService.processTurn(businessId, conversation, message.text(), message.externalMessageId());
+
+        // A repeated inbound delivery must never cause a second outbound
+        // send (spec §21/§33) — skip delivery entirely on a replay, since
+        // the customer already received this exact answer the first time.
+        if (!alreadyProcessed && message.externalUserId() != null) {
+            aiChannelDeliveryService.deliver(new OutgoingAiMessage(
+                    response.conversationId(),
+                    message.channel(),
+                    response.assistantMessage(),
+                    message.externalMessageId(),
+                    Map.of(
+                            OutgoingAiMessage.CHANNEL_BINDING_ID_KEY, binding.getId().toString(),
+                            OutgoingAiMessage.RECIPIENT_EXTERNAL_USER_ID_KEY, message.externalUserId()
+                    )
+            ));
+        }
+
+        return response;
     }
 }

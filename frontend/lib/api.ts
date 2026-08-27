@@ -494,6 +494,52 @@ export interface AiChannelStatus {
   label: string;
   connected: boolean;
   statusMessage: string;
+  active: boolean;
+  phoneNumberId: string | null;
+  displayName: string | null;
+  updatedAt: string | null;
+}
+
+// ---- Tallia AI: WhatsApp channel binding (Super Admin only, Phase 3B) ----
+
+export interface WhatsAppBinding {
+  id: string;
+  businessId: string;
+  businessName: string;
+  whatsappBusinessAccountId: string | null;
+  phoneNumberId: string;
+  displayName: string | null;
+  active: boolean;
+  // True once an access token has been saved at least once — never says
+  // whether that token still actually works, see WhatsAppConnectionTest.
+  configured: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppBindingCreatePayload {
+  whatsappBusinessAccountId?: string;
+  phoneNumberId: string;
+  displayName?: string;
+  // Write-only — never returned by any endpoint afterward.
+  accessToken: string;
+  active: boolean;
+}
+
+export interface WhatsAppBindingUpdatePayload {
+  whatsappBusinessAccountId?: string;
+  phoneNumberId?: string;
+  displayName?: string;
+  // Omit entirely to leave the stored token untouched.
+  accessToken?: string;
+  active?: boolean;
+}
+
+export interface WhatsAppConnectionTestResult {
+  success: boolean;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+  errorMessage: string | null;
 }
 
 export interface ReportSummary {
@@ -2157,6 +2203,39 @@ export const api = {
 
   deletePlatformBusiness: (token: string, id: string) =>
     request<void>(`/api/platform/businesses/${id}`, { method: "DELETE" }, token),
+
+  // WhatsApp channel binding — Super Admin, developer-configured (Phase 3B).
+  // A 404 from getWhatsAppBinding means "not configured yet," not an error.
+  getWhatsAppBinding: (token: string, businessId: string) =>
+    request<WhatsAppBinding>(`/api/platform/businesses/${businessId}/whatsapp-binding`, {}, token),
+
+  createWhatsAppBinding: (token: string, businessId: string, payload: WhatsAppBindingCreatePayload) =>
+    request<WhatsAppBinding>(
+      `/api/platform/businesses/${businessId}/whatsapp-binding`,
+      { method: "POST", body: JSON.stringify(payload) },
+      token
+    ),
+
+  updateWhatsAppBinding: (token: string, businessId: string, payload: WhatsAppBindingUpdatePayload) =>
+    request<WhatsAppBinding>(
+      `/api/platform/businesses/${businessId}/whatsapp-binding`,
+      { method: "PUT", body: JSON.stringify(payload) },
+      token
+    ),
+
+  setWhatsAppBindingActive: (token: string, businessId: string, active: boolean) =>
+    request<WhatsAppBinding>(
+      `/api/platform/businesses/${businessId}/whatsapp-binding/active`,
+      { method: "PATCH", body: JSON.stringify({ active }) },
+      token
+    ),
+
+  testWhatsAppBindingConnection: (token: string, businessId: string) =>
+    request<WhatsAppConnectionTestResult>(
+      `/api/platform/businesses/${businessId}/whatsapp-binding/test-connection`,
+      { method: "POST" },
+      token
+    ),
 
   resetPlatformUserPassword: (token: string, businessId: string, userId: string) =>
     request<AdminResetPasswordResponse>(

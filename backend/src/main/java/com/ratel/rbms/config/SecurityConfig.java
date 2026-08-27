@@ -61,6 +61,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/platform/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/webhooks/paystack").permitAll()
                         .requestMatchers("/api/webhooks/woocommerce/**").permitAll()
+                        .requestMatchers("/api/webhooks/whatsapp").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/uploads/**").permitAll()

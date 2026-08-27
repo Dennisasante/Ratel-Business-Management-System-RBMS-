@@ -17,4 +17,10 @@ public interface AiChannelBindingRepository extends JpaRepository<AiChannelBindi
     List<AiChannelBinding> findAllByBusinessId(UUID businessId);
 
     Optional<AiChannelBinding> findByIdAndBusinessId(UUID id, UUID businessId);
+
+    // Phase 3B: at most one binding per (business, channel) today — the
+    // admin-configured WhatsApp setup path resolves/updates through this
+    // rather than a full multi-number management API (explicitly out of
+    // scope, see spec §37 "multi-number onboarding wizard").
+    Optional<AiChannelBinding> findByBusinessIdAndChannel(UUID businessId, AiChannel channel);
 }
