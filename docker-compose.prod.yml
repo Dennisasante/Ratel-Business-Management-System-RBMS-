@@ -17,7 +17,11 @@ services:
       - ratel_pg_data:/var/lib/postgresql/data
     networks: [ratel]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      # -d is required here — without it, pg_isready checks readiness
+      # against a database named after the USER (libpq's own default when
+      # no database is given), which doesn't exist, and logs a FATAL error
+      # every interval even though Postgres itself is perfectly healthy.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME:-ratel_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -54,11 +58,22 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      # Tallia AI. AI_PROVIDER must be set to "openai" explicitly here to go
-      # live — the app's own default (unset -> mock) is a local-dev
-      # convenience only and is never relied on for this file. See
-      # .env.production.example for the full explanation.
-      AI_PROVIDER: ${AI_PROVIDER:-}
+      # Tallia AI. Set AI_PROVIDER=openai explicitly in .env to go live with
+      # real OpenAI calls.
+      #
+      # Defaults to "mock" here (not empty) if .env doesn't set it at all —
+      # this is NOT the same as the app's own internal default
+      # (application.yml's ${AI_PROVIDER:mock}), which only applies when the
+      # property is entirely absent from Spring's environment. Docker
+      # Compose's own `${AI_PROVIDER:-}` substitution instead injects an
+      # EMPTY STRING into the container when the host-side var is unset —
+      # present-but-empty, not absent — and Spring's conditional bean
+      # matching (@ConditionalOnProperty on MockAiProvider/OpenAiProvider)
+      # does not treat those the same way: neither "mock" nor "openai"
+      # matches "", so NEITHER AiProvider bean gets created and the app
+      # fails to start at all. Defaulting to "mock" here at the compose
+      # layer is what actually makes "safe demo default" true in practice.
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       # WhatsApp Cloud API (Phase 3B) — platform-level only; each business's
