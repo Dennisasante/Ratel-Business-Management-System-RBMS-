@@ -54,6 +54,15 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Tallia AI. AI_PROVIDER must be set to "openai" explicitly here to go
+      # live — the app's own default (unset -> mock) is a local-dev
+      # convenience only and is never relied on for this file. See
+      # .env.production.example for the full explanation.
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Demo-data seeding endpoint — leave unset/false in production.
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-false}
       UPLOAD_DIR: /app/uploads
       # Only takes effect if no Super Admin exists yet — safe to leave set
       # after the first run (see DEPLOY.md).

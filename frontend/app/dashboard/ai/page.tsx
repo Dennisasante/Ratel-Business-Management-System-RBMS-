@@ -15,6 +15,7 @@ import {
   AiConversationSummary,
   AiConversationDetail,
   AiMessage,
+  AiActionEntry,
   AiToolCallSummary,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
@@ -152,10 +153,12 @@ function OverviewTab({ overview }: { overview: AiOverview | null }) {
           <Badge tone={overview.active ? "success" : "neutral"}>{overview.active ? "Active" : "Paused"}</Badge>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Conversations" value={overview.conversationCount} />
+        <StatCard label="Active" value={overview.activeConversationCount} />
         <StatCard label="Escalations" value={overview.escalatedCount} />
         <StatCard label="AI actions" value={overview.actionCount} />
+        <StatCard label="Bookings by AI" value={overview.bookingsCreatedByAi} />
         <StatCard label="Knowledge entries" value={overview.knowledgeEntryCount} />
       </div>
     </Card>
@@ -575,15 +578,36 @@ function ConversationsTab({ token }: { token: string }) {
               <Badge tone={CONVERSATION_STATUS_TONE[detail.status] ?? "neutral"}>{detail.status}</Badge>
               <span className="text-xs text-ink-500">via {detail.channel}</span>
             </div>
-            <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-              {detail.messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
-              ))}
-            </div>
+            <ConversationTimeline detail={detail} />
           </div>
         </Modal>
       )}
     </>
+  );
+}
+
+// Interleaves message bubbles with tool-call markers in chronological
+// order — this is what makes it obvious to a client watching the demo that
+// the AI is really calling into Tallia (checkAvailability, createCustomer,
+// createBooking, ...), not just generating text. Internal/developer detail
+// only: tool name + outcome, never raw arguments/results or secrets.
+function ConversationTimeline({ detail }: { detail: AiConversationDetail }) {
+  type TimelineEntry = { kind: "message"; at: string; message: AiMessage } | { kind: "action"; at: string; action: AiActionEntry };
+  const entries: TimelineEntry[] = [
+    ...detail.messages.map((m) => ({ kind: "message" as const, at: m.createdAt, message: m })),
+    ...detail.actions.map((a) => ({ kind: "action" as const, at: a.createdAt, action: a })),
+  ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+  return (
+    <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+      {entries.map((entry, i) =>
+        entry.kind === "message" ? (
+          <MessageBubble key={`m-${i}`} message={entry.message} />
+        ) : (
+          <ActionMarker key={`a-${i}`} action={entry.action} />
+        )
+      )}
+    </div>
   );
 }
 
@@ -603,11 +627,57 @@ function MessageBubble({ message }: { message: AiMessage }) {
   );
 }
 
+function TypingIndicator() {
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center gap-1 rounded-xl bg-surface px-3 py-2.5 shadow-card">
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400 motion-reduce:animate-none"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActionMarker({ action }: { action: AiActionEntry }) {
+  const tone =
+    action.status === "SUCCEEDED"
+      ? "border-success/30 bg-success/10 text-success"
+      : action.status === "BLOCKED"
+      ? "border-danger/30 bg-danger/10 text-danger"
+      : action.status === "FAILED"
+      ? "border-danger/30 bg-danger/10 text-danger"
+      : "border-border bg-surface text-ink-500";
+  return (
+    <div className="flex justify-center">
+      <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${tone}`}>
+        <Wrench size={11} />
+        Tool: {action.toolName} — {action.status.toLowerCase()}
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Test AI
 // ---------------------------------------------------------------------------
 
 type TestTurn = { role: "USER" | "ASSISTANT"; content: string; toolCalls?: AiToolCallSummary[] };
+
+// Quick-start shortcuts (spec §15) — these just populate and send a normal
+// chat message through the same endpoint every other message goes through;
+// they never bypass the AI/tool layer.
+const QUICK_STARTS: { label: string; message: string }[] = [
+  { label: "Ask about the beach", message: "What activities and facilities do you have?" },
+  { label: "Check availability", message: "Can I visit this Saturday?" },
+  { label: "Make a booking", message: "I want to book the beach day pass." },
+  { label: "Plan an event", message: "I want to organize a birthday party." },
+  { label: "Talk to someone", message: "I'd like to speak with a member of staff." },
+];
 
 function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted: () => void }) {
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -616,11 +686,8 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || busy) return;
-    const message = input.trim();
-    setInput("");
+  async function sendMessage(message: string) {
+    if (!message.trim() || busy) return;
     setError(null);
     setTurns((prev) => [...prev, { role: "USER", content: message }]);
     setBusy(true);
@@ -636,7 +703,17 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
     }
   }
 
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const message = input.trim();
+    if (!message) return;
+    setInput("");
+    await sendMessage(message);
+  }
+
   function startNewConversation() {
+    // Only resets this panel's own local view — the previous conversation
+    // is untouched in the database and stays visible under Conversations.
     setConversationId(null);
     setTurns([]);
     setError(null);
@@ -644,18 +721,32 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
 
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-ink-500">
           Chat with your AI exactly as a customer would — this uses your real settings and knowledge base.
         </p>
-        <Button variant="secondary" onClick={startNewConversation}>
+        <Button variant="secondary" onClick={startNewConversation} className="shrink-0">
           New conversation
         </Button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {QUICK_STARTS.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            disabled={busy}
+            onClick={() => sendMessage(q.message)}
+            className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-ink-700 hover:border-accent hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {q.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex min-h-64 max-h-[28rem] flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-canvas p-4">
         {turns.length === 0 ? (
-          <p className="m-auto text-sm text-ink-400">Say hello to get started.</p>
+          <p className="m-auto text-sm text-ink-400">Say hello, or try one of the shortcuts above.</p>
         ) : (
           turns.map((turn, i) => (
             <div key={i} className="flex flex-col gap-1">
@@ -692,6 +783,7 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
             </div>
           ))
         )}
+        {busy && <TypingIndicator />}
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}

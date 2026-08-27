@@ -14,12 +14,15 @@ public record AiConversationDetailResponse(
         String status,
         Instant startedAt,
         Instant lastMessageAt,
-        List<AiMessageResponse> messages
+        List<AiMessageResponse> messages,
+        List<AiActionEntry> actions
 ) {
-    public static AiConversationDetailResponse from(AiConversation c, String customerName, List<AiMessageResponse> messages) {
+    public static AiConversationDetailResponse from(
+            AiConversation c, String customerName, List<AiMessageResponse> messages, List<AiActionEntry> actions
+    ) {
         return new AiConversationDetailResponse(
                 c.getId(), c.getCustomerId(), customerName, c.getChannel(), c.getStatus(),
-                c.getStartedAt(), c.getLastMessageAt(), messages
+                c.getStartedAt(), c.getLastMessageAt(), messages, actions
         );
     }
 }

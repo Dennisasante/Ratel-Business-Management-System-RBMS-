@@ -4,8 +4,10 @@ public record AiOverviewResponse(
         boolean active,
         String agentName,
         long conversationCount,
+        long activeConversationCount,
         long escalatedCount,
         long actionCount,
-        long knowledgeEntryCount
+        long knowledgeEntryCount,
+        long bookingsCreatedByAi
 ) {
 }

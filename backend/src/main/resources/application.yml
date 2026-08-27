@@ -96,12 +96,29 @@ app:
     # to read-only and sends the 3-day-out renewal reminder.
     expiry-cron: ${BILLING_EXPIRY_CRON:0 30 6 * * *}
   ai:
+    # Which AiProvider bean is active — "openai" (real Chat Completions
+    # calls, see OpenAiProvider) or "mock" (deterministic demo provider,
+    # see MockAiProvider). Defaults to mock so local dev works with zero
+    # setup; production deployments must set AI_PROVIDER=openai explicitly
+    # in their own env — this default is deliberately NOT "safe-by-coincidence"
+    # for production, it's safe because docker-compose.prod.yml/
+    # .env.production.example both set it explicitly rather than relying
+    # on this fallback.
+    provider: ${AI_PROVIDER:mock}
     # Tallia AI (Phase 1) — direct OpenAI Chat Completions calls, see
     # OpenAiProvider. Blank key means the feature is structurally present
     # but unusable, same posture as app.vapid below when unset — never
     # crashes startup, just can't actually answer until configured.
     openai-api-key: ${OPENAI_API_KEY:}
     openai-model: ${OPENAI_MODEL:gpt-4o-mini}
+  demo:
+    # Gates POST /api/platform/demo/seed-resort — off by default everywhere,
+    # including production, unless explicitly turned on. This is in ADDITION
+    # to that endpoint already being Super-Admin-only like every other
+    # /api/platform/** route; two independent gates, neither implied by the
+    # other, so a production deploy that forgets to set this stays safe by
+    # default rather than safe by coincidence.
+    seed-enabled: ${DEMO_SEED_ENABLED:false}
   vapid:
     # Generate once with `npx web-push generate-vapid-keys`. If public/private
     # key are blank, PushNotificationService silently no-ops (same posture as

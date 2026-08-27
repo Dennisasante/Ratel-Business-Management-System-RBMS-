@@ -33,7 +33,12 @@ public class AiChatService {
     // Hard safety cap on the tool-call round-trip loop — a model that keeps
     // requesting tools forever (misbehaving or genuinely stuck) can't turn
     // one chat turn into an unbounded number of OpenAI calls / tool executions.
-    private static final int MAX_TOOL_ITERATIONS = 5;
+    // 8 gives realistic headroom for a genuine multi-step turn (e.g. a
+    // booking confirmation turn alone can legitimately need
+    // listBookableServices -> checkAvailability -> findCustomer ->
+    // createBooking -> final answer, five calls with zero slack at the old
+    // limit of 5) while still being nowhere near "unbounded."
+    private static final int MAX_TOOL_ITERATIONS = 8;
 
     private final AiSettingsRepository aiSettingsRepository;
     private final BusinessRepository businessRepository;

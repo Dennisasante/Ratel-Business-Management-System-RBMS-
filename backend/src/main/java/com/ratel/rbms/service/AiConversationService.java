@@ -1,11 +1,13 @@
 package com.ratel.rbms.service;
 
+import com.ratel.rbms.dto.AiActionEntry;
 import com.ratel.rbms.dto.AiConversationDetailResponse;
 import com.ratel.rbms.dto.AiConversationSummaryResponse;
 import com.ratel.rbms.dto.AiMessageResponse;
 import com.ratel.rbms.entity.AiConversation;
 import com.ratel.rbms.entity.AiMessage;
 import com.ratel.rbms.exception.ApiException;
+import com.ratel.rbms.repository.AiActionRepository;
 import com.ratel.rbms.repository.AiConversationRepository;
 import com.ratel.rbms.repository.AiMessageRepository;
 import com.ratel.rbms.tenant.TenantContext;
@@ -28,17 +30,20 @@ public class AiConversationService {
 
     private final AiConversationRepository aiConversationRepository;
     private final AiMessageRepository aiMessageRepository;
+    private final AiActionRepository aiActionRepository;
     private final ModuleAccessService moduleAccessService;
     private final CustomerService customerService;
 
     public AiConversationService(
             AiConversationRepository aiConversationRepository,
             AiMessageRepository aiMessageRepository,
+            AiActionRepository aiActionRepository,
             ModuleAccessService moduleAccessService,
             CustomerService customerService
     ) {
         this.aiConversationRepository = aiConversationRepository;
         this.aiMessageRepository = aiMessageRepository;
+        this.aiActionRepository = aiActionRepository;
         this.moduleAccessService = moduleAccessService;
         this.customerService = customerService;
     }
@@ -58,7 +63,10 @@ public class AiConversationService {
         List<AiMessageResponse> messages = aiMessageRepository.findAllByConversationIdOrderByCreatedAtAsc(conversation.getId()).stream()
                 .map(AiMessageResponse::from)
                 .toList();
-        return AiConversationDetailResponse.from(conversation, customerNameOrNull(conversation.getCustomerId()), messages);
+        List<AiActionEntry> actions = aiActionRepository.findAllByConversationIdOrderByCreatedAtAsc(conversation.getId()).stream()
+                .map(AiActionEntry::from)
+                .toList();
+        return AiConversationDetailResponse.from(conversation, customerNameOrNull(conversation.getCustomerId()), messages, actions);
     }
 
     // ---- Used internally by AiChatService — same tenant boundary, just

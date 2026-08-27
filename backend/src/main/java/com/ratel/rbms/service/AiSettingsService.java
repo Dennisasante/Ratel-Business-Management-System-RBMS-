@@ -84,9 +84,11 @@ public class AiSettingsService {
                 settings.active(),
                 settings.agentName(),
                 aiConversationRepository.countByBusinessId(businessId),
+                aiConversationRepository.countByBusinessIdAndStatus(businessId, "ACTIVE"),
                 aiConversationRepository.countByBusinessIdAndStatus(businessId, "ESCALATED"),
                 aiActionRepository.countByBusinessId(businessId),
-                aiKnowledgeEntryRepository.countByBusinessId(businessId)
+                aiKnowledgeEntryRepository.countByBusinessId(businessId),
+                aiActionRepository.countByBusinessIdAndToolNameAndStatus(businessId, "createBooking", "SUCCEEDED")
         );
     }
 

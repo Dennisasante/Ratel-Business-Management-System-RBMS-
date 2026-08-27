@@ -416,9 +416,11 @@ export interface AiOverview {
   active: boolean;
   agentName: string;
   conversationCount: number;
+  activeConversationCount: number;
   escalatedCount: number;
   actionCount: number;
   knowledgeEntryCount: number;
+  bookingsCreatedByAi: number;
 }
 
 // Suggested values: FAQ, BUSINESS_INFO, SERVICE, POLICY, RESTAURANT, HOTEL,
@@ -463,8 +465,15 @@ export interface AiMessage {
   createdAt: string;
 }
 
+export interface AiActionEntry {
+  toolName: string;
+  status: "STARTED" | "SUCCEEDED" | "FAILED" | "BLOCKED";
+  createdAt: string;
+}
+
 export interface AiConversationDetail extends AiConversationSummary {
   messages: AiMessage[];
+  actions: AiActionEntry[];
 }
 
 export interface AiToolCallSummary {

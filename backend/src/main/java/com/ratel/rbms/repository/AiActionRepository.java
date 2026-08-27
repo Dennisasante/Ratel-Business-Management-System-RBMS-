@@ -11,4 +11,6 @@ public interface AiActionRepository extends JpaRepository<AiAction, UUID> {
     List<AiAction> findAllByConversationIdOrderByCreatedAtAsc(UUID conversationId);
 
     long countByBusinessId(UUID businessId);
+
+    long countByBusinessIdAndToolNameAndStatus(UUID businessId, String toolName, String status);
 }

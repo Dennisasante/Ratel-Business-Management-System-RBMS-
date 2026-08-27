@@ -8,6 +8,7 @@ import com.ratel.rbms.exception.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -31,8 +32,17 @@ import java.util.List;
  * isConfigured() is false and chat() is never called — mirrors
  * EmailService/PushNotificationService's "silently unusable, not a crash"
  * posture when a third-party credential is missing.
+ *
+ * Only registered when app.ai.provider=openai (see application.yml,
+ * AI_PROVIDER env var) — MockAiProvider is the other implementation of
+ * this same interface, registered when that property is "mock" or unset.
+ * Exactly one of the two is ever a bean at a time (never both), so there
+ * is no runtime "provider A failed, fall back to B" path to accidentally
+ * get wrong — if OpenAI is the configured provider and a real call fails,
+ * it fails with a controlled error, never silently substitutes the mock.
  */
 @Service
+@ConditionalOnProperty(name = "app.ai.provider", havingValue = "openai")
 public class OpenAiProvider implements AiProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiProvider.class);
