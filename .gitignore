@@ -2,5 +2,10 @@
 Thumbs.db
 .claude/settings.local.json
 
+# Defensive — the real one is frontend/.next (see frontend/.gitignore); this
+# only guards against a `next build`/`next dev` accidentally run from the
+# repo root instead of frontend/.
+.next/
+
 # Production secrets for docker-compose.prod.yml — see .env.production.example
 .env
