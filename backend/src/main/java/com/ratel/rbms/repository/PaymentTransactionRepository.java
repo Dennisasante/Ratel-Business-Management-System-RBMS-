@@ -33,6 +33,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     @Query("SELECT t FROM PaymentTransaction t WHERE t.businessId = :businessId AND "
             + "(t.direction = :direction OR CAST(:direction AS string) IS NULL) AND "
             + "(t.gateway = :gateway OR CAST(:gateway AS string) IS NULL) AND "
+            + "(t.createdBy = :createdBy OR CAST(:createdBy AS uuid) IS NULL) AND "
             + "(t.createdAt >= :from OR CAST(:from AS timestamp) IS NULL) AND "
             + "(t.createdAt < :to OR CAST(:to AS timestamp) IS NULL) "
             + "ORDER BY t.createdAt DESC")
@@ -40,6 +41,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("businessId") UUID businessId,
             @Param("direction") PaymentTransaction.Direction direction,
             @Param("gateway") String gateway,
+            @Param("createdBy") UUID createdBy,
             @Param("from") Instant from,
             @Param("to") Instant to
     );

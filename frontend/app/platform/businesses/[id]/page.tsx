@@ -29,6 +29,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 import StatCard from "@/components/ui/StatCard";
 import Modal from "@/components/Modal";
 import CardSkeleton from "@/components/ui/CardSkeleton";
@@ -96,12 +98,8 @@ export default function PlatformBusinessDetailPage() {
   // this page unusably long. Only fetched once the panel is opened.
   const [transactionsOpen, setTransactionsOpen] = useState(false);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
-  const [txFrom, setTxFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [txTo, setTxTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [txDateRange, setTxDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
+  const [txCreatedBy, setTxCreatedBy] = useState("");
 
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentSummary[]>([]);
 
@@ -154,13 +152,19 @@ export default function PlatformBusinessDetailPage() {
     setTransactionsLoading(true);
     setTransactionsError(null);
     try {
-      setTransactions(await api.getPlatformBusinessPaymentTransactions(session.token, params.id, { from: txFrom, to: txTo }));
+      setTransactions(
+        await api.getPlatformBusinessPaymentTransactions(session.token, params.id, {
+          createdBy: txCreatedBy || undefined,
+          from: txDateRange.from ?? undefined,
+          to: txDateRange.to ?? undefined,
+        })
+      );
     } catch (err) {
       setTransactionsError(err instanceof ApiError ? err.message : "Couldn't load payment transactions.");
     } finally {
       setTransactionsLoading(false);
     }
-  }, [session, params.id, txFrom, txTo]);
+  }, [session, params.id, txCreatedBy, txDateRange]);
 
   useEffect(() => {
     // Only fetches once the panel is actually opened — an active business's
@@ -629,28 +633,28 @@ export default function PlatformBusinessDetailPage() {
 
                 {transactionsOpen && (
                   <div className="mt-4">
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-ink-700">From</label>
-                        <input
-                          type="date"
-                          value={txFrom}
-                          onChange={(e) => setTxFrom(e.target.value)}
-                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                        />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-medium text-ink-700">Staff member</label>
+                          <select
+                            value={txCreatedBy}
+                            onChange={(e) => setTxCreatedBy(e.target.value)}
+                            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                          >
+                            <option value="">Everyone</option>
+                            {business?.users.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <Button variant="secondary" onClick={loadTransactions} disabled={transactionsLoading}>
+                          {transactionsLoading ? "Updating..." : "Update"}
+                        </Button>
                       </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-medium text-ink-700">To</label>
-                        <input
-                          type="date"
-                          value={txTo}
-                          onChange={(e) => setTxTo(e.target.value)}
-                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                        />
-                      </div>
-                      <Button variant="secondary" onClick={loadTransactions} disabled={transactionsLoading}>
-                        {transactionsLoading ? "Updating..." : "Update"}
-                      </Button>
+                      <DateRangeFilter value={txDateRange} onChange={setTxDateRange} />
                     </div>
 
                     {transactionsError && <p className="mt-3 text-sm text-danger">{transactionsError}</p>}

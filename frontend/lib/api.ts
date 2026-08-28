@@ -1863,7 +1863,13 @@ export const api = {
       token
     ),
 
-  listSales: (token: string) => request<Sale[]>("/api/sales", {}, token),
+  listSales: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<Sale[]>(`/api/sales${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   getSale: (token: string, id: string) => request<Sale>(`/api/sales/${id}`, {}, token),
 
@@ -2130,8 +2136,13 @@ export const api = {
   getPlatformBusiness: (token: string, id: string) =>
     request<PlatformBusinessDetail>(`/api/platform/businesses/${id}`, {}, token),
 
-  getPlatformBusinessPaymentTransactions: (token: string, id: string, filters?: { from?: string; to?: string }) => {
+  getPlatformBusinessPaymentTransactions: (
+    token: string,
+    id: string,
+    filters?: { createdBy?: string; from?: string; to?: string }
+  ) => {
     const params = new URLSearchParams();
+    if (filters?.createdBy) params.set("createdBy", filters.createdBy);
     if (filters?.from) params.set("from", filters.from);
     if (filters?.to) params.set("to", filters.to);
     const qs = params.toString();

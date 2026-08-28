@@ -39,6 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -239,8 +241,25 @@ public class SaleService {
     }
 
     public List<SaleResponse> listAll() {
+        return list(null, null);
+    }
+
+    // Date-range filter for the Sales page's new date filter — from/to are
+    // both-or-neither; null on both means "all time" (used by listAll()
+    // above). Reuses the exact same findAllByBusinessIdAndCreatedAtBetween
+    // the reports endpoint already relies on, rather than a second query.
+    public List<SaleResponse> list(Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
-        return saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
+        List<Sale> sales = (from == null && to == null)
+                ? saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
+                // findAllByBusinessIdAndCreatedAtBetween has no ORDER BY of its own
+                // (its other callers — reports/digests — only ever sum/count it),
+                // so sort explicitly here to keep this list's own "most recent
+                // first" convention.
+                : saleRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(Sale::getCreatedAt).reversed())
+                        .toList();
+        return sales.stream()
                 .map(this::toResponseWithItems)
                 .toList();
     }

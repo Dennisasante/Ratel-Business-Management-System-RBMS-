@@ -124,7 +124,13 @@ public class PaymentTransactionService {
     }
 
     public List<PaymentTransactionResponse> search(UUID businessId, PaymentTransaction.Direction direction, String gateway, Instant from, Instant to) {
-        return paymentTransactionRepository.search(businessId, direction, gateway, from, to).stream()
+        return search(businessId, direction, gateway, null, from, to);
+    }
+
+    public List<PaymentTransactionResponse> search(
+            UUID businessId, PaymentTransaction.Direction direction, String gateway, UUID createdBy, Instant from, Instant to
+    ) {
+        return paymentTransactionRepository.search(businessId, direction, gateway, createdBy, from, to).stream()
                 .map(t -> toResponse(t, businessId))
                 .toList();
     }

@@ -27,6 +27,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 interface ProductCartLine {
   kind: "product";
@@ -81,7 +83,8 @@ export default function SalesPage() {
   const [productCategoryId, setProductCategoryId] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
   const [salesSearch, setSalesSearch] = useState("");
-  const [salesMonthFilter, setSalesMonthFilter] = useState("");
+  const [salesDateRange, setSalesDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
+  const [salesFetching, setSalesFetching] = useState(true);
   const [salesPaymentFilter, setSalesPaymentFilter] = useState<PaymentMethod | "">("");
   const [salesPage, setSalesPage] = useState(0);
   const SALES_PAGE_SIZE = 10;
@@ -106,21 +109,33 @@ export default function SalesPage() {
 
   const loadAll = useCallback(async () => {
     if (!session) return;
-    const [p, cat, svc, svcTypes, s, gw] = await Promise.all([
+    const [p, cat, svc, svcTypes, gw] = await Promise.all([
       api.listProducts(session.token),
       api.listProductCategories(session.token),
       api.listServiceCatalog(session.token, true),
       api.listServiceTypes(session.token),
-      api.listSales(session.token),
       api.getPaymentGatewayStatus(session.token),
     ]);
     setProducts(p);
     setCategories(cat);
     setServices(svc);
     setServiceTypes(svcTypes);
-    setSales(s);
     setPaystackConfigured(gw.paystackConfigured);
   }, [session]);
+
+  // Server-side date filter, refetched on its own whenever the range changes
+  // — separate from loadAll() so switching "Today" -> "This month" doesn't
+  // also re-fetch the whole product/service catalog. Defaults to Today (see
+  // defaultDateRangeValue) rather than loading every sale the business has
+  // ever made.
+  const loadSales = useCallback(async () => {
+    if (!session) return;
+    const s = await api.listSales(session.token, {
+      from: salesDateRange.from ?? undefined,
+      to: salesDateRange.to ?? undefined,
+    });
+    setSales(s);
+  }, [session, salesDateRange]);
 
   const visibleProducts = products.filter((p) => {
     if (productCategoryId && p.categoryId !== productCategoryId) return false;
@@ -133,17 +148,7 @@ export default function SalesPage() {
     return true;
   });
 
-  function saleMonthKey(createdAt: string): string {
-    const d = new Date(createdAt);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  }
-
-  // Newest-first, distinct months actually present in the sales history — so
-  // the filter never offers a month with nothing in it.
-  const saleMonths = Array.from(new Set(sales.map((s) => saleMonthKey(s.createdAt)))).sort().reverse();
-
   const visibleSales = sales.filter((s) => {
-    if (salesMonthFilter && saleMonthKey(s.createdAt) !== salesMonthFilter) return false;
     if (salesPaymentFilter && s.paymentMethod !== salesPaymentFilter) return false;
     if (!salesSearch) return true;
     const q = salesSearch.toLowerCase();
@@ -167,8 +172,12 @@ export default function SalesPage() {
   }, [session, loadAll]);
 
   useEffect(() => {
+    loadSales().finally(() => setSalesFetching(false));
+  }, [loadSales]);
+
+  useEffect(() => {
     setSalesPage(0);
-  }, [salesSearch, salesMonthFilter, salesPaymentFilter]);
+  }, [salesSearch, salesDateRange, salesPaymentFilter]);
 
   useEffect(() => {
     setSalesPage((p) => Math.min(p, salesPageCount - 1));
@@ -259,7 +268,11 @@ export default function SalesPage() {
         // leaving the cashier to hunt for it afterward.
         setCollectingPaymentSale(sale);
       }
-      await loadAll();
+      // loadAll() refreshes stock quantities; loadSales() picks up the new
+      // sale itself — but only if it actually falls inside the currently
+      // selected date range (e.g. still shows if "Today" is selected, which
+      // it always will be immediately after a fresh sale).
+      await Promise.all([loadAll(), loadSales()]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -591,22 +604,10 @@ export default function SalesPage() {
 
       {/* Recent sales */}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-0">
-          <h2 className="text-base font-semibold text-ink-900">Recent sales</h2>
-          {sales.length > 0 && (
+        <div className="flex flex-col gap-3 p-5 pb-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink-900">Sales</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={salesMonthFilter}
-                onChange={(e) => setSalesMonthFilter(e.target.value)}
-                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              >
-                <option value="">All months</option>
-                {saleMonths.map((m) => (
-                  <option key={m} value={m}>
-                    {new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-                  </option>
-                ))}
-              </select>
               <select
                 value={salesPaymentFilter}
                 onChange={(e) => setSalesPaymentFilter(e.target.value as PaymentMethod | "")}
@@ -629,15 +630,16 @@ export default function SalesPage() {
                 />
               </div>
             </div>
-          )}
+          </div>
+          <DateRangeFilter value={salesDateRange} onChange={setSalesDateRange} />
         </div>
-        {fetching ? (
+        {salesFetching ? (
           <TableSkeleton cols={6} />
         ) : sales.length === 0 ? (
           <EmptyState
             icon={Receipt}
-            title="No sales recorded yet"
-            description="Completed sales will show up here."
+            title="No sales in this range"
+            description="Try a wider date range, or complete a sale above."
           />
         ) : visibleSales.length === 0 ? (
           <p className="p-5 text-sm text-ink-500">No sales match this search.</p>

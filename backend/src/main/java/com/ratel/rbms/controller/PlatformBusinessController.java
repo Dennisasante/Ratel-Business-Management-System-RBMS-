@@ -55,12 +55,13 @@ public class PlatformBusinessController {
     @GetMapping("/{id}/payment-transactions")
     public List<PaymentTransactionResponse> paymentTransactions(
             @PathVariable UUID id,
+            @RequestParam(required = false) UUID createdBy,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
         Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
         Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
-        return platformBusinessService.getPaymentTransactions(id, fromInstant, toInstant);
+        return platformBusinessService.getPaymentTransactions(id, createdBy, fromInstant, toInstant);
     }
 
     @GetMapping("/{id}/subscription-payments")

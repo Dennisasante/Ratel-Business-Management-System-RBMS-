@@ -16,6 +16,7 @@ import com.ratel.rbms.service.ReceiptService;
 import com.ratel.rbms.service.SaleService;
 import com.ratel.rbms.tenant.TenantContext;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +24,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,8 +46,16 @@ public class SaleController {
     }
 
     @GetMapping
-    public List<SaleResponse> list() {
-        return saleService.listAll();
+    public List<SaleResponse> list(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        if (from == null && to == null) {
+            return saleService.listAll();
+        }
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return saleService.list(fromInstant, toInstant);
     }
 
     @GetMapping("/{id}")
