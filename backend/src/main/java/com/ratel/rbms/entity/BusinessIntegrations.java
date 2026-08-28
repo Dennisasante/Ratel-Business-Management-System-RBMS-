@@ -96,6 +96,22 @@ public class BusinessIntegrations {
     @Builder.Default
     private boolean notifyOnSale = true;
 
+    // Thermal receipt printer (e.g. Xprinter XP-80T) — off by default, since
+    // most businesses don't have one. Printing itself always goes through
+    // the browser's native print dialog against whatever's installed as a
+    // system printer (see ReceiptView.tsx) — this only remembers whether to
+    // show/auto-trigger that and which paper width to default to, never
+    // talks to a printer directly, so it's equally usable for a paired
+    // Bluetooth printer once the OS recognizes it as a normal printer.
+    @Column(name = "receipt_printer_enabled", nullable = false)
+    @Builder.Default
+    private boolean receiptPrinterEnabled = false;
+
+    // "58" or "80" (mm) — validated in BusinessIntegrationsService.update().
+    @Column(name = "receipt_printer_paper_width", nullable = false, length = 5)
+    @Builder.Default
+    private String receiptPrinterPaperWidth = "80";
+
     // PAYSTACK today — only value supported. Kept as an explicit field (rather
     // than inferring "which gateway" purely from which secret key is set) so a
     // future second gateway (e.g. Hubtel) has a real selector to switch on

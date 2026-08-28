@@ -120,6 +120,7 @@ export default function ServiceOrdersPage() {
   const [pendingAction, setPendingAction] = useState<string | null>(null); // `${orderId}:${action}`
 
   const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [printerEnabled, setPrinterEnabled] = useState(false);
   const [collectingPaymentOrder, setCollectingPaymentOrder] = useState<ServiceOrder | null>(null);
   const [viewingOrder, setViewingOrder] = useState<ServiceOrder | null>(null);
 
@@ -154,6 +155,7 @@ export default function ServiceOrdersPage() {
     setCatalog(cat);
     setStaff(s);
     setPaystackConfigured(gw.paystackConfigured);
+    setPrinterEnabled(gw.receiptPrinterEnabled);
   }, [session]);
 
   useEffect(() => {
@@ -411,14 +413,16 @@ export default function ServiceOrdersPage() {
                               {pendingAction === `${o.id}:resend` ? "Sending..." : "Resend email"}
                             </button>
                           )}
-                          <Link
-                            href={`/receipt/service-order/${o.id}`}
-                            target="_blank"
-                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-canvas"
-                          >
-                            <Printer size={14} />
-                            Print receipt
-                          </Link>
+                          {printerEnabled && (
+                            <Link
+                              href={`/receipt/service-order/${o.id}`}
+                              target="_blank"
+                              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-canvas"
+                            >
+                              <Printer size={14} />
+                              Print receipt
+                            </Link>
+                          )}
                         </ActionsMenu>
                       </div>
                     </Td>
@@ -468,6 +472,7 @@ export default function ServiceOrdersPage() {
             setViewingOrder(null);
             setCollectingPaymentOrder(o);
           }}
+          printerEnabled={printerEnabled}
         />
       )}
 
@@ -509,6 +514,7 @@ function OrderDetailModal({
   onResendEmail,
   onEdit,
   onCollectPayment,
+  printerEnabled,
 }: {
   order: ServiceOrder;
   pendingAction: string | null;
@@ -517,6 +523,7 @@ function OrderDetailModal({
   onResendEmail: (order: ServiceOrder) => void;
   onEdit: (order: ServiceOrder) => void;
   onCollectPayment: (order: ServiceOrder) => void;
+  printerEnabled: boolean;
 }) {
   const allowedFromHere = ALLOWED_TRANSITIONS[order.status];
   const moveOptions = ALL_STAGES.filter((s) => s !== order.status).map((s) => ({
@@ -658,14 +665,16 @@ function OrderDetailModal({
           </a>
         )}
 
-        <Link
-          href={`/receipt/service-order/${order.id}`}
-          target="_blank"
-          className="flex items-center justify-center gap-1.5 text-xs font-medium text-ink-500 hover:underline"
-        >
-          <Printer size={13} />
-          Print receipt
-        </Link>
+        {printerEnabled && (
+          <Link
+            href={`/receipt/service-order/${order.id}`}
+            target="_blank"
+            className="flex items-center justify-center gap-1.5 text-xs font-medium text-ink-500 hover:underline"
+          >
+            <Printer size={13} />
+            Print receipt
+          </Link>
+        )}
       </div>
     </Modal>
   );

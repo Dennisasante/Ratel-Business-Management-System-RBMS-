@@ -988,6 +988,8 @@ export interface BusinessIntegrations {
   whatsappNotifyNumber: string | null;
   testMode: boolean;
   notifyOnSale: boolean;
+  receiptPrinterEnabled: boolean;
+  receiptPrinterPaperWidth: "58" | "80";
 }
 
 // Every field: undefined/omitted = leave unchanged, "" = clear, else = set.
@@ -1000,6 +1002,14 @@ export interface BusinessIntegrationsPayload {
   whatsappNotifyNumber?: string;
   testMode?: boolean;
   notifyOnSale?: boolean;
+  receiptPrinterEnabled?: boolean;
+  receiptPrinterPaperWidth?: "58" | "80";
+}
+
+export interface PaymentGatewayStatus {
+  paystackConfigured: boolean;
+  receiptPrinterEnabled: boolean;
+  receiptPrinterPaperWidth: "58" | "80";
 }
 
 export interface BlackoutDate {
@@ -2072,7 +2082,7 @@ export const api = {
   // for any role — receipt pages need it to decide whether to show a "Pay with
   // Paystack" button, and those are viewed by Manager/Sales Person/Accountant too.
   getPaymentGatewayStatus: (token: string) =>
-    request<{ paystackConfigured: boolean }>("/api/integrations/payment-status", {}, token),
+    request<PaymentGatewayStatus>("/api/integrations/payment-status", {}, token),
 
   updateBusinessIntegrations: (token: string, payload: BusinessIntegrationsPayload) =>
     request<BusinessIntegrations>("/api/integrations", { method: "PUT", body: JSON.stringify(payload) }, token),

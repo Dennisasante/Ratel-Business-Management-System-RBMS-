@@ -16,6 +16,9 @@ public record BusinessIntegrationsRequest(
         String woocommerceConsumerSecret,
         String whatsappNotifyNumber,
         Boolean testMode,
-        Boolean notifyOnSale
+        Boolean notifyOnSale,
+        Boolean receiptPrinterEnabled,
+        // "58" or "80" — validated server-side, not just relied on from the client.
+        String receiptPrinterPaperWidth
 ) {
 }

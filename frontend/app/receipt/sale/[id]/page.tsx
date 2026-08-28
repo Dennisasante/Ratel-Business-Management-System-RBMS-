@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, BusinessSummary, Sale } from "@/lib/api";
 import ReceiptView from "@/components/ReceiptView";
@@ -11,10 +11,19 @@ export default function SaleReceiptPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  // Set only by the Sales page right after a sale completes, and only when
+  // the business has a receipt printer configured — see completeSale() there.
+  // The gateway-status check below is the real authority either way: a
+  // stale/bookmarked "?autoprint=1" URL can never trigger printing on its
+  // own if the business's printer setting is off.
+  const requestedAutoPrint = searchParams.get("autoprint") === "1";
 
   const [sale, setSale] = useState<Sale | null>(null);
   const [business, setBusiness] = useState<BusinessSummary | null>(null);
   const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [printerEnabled, setPrinterEnabled] = useState(false);
+  const [printerPaperWidth, setPrinterPaperWidth] = useState<"58" | "80">("80");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -28,6 +37,8 @@ export default function SaleReceiptPage() {
       setSale(s);
       setBusiness(b);
       setPaystackConfigured(i.paystackConfigured);
+      setPrinterEnabled(i.receiptPrinterEnabled);
+      setPrinterPaperWidth(i.receiptPrinterPaperWidth);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load this receipt.");
     }
@@ -101,6 +112,8 @@ export default function SaleReceiptPage() {
         }))}
         total={sale.totalAmount}
         footerLines={[`Payment: ${sale.paymentMethod.replaceAll("_", " ")}`]}
+        defaultPaperWidth={printerPaperWidth}
+        autoPrint={requestedAutoPrint && printerEnabled}
       />
     </div>
   );

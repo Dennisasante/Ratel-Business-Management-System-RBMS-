@@ -51,7 +51,8 @@ public class BusinessIntegrationsService {
     public PaymentGatewayStatusResponse getPaymentGatewayStatus() {
         BusinessIntegrations integrations = getOrCreate();
         boolean configured = integrations.getPaystackSecretKey() != null && !integrations.getPaystackSecretKey().isBlank();
-        return new PaymentGatewayStatusResponse(configured);
+        return new PaymentGatewayStatusResponse(
+                configured, integrations.isReceiptPrinterEnabled(), integrations.getReceiptPrinterPaperWidth());
     }
 
     @Transactional
@@ -81,6 +82,16 @@ public class BusinessIntegrationsService {
         }
         if (req.notifyOnSale() != null) {
             integrations.setNotifyOnSale(req.notifyOnSale());
+        }
+        if (req.receiptPrinterEnabled() != null) {
+            integrations.setReceiptPrinterEnabled(req.receiptPrinterEnabled());
+        }
+        if (req.receiptPrinterPaperWidth() != null) {
+            if (!"58".equals(req.receiptPrinterPaperWidth()) && !"80".equals(req.receiptPrinterPaperWidth())) {
+                throw new com.ratel.rbms.exception.ApiException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Paper width must be 58 or 80.");
+            }
+            integrations.setReceiptPrinterPaperWidth(req.receiptPrinterPaperWidth());
         }
 
         return toResponse(businessIntegrationsRepository.save(integrations));
@@ -206,6 +217,8 @@ public class BusinessIntegrationsService {
                 i.getWhatsappNotifyNumber(),
                 i.isTestMode(),
                 i.isNotifyOnSale(),
+                i.isReceiptPrinterEnabled(),
+                i.getReceiptPrinterPaperWidth(),
                 i.getPaymentGateway()
         );
     }

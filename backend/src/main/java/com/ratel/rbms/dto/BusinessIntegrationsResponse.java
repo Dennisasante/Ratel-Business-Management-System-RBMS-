@@ -11,6 +11,8 @@ public record BusinessIntegrationsResponse(
         String whatsappNotifyNumber,
         boolean testMode,
         boolean notifyOnSale,
+        boolean receiptPrinterEnabled,
+        String receiptPrinterPaperWidth,
         // PAYSTACK today — only value supported; see BusinessIntegrations.paymentGateway.
         String paymentGateway
 ) {

@@ -42,6 +42,12 @@ export default function IntegrationsPage() {
   const [notifyOnSale, setNotifyOnSale] = useState(true);
   const [savingNotifyOnSale, setSavingNotifyOnSale] = useState(false);
 
+  // Receipt printer (e.g. Xprinter XP-80T)
+  const [printerEnabled, setPrinterEnabled] = useState(false);
+  const [savingPrinterEnabled, setSavingPrinterEnabled] = useState(false);
+  const [printerPaperWidth, setPrinterPaperWidth] = useState<"58" | "80">("80");
+  const [savingPrinterPaperWidth, setSavingPrinterPaperWidth] = useState(false);
+
   const load = useCallback(async () => {
     if (!session) return;
     const result = await api.getBusinessIntegrations(session.token);
@@ -51,6 +57,8 @@ export default function IntegrationsPage() {
     setWhatsappNumber(result.whatsappNotifyNumber ?? "");
     setTestMode(result.testMode);
     setNotifyOnSale(result.notifyOnSale);
+    setPrinterEnabled(result.receiptPrinterEnabled);
+    setPrinterPaperWidth(result.receiptPrinterPaperWidth);
   }, [session]);
 
   useEffect(() => {
@@ -175,6 +183,31 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function togglePrinterEnabled() {
+    if (!session) return;
+    setSavingPrinterEnabled(true);
+    try {
+      const next = !printerEnabled;
+      const result = await api.updateBusinessIntegrations(session.token, { receiptPrinterEnabled: next });
+      setData(result);
+      setPrinterEnabled(result.receiptPrinterEnabled);
+    } finally {
+      setSavingPrinterEnabled(false);
+    }
+  }
+
+  async function changePrinterPaperWidth(width: "58" | "80") {
+    if (!session || width === printerPaperWidth) return;
+    setSavingPrinterPaperWidth(true);
+    try {
+      const result = await api.updateBusinessIntegrations(session.token, { receiptPrinterPaperWidth: width });
+      setData(result);
+      setPrinterPaperWidth(result.receiptPrinterPaperWidth);
+    } finally {
+      setSavingPrinterPaperWidth(false);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -242,6 +275,45 @@ export default function IntegrationsPage() {
               When on, Owners and Managers get a notification (in the bell, top right) every time anyone on the team
               records a sale. Turn it off if that gets too noisy.
             </p>
+          </Card>
+
+          <Card className="max-w-2xl p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-ink-900">Receipt printer</h2>
+              <button
+                onClick={togglePrinterEnabled}
+                disabled={savingPrinterEnabled}
+                className={`relative h-6 w-11 rounded-full transition disabled:opacity-50 ${printerEnabled ? "bg-accent" : "bg-border"}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${printerEnabled ? "left-5" : "left-0.5"}`}
+                />
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-ink-500">
+              For a thermal receipt printer (e.g. an Xprinter XP-80T, USB or a paired Bluetooth model) set up as a
+              regular printer on this computer. When on, completing a sale opens the print dialog automatically at
+              the paper width below — no printer, no need to turn this on.
+            </p>
+            {printerEnabled && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-sm font-medium text-ink-700">Paper width</span>
+                <div className="flex rounded-lg border border-border bg-surface p-0.5 text-sm">
+                  {(["58", "80"] as const).map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => changePrinterPaperWidth(w)}
+                      disabled={savingPrinterPaperWidth}
+                      className={`rounded-md px-3 py-1.5 font-medium transition disabled:opacity-50 ${
+                        printerPaperWidth === w ? "bg-accent-soft text-accent-hover" : "text-ink-500 hover:text-ink-900"
+                      }`}
+                    >
+                      {w}mm
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card className="max-w-2xl p-5">

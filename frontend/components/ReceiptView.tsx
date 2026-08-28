@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Printer } from "lucide-react";
 import PoweredByRatel from "@/components/PoweredByRatel";
 
@@ -32,6 +32,17 @@ interface ReceiptViewProps {
   total: number;
   footerLines?: string[]; // e.g. ["Payment: CASH"]
   currencySymbol?: string;
+  // Pre-selects the paper width instead of always defaulting to 80mm — set
+  // from the business's own saved printer preference (see BusinessIntegrations.
+  // receiptPrinterPaperWidth) so a business with a 58mm printer doesn't have
+  // to switch it manually on every receipt.
+  defaultPaperWidth?: PaperWidth;
+  // Opens the browser's print dialog automatically once this mounts —
+  // used right after a sale/service order is completed when the business
+  // has a receipt printer configured (see Sales/ServiceOrders pages' own
+  // "?autoprint=1" navigation). Never fires more than once even if the
+  // component re-renders.
+  autoPrint?: boolean;
 }
 
 export default function ReceiptView({
@@ -46,8 +57,21 @@ export default function ReceiptView({
   total,
   footerLines = [],
   currencySymbol = "GH₵",
+  defaultPaperWidth = "80",
+  autoPrint = false,
 }: ReceiptViewProps) {
-  const [width, setWidth] = useState<PaperWidth>("80");
+  const [width, setWidth] = useState<PaperWidth>(defaultPaperWidth);
+  const hasAutoPrinted = useRef(false);
+
+  useEffect(() => {
+    if (!autoPrint || hasAutoPrinted.current) return;
+    hasAutoPrinted.current = true;
+    // Give the browser one paint cycle so the @page width/content are
+    // actually laid out before print() captures them — calling it
+    // synchronously on mount can occasionally print against stale sizing.
+    const timer = setTimeout(() => window.print(), 150);
+    return () => clearTimeout(timer);
+  }, [autoPrint]);
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-canvas py-8 print:bg-white print:py-0">

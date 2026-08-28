@@ -15,6 +15,7 @@ export default function ServiceOrderReceiptPage() {
   const [order, setOrder] = useState<ServiceOrder | null>(null);
   const [business, setBusiness] = useState<BusinessSummary | null>(null);
   const [paystackConfigured, setPaystackConfigured] = useState(false);
+  const [printerPaperWidth, setPrinterPaperWidth] = useState<"58" | "80">("80");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -28,6 +29,7 @@ export default function ServiceOrderReceiptPage() {
       setOrder(o);
       setBusiness(b);
       setPaystackConfigured(i.paystackConfigured);
+      setPrinterPaperWidth(i.receiptPrinterPaperWidth);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load this receipt.");
     }
@@ -109,6 +111,7 @@ export default function ServiceOrderReceiptPage() {
         items={items}
         total={order.price}
         footerLines={order.status !== "PICKED_UP" ? ["Not yet picked up"] : []}
+        defaultPaperWidth={printerPaperWidth}
       />
     </div>
   );

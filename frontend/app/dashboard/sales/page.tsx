@@ -104,6 +104,10 @@ export default function SalesPage() {
   const [showAddService, setShowAddService] = useState(false);
 
   const [paystackConfigured, setPaystackConfigured] = useState(false);
+  // Whether this business has a receipt printer configured (Profile →
+  // Integrations → Receipt Printer) — gates both showing the "Print" link
+  // per row and auto-opening the print dialog right after checkout below.
+  const [printerEnabled, setPrinterEnabled] = useState(false);
   // Any sale currently open in the "Collect payment" modal — set right after
   // checkout for a CARD/MOBILE_MONEY sale, or by clicking "Collect payment"
   // on an older still-unpaid row. Either way, payment never requires leaving
@@ -125,8 +129,19 @@ export default function SalesPage() {
     setServices(svc);
     setServiceTypes(svcTypes);
     setPaystackConfigured(gw.paystackConfigured);
+    setPrinterEnabled(gw.receiptPrinterEnabled);
     setStaffMembers(users);
   }, [session]);
+
+  // Opens the receipt in a new tab with auto-print requested — the receipt
+  // page itself re-checks the printer setting before actually calling
+  // window.print(), so this is safe to call unconditionally once a sale is
+  // confirmed PAID; it's a no-op (still just opens the receipt tab) if the
+  // setting happens to be off.
+  function openReceiptForPrint(saleId: string) {
+    if (!printerEnabled) return;
+    window.open(`/receipt/sale/${saleId}?autoprint=1`, "_blank");
+  }
 
   // Server-side date + staff filter, refetched on its own whenever either
   // changes — separate from loadAll() so switching "Today" -> "This month"
@@ -271,8 +286,13 @@ export default function SalesPage() {
       setCustomerPickerKey((k) => k + 1);
       if (sale.paymentStatus !== "PAID") {
         // Card/mobile money — open the payment modal right away instead of
-        // leaving the cashier to hunt for it afterward.
+        // leaving the cashier to hunt for it afterward. Printing (if
+        // enabled) happens once it's actually confirmed PAID — see
+        // handleSaleChanged below — not before money is actually in.
         setCollectingPaymentSale(sale);
+      } else {
+        // Cash/direct mobile money are PAID the instant they're rung up.
+        openReceiptForPrint(sale.id);
       }
       // loadAll() refreshes stock quantities; loadSales() picks up the new
       // sale itself — but only if it actually falls inside the currently
@@ -287,10 +307,16 @@ export default function SalesPage() {
   }
 
   function handleSaleChanged(updated: Sale) {
+    // Genuine unpaid -> PAID transition (not just a re-render of an
+    // already-settled sale) — this is the actual "money just arrived"
+    // moment for a card/mobile money sale, so it's when printing (if
+    // enabled) should fire, same as the instant-PAID cash path above.
+    const justPaid = collectingPaymentSale?.id === updated.id && collectingPaymentSale.paymentStatus !== "PAID" && updated.paymentStatus === "PAID";
     setCollectingPaymentSale(updated);
     setSales((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     if (updated.paymentStatus === "PAID") {
       setCollectingPaymentSale(null);
+      if (justPaid) openReceiptForPrint(updated.id);
     }
   }
 
@@ -719,13 +745,15 @@ export default function SalesPage() {
                             {s.paymentStatus === "PAID" ? "Refund" : "Collect payment"}
                           </button>
                         )}
-                        <Link
-                          href={`/receipt/sale/${s.id}`}
-                          target="_blank"
-                          className="text-sm font-medium text-ink-700 hover:underline"
-                        >
-                          Print
-                        </Link>
+                        {printerEnabled && (
+                          <Link
+                            href={`/receipt/sale/${s.id}`}
+                            target="_blank"
+                            className="text-sm font-medium text-ink-700 hover:underline"
+                          >
+                            Print
+                          </Link>
+                        )}
                         <button
                           onClick={() => handleDownloadReceipt(s.id, s.saleNumber)}
                           disabled={downloadingId === s.id}
