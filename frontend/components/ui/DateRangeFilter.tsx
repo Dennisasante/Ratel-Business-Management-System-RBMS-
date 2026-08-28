@@ -31,23 +31,28 @@ export default function DateRangeFilter({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {DATE_RANGE_PRESETS.map(({ key, label }) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => selectPreset(key)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-            value.preset === key
-              ? "border-accent bg-accent-soft text-accent-hover"
-              : "border-border bg-surface text-ink-700 hover:border-border-strong"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="flex flex-col gap-2">
+      {/* One scrollable line, even on a narrow phone — never wraps to a second
+          row. Scrollbar hidden (still swipeable/scrollable) so it reads as a
+          single clean strip of pills rather than a visible scroll widget. */}
+      <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {DATE_RANGE_PRESETS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => selectPreset(key)}
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition ${
+              value.preset === key
+                ? "border-accent bg-accent-soft text-accent-hover"
+                : "border-border bg-surface text-ink-700 hover:border-border-strong"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {value.preset === "custom" && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="date"
             value={value.from ?? ""}

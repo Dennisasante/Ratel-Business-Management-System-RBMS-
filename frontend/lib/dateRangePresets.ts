@@ -28,16 +28,19 @@ export interface DateRangeValue {
   to: string | null;
 }
 
+// Order/labels tuned for a single scrollable line on mobile (see
+// DateRangeFilter) — short labels, "All" first since it's the most-tapped
+// escape hatch out of "Today" (the actual default — see defaultDateRangeValue).
 export const DATE_RANGE_PRESETS: { key: DateRangePreset; label: string }[] = [
+  { key: "all", label: "All" },
   { key: "today", label: "Today" },
   { key: "yesterday", label: "Yesterday" },
-  { key: "thisWeek", label: "This week" },
-  { key: "last7Days", label: "Last 7 days" },
-  { key: "thisMonth", label: "This month" },
-  { key: "last30Days", label: "Last 30 days" },
-  { key: "last90Days", label: "Last 90 days" },
-  { key: "all", label: "All time" },
-  { key: "custom", label: "Custom range" },
+  { key: "thisWeek", label: "This Week" },
+  { key: "thisMonth", label: "This Month" },
+  { key: "last7Days", label: "7D" },
+  { key: "last30Days", label: "30D" },
+  { key: "last90Days", label: "90D" },
+  { key: "custom", label: "Custom" },
 ];
 
 function toDateStr(d: Date): string {
