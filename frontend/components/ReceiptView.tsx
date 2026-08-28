@@ -166,7 +166,7 @@ export default function ReceiptView({
 
         <Divider />
 
-        <div className="flex justify-between text-sm font-bold">
+        <div className="flex justify-between text-base font-bold">
           <span>TOTAL</span>
           <span>
             {currencySymbol}
@@ -185,8 +185,12 @@ export default function ReceiptView({
 
         <Divider />
         <p className="text-center">Thank you!</p>
-        <div className="mt-3 flex justify-center opacity-60">
-          <PoweredByRatel className="text-[9px]" iconSize={10} />
+        {/* Solid black + bold, not faded — thermal printers render
+            low-opacity/gray text as faint or patchy at low DPI, so the
+            same "quiet" treatment that reads fine on screen can come out
+            barely legible on actual receipt paper. */}
+        <div className="mt-3 flex justify-center">
+          <PoweredByRatel className="text-[10px] font-bold" iconSize={11} />
         </div>
       </div>
     </div>
