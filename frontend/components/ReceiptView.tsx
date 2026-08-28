@@ -111,10 +111,12 @@ export default function ReceiptView({
         style={{ width: PAPER_PX[width], padding: "12px 10px" }}
       >
         <div className="flex flex-col items-center text-center">
-          {/* Platform credit — quiet and small, above the business's own
-              identity below, which stays the most prominent thing here. */}
+          {/* Platform credit — small (not faded — anything below full
+              opacity risks printing as a faint smudge on thermal paper),
+              above the business's own identity below, which stays the
+              most prominent thing here via size/weight, not opacity. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/branding/tallia-logo-mono.svg" alt="" className="mb-1.5 h-3.5 w-auto opacity-50" />
+          <img src="/branding/tallia-logo-mono.svg" alt="" className="mb-1.5 h-3.5 w-auto" />
           {businessLogoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={businessLogoUrl} alt="" className="mb-1.5 h-10 w-10 rounded object-cover" />
@@ -142,7 +144,7 @@ export default function ReceiptView({
                 {item.gift && " (Gift)"}
               </span>
             </div>
-            <div className="flex justify-between text-black/70">
+            <div className="flex justify-between">
               <span>
                 {item.quantity} × {currencySymbol}
                 {item.unitPrice.toFixed(2)}
@@ -153,7 +155,7 @@ export default function ReceiptView({
               </span>
             </div>
             {!!item.discountAmount && item.discountAmount > 0 && (
-              <div className="flex justify-between text-black/70">
+              <div className="flex justify-between">
                 <span>{item.gift ? "Gift" : "Discount"}</span>
                 <span>
                   -{currencySymbol}
