@@ -9,6 +9,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -29,13 +31,18 @@ export default function ActivityPage() {
   const [fetching, setFetching] = useState(true);
 
   const [userId, setUserId] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
 
   const loadLogs = useCallback(async () => {
     if (!session) return;
-    setLogs(await api.listActivityLogs(session.token, { userId: userId || undefined, from: from || undefined, to: to || undefined }));
-  }, [session, userId, from, to]);
+    setLogs(
+      await api.listActivityLogs(session.token, {
+        userId: userId || undefined,
+        from: dateRange.from || undefined,
+        to: dateRange.to || undefined,
+      })
+    );
+  }, [session, userId, dateRange]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -60,52 +67,36 @@ export default function ActivityPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Activity Log" subtitle="Everything happening on your team's account, most recent first." />
 
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Staff member</label>
-          <select
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          >
-            <option value="">Everyone</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.fullName}
-              </option>
-            ))}
-          </select>
+      <Card className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Staff member</label>
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">Everyone</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+          {(userId || dateRange.preset !== "today") && (
+            <button
+              onClick={() => {
+                setUserId("");
+                setDateRange(defaultDateRangeValue());
+              }}
+              className="text-sm font-medium text-accent-hover hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">From</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">To</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-        {(userId || from || to) && (
-          <button
-            onClick={() => {
-              setUserId("");
-              setFrom("");
-              setTo("");
-            }}
-            className="text-sm font-medium text-accent-hover hover:underline"
-          >
-            Clear filters
-          </button>
-        )}
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </Card>
 
       <Card>

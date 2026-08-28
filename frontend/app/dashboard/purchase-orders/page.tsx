@@ -13,6 +13,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 interface CartLine {
   product: Product;
@@ -33,6 +35,7 @@ export default function PurchaseOrdersPage() {
   const [productSearch, setProductSearch] = useState("");
   const [productCategoryId, setProductCategoryId] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
+  const [orderDateRange, setOrderDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [supplierId, setSupplierId] = useState("");
@@ -48,7 +51,7 @@ export default function PurchaseOrdersPage() {
         api.listProducts(session.token),
         api.listProductCategories(session.token),
         api.listSuppliers(session.token),
-        api.listPurchaseOrders(session.token),
+        api.listPurchaseOrders(session.token, { from: orderDateRange.from ?? undefined, to: orderDateRange.to ?? undefined }),
       ]);
       setProducts(p);
       setCategories(cat);
@@ -57,7 +60,7 @@ export default function PurchaseOrdersPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load purchase orders.");
     }
-  }, [session]);
+  }, [session, orderDateRange]);
 
   const visibleProducts = products.filter((p) => {
     if (productCategoryId && p.categoryId !== productCategoryId) return false;
@@ -317,25 +320,28 @@ export default function PurchaseOrdersPage() {
       )}
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-0">
-          <h2 className="text-base font-semibold text-ink-900">Orders</h2>
-          {orders.length > 0 && (
-            <div className="relative min-w-[200px]">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
-              <input
-                value={orderSearch}
-                onChange={(e) => setOrderSearch(e.target.value)}
-                placeholder="Search PO #, supplier, item"
-                className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-3 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              />
-            </div>
-          )}
+        <div className="flex flex-col gap-3 p-5 pb-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink-900">Orders</h2>
+            {orders.length > 0 && (
+              <div className="relative min-w-[200px]">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+                <input
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  placeholder="Search PO #, supplier, item"
+                  className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-3 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                />
+              </div>
+            )}
+          </div>
+          <DateRangeFilter value={orderDateRange} onChange={setOrderDateRange} />
         </div>
         {actionError && <p className="px-5 pt-2 text-sm text-danger">{actionError}</p>}
         {fetching ? (
           <TableSkeleton cols={6} />
         ) : orders.length === 0 ? (
-          <EmptyState icon={ClipboardList} title="No purchase orders yet" description="Orders you create will show up here." />
+          <EmptyState icon={ClipboardList} title="No purchase orders in this range" description="Try a wider date range, or create one above." />
         ) : visibleOrders.length === 0 ? (
           <p className="p-5 text-sm text-ink-500">No orders match this search.</p>
         ) : (

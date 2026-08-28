@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,9 +41,22 @@ public class ExpenseService {
     }
 
     public List<ExpenseResponse> listAll() {
-        return expenseRepository.findAllByBusinessIdOrderByExpenseDateDesc(TenantContext.getBusinessId()).stream()
-                .map(this::toResponse)
-                .toList();
+        return list(null, null);
+    }
+
+    // Backs the Expenses page's date filter (defaults to Today, see
+    // DateRangeFilter) — both-or-neither, null on both means "all time."
+    public List<ExpenseResponse> list(LocalDate from, LocalDate to) {
+        UUID businessId = TenantContext.getBusinessId();
+        List<Expense> expenses = (from == null && to == null)
+                ? expenseRepository.findAllByBusinessIdOrderByExpenseDateDesc(businessId)
+                // findAllByBusinessIdAndExpenseDateBetween has no ORDER BY of its
+                // own (listBetween()'s only other caller sums/counts it) — sort
+                // explicitly here to keep this list's "most recent first" convention.
+                : expenseRepository.findAllByBusinessIdAndExpenseDateBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(Expense::getExpenseDate).reversed())
+                        .toList();
+        return expenses.stream().map(this::toResponse).toList();
     }
 
     public ExpenseResponse get(UUID id) {

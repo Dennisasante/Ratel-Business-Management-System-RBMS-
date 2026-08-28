@@ -8,10 +8,14 @@ import com.ratel.rbms.entity.enums.ServiceOrderStatus;
 import com.ratel.rbms.service.BookingListService;
 import com.ratel.rbms.service.BookingService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,8 +32,17 @@ public class BookingController {
     }
 
     @GetMapping
-    public List<BookingListResponse> list(@RequestParam(required = false) ServiceOrderStatus status) {
-        return bookingListService.list(status);
+    public List<BookingListResponse> list(
+            @RequestParam(required = false) ServiceOrderStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        if (from == null && to == null) {
+            return bookingListService.list(status);
+        }
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return bookingListService.list(status, fromInstant, toInstant);
     }
 
     // No @PreAuthorize — mirrors ServiceOrderController.create(), which any

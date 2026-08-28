@@ -20,16 +20,26 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, UUID
 
     Optional<ServiceOrder> findByPaystackReferenceAndBusinessId(String paystackReference, UUID businessId);
 
-    // Backs the list page's type/status filter chips. Every param is optional —
+    // Backs the list page's type/status/date filters. Every param is optional —
     // pass null to not filter on it, same convention as ActivityLogRepository.search.
+    // :from/:to are Instant — a bare "? IS NULL" occurrence leaves Postgres
+    // unable to infer that parameter's type (confirmed: "could not determine
+    // data type of parameter"), same root cause as the CAST(...) convention
+    // already established on ActivityLogRepository.search/PaymentTransactionRepository.search.
+    // serviceTypeId/status don't need it — Hibernate already binds those with
+    // an explicit SQL type from the method parameter's own Java type.
     @Query("SELECT so FROM ServiceOrder so WHERE so.businessId = :businessId AND "
             + "(:serviceTypeId IS NULL OR so.serviceTypeId = :serviceTypeId) AND "
-            + "(:status IS NULL OR so.status = :status) "
+            + "(:status IS NULL OR so.status = :status) AND "
+            + "(so.receivedAt >= :from OR CAST(:from AS timestamp) IS NULL) AND "
+            + "(so.receivedAt < :to OR CAST(:to AS timestamp) IS NULL) "
             + "ORDER BY so.receivedAt DESC")
     List<ServiceOrder> search(
             @Param("businessId") UUID businessId,
             @Param("serviceTypeId") UUID serviceTypeId,
             @Param("status") com.ratel.rbms.entity.enums.ServiceOrderStatus status,
+            @Param("from") Instant from,
+            @Param("to") Instant to,
             Pageable pageable
     );
 

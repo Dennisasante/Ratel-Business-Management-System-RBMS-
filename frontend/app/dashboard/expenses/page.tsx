@@ -15,11 +15,14 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 export default function ExpensesPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [fetching, setFetching] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -27,8 +30,8 @@ export default function ExpensesPage() {
 
   const loadExpenses = useCallback(async () => {
     if (!session) return;
-    setExpenses(await api.listExpenses(session.token));
-  }, [session]);
+    setExpenses(await api.listExpenses(session.token, { from: dateRange.from ?? undefined, to: dateRange.to ?? undefined }));
+  }, [session, dateRange]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -36,6 +39,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     if (!session) return;
+    setFetching(true);
     loadExpenses().finally(() => setFetching(false));
   }, [session, loadExpenses]);
 
@@ -73,14 +77,17 @@ export default function ExpensesPage() {
       />
 
       <Card>
+        <div className="p-5 pb-0">
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        </div>
         {actionInfo && <p className="px-5 pt-4 text-sm text-info">{actionInfo}</p>}
         {fetching ? (
           <TableSkeleton cols={7} />
         ) : expenses.length === 0 ? (
           <EmptyState
             icon={Receipt}
-            title="No expenses logged yet"
-            description="Log your first expense to start tracking costs."
+            title="No expenses in this range"
+            description="Try a wider date range, or log your first expense to start tracking costs."
             action={
               <Button onClick={() => setShowAdd(true)}>
                 <Plus size={16} /> Log expense

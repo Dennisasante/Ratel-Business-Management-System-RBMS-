@@ -210,10 +210,17 @@ public class ServiceOrderService {
     }
 
     public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page) {
+        return list(serviceTypeId, status, page, null, null);
+    }
+
+    // Date-range filter for the Service Orders page (defaults to Today, see
+    // DateRangeFilter) — both-or-neither; null on both means "all time."
+    // Filters on receivedAt, same field the existing report endpoint uses.
+    public List<ServiceOrderResponse> list(UUID serviceTypeId, ServiceOrderStatus status, int page, Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
         moduleAccessService.requireModule(businessId, "SERVICE_ORDERS");
         List<ServiceOrder> orders = serviceOrderRepository.search(
-                businessId, serviceTypeId, status, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
+                businessId, serviceTypeId, status, from, to, PageRequest.of(Math.max(page, 0), PAGE_SIZE));
         return orders.stream().map(this::toResponse).toList();
     }
 

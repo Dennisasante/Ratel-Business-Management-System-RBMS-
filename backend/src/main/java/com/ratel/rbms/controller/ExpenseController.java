@@ -5,11 +5,13 @@ import com.ratel.rbms.dto.ExpenseRequest;
 import com.ratel.rbms.dto.ExpenseResponse;
 import com.ratel.rbms.service.ExpenseService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,8 +27,11 @@ public class ExpenseController {
     }
 
     @GetMapping
-    public List<ExpenseResponse> list() {
-        return expenseService.listAll();
+    public List<ExpenseResponse> list(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return expenseService.list(from, to);
     }
 
     @GetMapping("/{id}")

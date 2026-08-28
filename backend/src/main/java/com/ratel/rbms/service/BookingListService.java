@@ -17,6 +17,7 @@ import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,10 +60,20 @@ public class BookingListService {
     }
 
     public List<BookingListResponse> list(ServiceOrderStatus status) {
+        return list(status, null, null);
+    }
+
+    // Date-range filter for the Bookings page (defaults to Today, see
+    // DateRangeFilter) — both-or-neither; null on both means "all time."
+    public List<BookingListResponse> list(ServiceOrderStatus status, Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
         moduleAccessService.requireModule(businessId, "BOOKINGS");
 
-        List<Booking> bookings = bookingRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
+        List<Booking> bookings = (from == null && to == null)
+                ? bookingRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
+                : bookingRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
+                        .sorted(java.util.Comparator.comparing(Booking::getCreatedAt).reversed())
+                        .toList();
 
         Map<UUID, ServiceOrder> ordersById = serviceOrderRepository.findAllById(
                 bookings.stream().map(Booking::getServiceOrderId).toList()

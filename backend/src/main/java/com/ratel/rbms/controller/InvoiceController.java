@@ -11,6 +11,7 @@ import com.ratel.rbms.service.InvoicePdfService;
 import com.ratel.rbms.service.InvoiceService;
 import com.ratel.rbms.tenant.TenantContext;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,8 +37,11 @@ public class InvoiceController {
     }
 
     @GetMapping
-    public List<InvoiceSummaryResponse> list() {
-        return invoiceService.listAll();
+    public List<InvoiceSummaryResponse> list(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return invoiceService.list(from, to);
     }
 
     @GetMapping("/{id}")

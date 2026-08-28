@@ -23,6 +23,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 const STATUS_LABELS: Record<string, string> = {
   RECEIVED: "Received",
@@ -68,6 +70,7 @@ export default function BookingsPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [fetching, setFetching] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [error, setError] = useState<string | null>(null);
   const [showAddBooking, setShowAddBooking] = useState(false);
   const [detailBooking, setDetailBooking] = useState<BookingListItem | null>(null);
@@ -75,14 +78,17 @@ export default function BookingsPage() {
   const loadBookings = useCallback(async () => {
     if (!session) return;
     try {
-      const data = await api.listBookings(session.token, statusFilter || undefined);
+      const data = await api.listBookings(session.token, statusFilter || undefined, {
+        from: dateRange.from ?? undefined,
+        to: dateRange.to ?? undefined,
+      });
       setBookings(data);
       // Keep an open detail modal in sync with the freshest row data.
       setDetailBooking((prev) => (prev ? data.find((b) => b.id === prev.id) ?? null : null));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load bookings.");
     }
-  }, [session, statusFilter]);
+  }, [session, statusFilter, dateRange]);
 
   const loadFormData = useCallback(async () => {
     if (!session) return;
@@ -137,11 +143,14 @@ export default function BookingsPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
-        {Object.keys(STATUS_LABELS).map((s) => (
-          <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
-        ))}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
+          {Object.keys(STATUS_LABELS).map((s) => (
+            <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+          ))}
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       <Card>
@@ -151,8 +160,8 @@ export default function BookingsPage() {
         ) : bookings.length === 0 ? (
           <EmptyState
             icon={CalendarCheck2}
-            title="No bookings yet"
-            description="Bookings made through your booking page will show up here."
+            title="No bookings in this range"
+            description="Try a wider date range — bookings made through your booking page will show up here."
           />
         ) : (
           <Table>

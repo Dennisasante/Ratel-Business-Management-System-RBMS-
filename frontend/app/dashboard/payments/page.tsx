@@ -13,6 +13,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import StatCard from "@/components/ui/StatCard";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 const STATUS_TONES: Record<string, "neutral" | "accent" | "success" | "danger" | "info" | "violet"> = {
   PENDING: "neutral",
@@ -27,21 +29,11 @@ const SOURCE_LABELS: Record<string, string> = {
   PURCHASE_ORDER: "Purchase order",
 };
 
-function firstDayOfMonth(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function PaymentsPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
 
-  const [from, setFrom] = useState(firstDayOfMonth());
-  const [to, setTo] = useState(today());
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [direction, setDirection] = useState<"" | "INCOMING" | "OUTGOING">("");
   const [gateway, setGateway] = useState<"" | "PAYSTACK" | "MANUAL">("");
 
@@ -55,8 +47,8 @@ export default function PaymentsPage() {
     setError(null);
     try {
       const data = await api.listPaymentTransactions(session.token, {
-        from,
-        to,
+        from: dateRange.from ?? undefined,
+        to: dateRange.to ?? undefined,
         direction: direction || undefined,
         gateway: gateway || undefined,
       });
@@ -64,7 +56,7 @@ export default function PaymentsPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load payment transactions.");
     }
-  }, [session, from, to, direction, gateway]);
+  }, [session, dateRange, direction, gateway]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -96,7 +88,13 @@ export default function PaymentsPage() {
   // Computed above the loading/session early return — like every other hook
   // in this component — so useMemo below is never skipped on some renders
   // and not others (React's hooks must run in the same order every render).
-  const rangeDays = Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1;
+  // "All time" (no from/to at all) has no finite width — treat it the same
+  // as any other very wide range: monthly buckets, with the same "narrow
+  // this down" nudge.
+  const rangeDays =
+    dateRange.from && dateRange.to
+      ? Math.round((new Date(dateRange.to).getTime() - new Date(dateRange.from).getTime()) / 86_400_000) + 1
+      : Infinity;
   const granularity: "day" | "month" = rangeDays <= 45 ? "day" : "month";
   const rangeTooWide = rangeDays > 366;
 
@@ -151,52 +149,37 @@ export default function PaymentsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Payments" subtitle="Every payment transaction across the system — online and manual." />
 
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">From</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
+      <Card className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Direction</label>
+            <select
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as "" | "INCOMING" | "OUTGOING")}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">All</option>
+              <option value="INCOMING">Incoming</option>
+              <option value="OUTGOING">Outgoing</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink-700">Type</label>
+            <select
+              value={gateway}
+              onChange={(e) => setGateway(e.target.value as "" | "PAYSTACK" | "MANUAL")}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">All</option>
+              <option value="PAYSTACK">Online payments</option>
+              <option value="MANUAL">Manual / cash</option>
+            </select>
+          </div>
+          <Button onClick={() => { setFetching(true); load().finally(() => setFetching(false)); }} disabled={fetching}>
+            {fetching ? "Updating..." : "Update"}
+          </Button>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">To</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Direction</label>
-          <select
-            value={direction}
-            onChange={(e) => setDirection(e.target.value as "" | "INCOMING" | "OUTGOING")}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          >
-            <option value="">All</option>
-            <option value="INCOMING">Incoming</option>
-            <option value="OUTGOING">Outgoing</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Type</label>
-          <select
-            value={gateway}
-            onChange={(e) => setGateway(e.target.value as "" | "PAYSTACK" | "MANUAL")}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          >
-            <option value="">All</option>
-            <option value="PAYSTACK">Online payments</option>
-            <option value="MANUAL">Manual / cash</option>
-          </select>
-        </div>
-        <Button onClick={() => { setFetching(true); load().finally(() => setFetching(false)); }} disabled={fetching}>
-          {fetching ? "Updating..." : "Update"}
-        </Button>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </Card>
 
       {error && <p className="text-sm text-danger">{error}</p>}

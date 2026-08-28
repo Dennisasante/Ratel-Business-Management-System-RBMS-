@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,12 +77,21 @@ public class EcommerceOrderService {
     }
 
     public List<EcommerceOrderResponse> list() {
+        return list(null, null);
+    }
+
+    // Date-range filter for the E-commerce Orders page (defaults to Today,
+    // see DateRangeFilter) — both-or-neither; null on both means "all time."
+    public List<EcommerceOrderResponse> list(Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.WOOCOMMERCE_SYNC);
         moduleAccessService.requireModule(businessId, "ECOMMERCE");
-        return ecommerceOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
-                .map(this::toResponse)
-                .toList();
+        List<EcommerceOrder> orders = (from == null && to == null)
+                ? ecommerceOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
+                : ecommerceOrderRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(EcommerceOrder::getCreatedAt).reversed())
+                        .toList();
+        return orders.stream().map(this::toResponse).toList();
     }
 
     public EcommerceOrderDetailResponse get(UUID id) {

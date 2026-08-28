@@ -24,7 +24,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.UUID;
@@ -51,9 +53,16 @@ public class ServiceOrderController {
     public List<ServiceOrderResponse> list(
             @RequestParam(required = false) UUID serviceTypeId,
             @RequestParam(required = false) ServiceOrderStatus status,
-            @RequestParam(required = false, defaultValue = "0") int page
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        return serviceOrderService.list(serviceTypeId, status, page);
+        if (from == null && to == null) {
+            return serviceOrderService.list(serviceTypeId, status, page);
+        }
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return serviceOrderService.list(serviceTypeId, status, page, fromInstant, toInstant);
     }
 
     // Business-wide revenue/turnaround — unlike list()/get() below, this isn't

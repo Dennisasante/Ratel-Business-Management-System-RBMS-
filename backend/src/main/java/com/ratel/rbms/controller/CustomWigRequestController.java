@@ -17,6 +17,7 @@ import com.ratel.rbms.dto.VerifyPaymentRequest;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.service.CustomWigRequestService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,8 +45,16 @@ public class CustomWigRequestController {
     }
 
     @GetMapping
-    public List<CustomWigRequestResponse> list() {
-        return customWigRequestService.list();
+    public List<CustomWigRequestResponse> list(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        if (from == null && to == null) {
+            return customWigRequestService.list();
+        }
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return customWigRequestService.list(fromInstant, toInstant);
     }
 
     // Staff logging a request that arrived through an informal channel

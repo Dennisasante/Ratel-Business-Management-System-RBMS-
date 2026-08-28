@@ -15,6 +15,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   DRAFT: "Draft",
@@ -39,6 +41,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
   const [fetching, setFetching] = useState(true);
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "">("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
@@ -51,8 +54,8 @@ export default function InvoicesPage() {
 
   const loadInvoices = useCallback(async () => {
     if (!session) return;
-    setInvoices(await api.listInvoices(session.token));
-  }, [session]);
+    setInvoices(await api.listInvoices(session.token, { from: dateRange.from ?? undefined, to: dateRange.to ?? undefined }));
+  }, [session, dateRange]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -223,11 +226,14 @@ export default function InvoicesPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
-        {ALL_STATUSES.map((s) => (
-          <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
-        ))}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
+          {ALL_STATUSES.map((s) => (
+            <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+          ))}
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       <Card>
@@ -238,8 +244,8 @@ export default function InvoicesPage() {
         ) : visibleInvoices.length === 0 ? (
           <EmptyState
             icon={FileText}
-            title="No invoices yet"
-            description="Create your first invoice to send to a client."
+            title="No invoices in this range"
+            description="Try a wider date range, or create your first invoice to send to a client."
             action={
               <Button onClick={() => setShowForm(true)}>
                 <Plus size={16} /> New invoice

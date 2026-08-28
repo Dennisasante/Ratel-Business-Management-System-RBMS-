@@ -13,6 +13,8 @@ import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 const STATUS_LABELS: Record<EcommerceOrderStatus, string> = {
   RECEIVED: "Received",
@@ -50,6 +52,7 @@ export default function EcommerceOrdersPage() {
   const [fetching, setFetching] = useState(true);
   const [upsellMessage, setUpsellMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<EcommerceOrderStatus | "">("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [detail, setDetail] = useState<EcommerceOrderDetail | null>(null);
@@ -57,7 +60,10 @@ export default function EcommerceOrdersPage() {
   const loadOrders = useCallback(async () => {
     if (!session) return;
     try {
-      const data = await api.listEcommerceOrders(session.token);
+      const data = await api.listEcommerceOrders(session.token, {
+        from: dateRange.from ?? undefined,
+        to: dateRange.to ?? undefined,
+      });
       setOrders(data);
       setUpsellMessage(null);
     } catch (err) {
@@ -67,7 +73,7 @@ export default function EcommerceOrdersPage() {
         throw err;
       }
     }
-  }, [session]);
+  }, [session, dateRange]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
@@ -134,11 +140,14 @@ export default function EcommerceOrdersPage() {
 
       {!upsellMessage && (
         <>
-          <div className="flex flex-wrap gap-2">
-            <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
-            {(Object.keys(STATUS_LABELS) as EcommerceOrderStatus[]).map((s) => (
-              <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
-            ))}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
+              {(Object.keys(STATUS_LABELS) as EcommerceOrderStatus[]).map((s) => (
+                <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+              ))}
+            </div>
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
 
           {actionError && <p className="text-sm text-danger">{actionError}</p>}
@@ -149,8 +158,8 @@ export default function EcommerceOrdersPage() {
             ) : visibleOrders.length === 0 ? (
               <EmptyState
                 icon={ShoppingBag}
-                title="No orders yet"
-                description="Orders placed on your WooCommerce store will show up here automatically."
+                title="No orders in this range"
+                description="Try a wider date range — orders placed on your WooCommerce store will show up here automatically."
               />
             ) : (
               <Table>

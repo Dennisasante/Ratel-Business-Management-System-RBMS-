@@ -50,6 +50,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -258,12 +260,22 @@ public class CustomWigRequestService {
     // ---- Owner side ----
 
     public List<CustomWigRequestResponse> list() {
+        return list(null, null);
+    }
+
+    // Date-range filter for the Custom Wig Requests page (defaults to
+    // Today, see DateRangeFilter) — both-or-neither; null on both means
+    // "all time."
+    public List<CustomWigRequestResponse> list(Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
         planFeatureService.requireFeature(businessId, PlanFeature.CUSTOM_WIG_REQUESTS);
         moduleAccessService.requireModule(businessId, "CUSTOM_WIG_REQUESTS");
-        return customWigRequestRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
-                .map(this::toResponse)
-                .toList();
+        List<CustomWigRequest> requests = (from == null && to == null)
+                ? customWigRequestRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
+                : customWigRequestRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(CustomWigRequest::getCreatedAt).reversed())
+                        .toList();
+        return requests.stream().map(this::toResponse).toList();
     }
 
     // ---- Super Admin side — explicit businessId (never TenantContext,

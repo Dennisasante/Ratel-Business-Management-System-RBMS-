@@ -4,11 +4,15 @@ import com.ratel.rbms.dto.PurchaseOrderRequest;
 import com.ratel.rbms.dto.PurchaseOrderResponse;
 import com.ratel.rbms.service.PurchaseOrderService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,8 +28,16 @@ public class PurchaseOrderController {
     }
 
     @GetMapping
-    public List<PurchaseOrderResponse> list() {
-        return purchaseOrderService.listAll();
+    public List<PurchaseOrderResponse> list(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        if (from == null && to == null) {
+            return purchaseOrderService.listAll();
+        }
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        return purchaseOrderService.list(fromInstant, toInstant);
     }
 
     @GetMapping("/{id}")

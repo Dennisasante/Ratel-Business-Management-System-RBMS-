@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -58,10 +59,20 @@ public class InvoiceService {
     }
 
     public List<InvoiceSummaryResponse> listAll() {
+        return list(null, null);
+    }
+
+    // Date-range filter for the Invoices page (defaults to Today, see
+    // DateRangeFilter) — both-or-neither; null on both means "all time."
+    // Filters on issueDate, same field the page's own "Date" column shows.
+    public List<InvoiceSummaryResponse> list(LocalDate from, LocalDate to) {
         UUID businessId = TenantContext.getBusinessId();
-        return invoiceRepository.findAllByBusinessIdOrderByIssueDateDesc(businessId).stream()
-                .map(InvoiceSummaryResponse::from)
-                .toList();
+        List<Invoice> invoices = (from == null && to == null)
+                ? invoiceRepository.findAllByBusinessIdOrderByIssueDateDesc(businessId)
+                : invoiceRepository.findAllByBusinessIdAndIssueDateBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(Invoice::getIssueDate).reversed())
+                        .toList();
+        return invoices.stream().map(InvoiceSummaryResponse::from).toList();
     }
 
     public InvoiceResponse get(UUID id) {

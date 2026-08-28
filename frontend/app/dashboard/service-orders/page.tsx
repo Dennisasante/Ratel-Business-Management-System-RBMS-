@@ -41,6 +41,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
 
 const STATUS_LABELS: Record<ServiceOrderStatus, string> = {
   RECEIVED: "Received",
@@ -111,6 +113,7 @@ export default function ServiceOrdersPage() {
 
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<ServiceOrderStatus | "">("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
@@ -126,12 +129,14 @@ export default function ServiceOrdersPage() {
       const data = await api.listServiceOrders(session.token, {
         serviceTypeId: typeFilter || undefined,
         status: statusFilter || undefined,
+        from: dateRange.from ?? undefined,
+        to: dateRange.to ?? undefined,
       });
       setOrders(data);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Couldn't load service orders.");
     }
-  }, [session, typeFilter, statusFilter]);
+  }, [session, typeFilter, statusFilter, dateRange]);
 
   const loadServiceTypes = useCallback(async () => {
     if (!session) return;
@@ -267,16 +272,19 @@ export default function ServiceOrdersPage() {
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterChip label="All types" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
-        {serviceTypes.map((t) => (
-          <FilterChip key={t.id} label={t.name} active={typeFilter === t.id} onClick={() => setTypeFilter(t.id)} />
-        ))}
-        <span className="mx-1 h-4 w-px bg-border" />
-        <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
-        {ALL_STAGES.map((s) => (
-          <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
-        ))}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip label="All types" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
+          {serviceTypes.map((t) => (
+            <FilterChip key={t.id} label={t.name} active={typeFilter === t.id} onClick={() => setTypeFilter(t.id)} />
+          ))}
+          <span className="mx-1 h-4 w-px bg-border" />
+          <FilterChip label="All statuses" active={statusFilter === ""} onClick={() => setStatusFilter("")} />
+          {ALL_STAGES.map((s) => (
+            <FilterChip key={s} label={STATUS_LABELS[s]} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+          ))}
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       <Card>
@@ -287,8 +295,8 @@ export default function ServiceOrdersPage() {
         ) : orders.length === 0 ? (
           <EmptyState
             icon={Wrench}
-            title="No service orders yet"
-            description="Orders you create will show up here."
+            title="No service orders in this range"
+            description="Try a wider date range — orders you create will show up here."
             action={
               serviceTypes.length > 0 ? (
                 <Button onClick={() => setModal({ type: "add" })}>

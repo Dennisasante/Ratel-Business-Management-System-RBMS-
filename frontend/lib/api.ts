@@ -1731,10 +1731,15 @@ export const api = {
   deleteProductCategory: (token: string, id: string) =>
     request<void>(`/api/product-categories/${id}`, { method: "DELETE" }, token),
 
-  listServiceOrders: (token: string, filters?: { serviceTypeId?: string; status?: ServiceOrderStatus }) => {
+  listServiceOrders: (
+    token: string,
+    filters?: { serviceTypeId?: string; status?: ServiceOrderStatus; from?: string; to?: string }
+  ) => {
     const params = new URLSearchParams();
     if (filters?.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
     if (filters?.status) params.set("status", filters.status);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
     const qs = params.toString();
     return request<ServiceOrder[]>(`/api/service-orders${qs ? `?${qs}` : ""}`, {}, token);
   },
@@ -1911,7 +1916,13 @@ export const api = {
       token
     ),
 
-  listExpenses: (token: string) => request<Expense[]>("/api/expenses", {}, token),
+  listExpenses: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<Expense[]>(`/api/expenses${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   createExpense: (token: string, payload: ExpensePayload) =>
     request<Expense>(
@@ -1927,7 +1938,13 @@ export const api = {
       token
     ),
 
-  listInvoices: (token: string) => request<InvoiceSummary[]>("/api/invoices", {}, token),
+  listInvoices: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<InvoiceSummary[]>(`/api/invoices${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   getInvoice: (token: string, id: string) => request<Invoice>(`/api/invoices/${id}`, {}, token),
 
@@ -1994,7 +2011,13 @@ export const api = {
   createSupplier: (token: string, payload: SupplierPayload) =>
     request<Supplier>("/api/suppliers", { method: "POST", body: JSON.stringify(payload) }, token),
 
-  listPurchaseOrders: (token: string) => request<PurchaseOrder[]>("/api/purchase-orders", {}, token),
+  listPurchaseOrders: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<PurchaseOrder[]>(`/api/purchase-orders${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   createPurchaseOrder: (token: string, payload: PurchaseOrderPayload) =>
     request<PurchaseOrder>(
@@ -2062,8 +2085,14 @@ export const api = {
 
   // --- Bookings (Owner sees/edits settings; STAFF sees their own assigned bookings) ---
 
-  listBookings: (token: string, status?: string) =>
-    request<BookingListItem[]>(`/api/bookings${status ? `?status=${status}` : ""}`, {}, token),
+  listBookings: (token: string, status?: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<BookingListItem[]>(`/api/bookings${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   // Staff creating a booking on a customer's behalf (e.g. a phone-in request).
   createStaffBooking: (token: string, payload: CreateStaffBookingPayload) =>
@@ -2395,8 +2424,13 @@ export const api = {
     return res.json();
   },
 
-  listEcommerceOrders: (token: string) =>
-    request<EcommerceOrder[]>("/api/ecommerce-orders", {}, token),
+  listEcommerceOrders: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<EcommerceOrder[]>(`/api/ecommerce-orders${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   getEcommerceOrder: (token: string, id: string) =>
     request<EcommerceOrderDetail>(`/api/ecommerce-orders/${id}`, {}, token),
@@ -2428,8 +2462,13 @@ export const api = {
   deleteCustomWigAttribute: (token: string, id: string) =>
     request<void>(`/api/custom-wig-attributes/${id}`, { method: "DELETE" }, token),
 
-  listCustomWigRequests: (token: string) =>
-    request<CustomWigRequest[]>("/api/custom-wig-requests", {}, token),
+  listCustomWigRequests: (token: string, filters?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    const qs = params.toString();
+    return request<CustomWigRequest[]>(`/api/custom-wig-requests${qs ? `?${qs}` : ""}`, {}, token);
+  },
 
   // Staff logging a request that arrived through an informal channel
   // (Instagram DM, WhatsApp, a phone call) — same multipart shape as the

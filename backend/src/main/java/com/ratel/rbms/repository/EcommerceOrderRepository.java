@@ -3,6 +3,7 @@ package com.ratel.rbms.repository;
 import com.ratel.rbms.entity.EcommerceOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,9 @@ import java.util.UUID;
 public interface EcommerceOrderRepository extends JpaRepository<EcommerceOrder, UUID> {
 
     List<EcommerceOrder> findAllByBusinessIdOrderByCreatedAtDesc(UUID businessId);
+
+    // Backs the E-commerce Orders page's date filter (defaults to Today).
+    List<EcommerceOrder> findAllByBusinessIdAndCreatedAtBetween(UUID businessId, Instant from, Instant to);
 
     Optional<EcommerceOrder> findByIdAndBusinessId(UUID id, UUID businessId);
 

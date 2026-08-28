@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -111,11 +112,20 @@ public class PurchaseOrderService {
     }
 
     public List<PurchaseOrderResponse> listAll() {
+        return list(null, null);
+    }
+
+    // Date-range filter for the Purchase Orders page (defaults to Today,
+    // see DateRangeFilter) — both-or-neither; null on both means "all time."
+    public List<PurchaseOrderResponse> list(Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
         moduleAccessService.requireModule(businessId, "SUPPLIERS_AND_PURCHASING");
-        return purchaseOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId).stream()
-                .map(this::toResponseWithItems)
-                .toList();
+        List<PurchaseOrder> orders = (from == null && to == null)
+                ? purchaseOrderRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
+                : purchaseOrderRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
+                        .sorted(Comparator.comparing(PurchaseOrder::getCreatedAt).reversed())
+                        .toList();
+        return orders.stream().map(this::toResponseWithItems).toList();
     }
 
     public PurchaseOrderResponse get(UUID id) {
