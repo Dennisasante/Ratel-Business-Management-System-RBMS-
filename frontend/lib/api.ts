@@ -1863,8 +1863,9 @@ export const api = {
       token
     ),
 
-  listSales: (token: string, filters?: { from?: string; to?: string }) => {
+  listSales: (token: string, filters?: { cashierId?: string; from?: string; to?: string }) => {
     const params = new URLSearchParams();
+    if (filters?.cashierId) params.set("cashierId", filters.cashierId);
     if (filters?.from) params.set("from", filters.from);
     if (filters?.to) params.set("to", filters.to);
     const qs = params.toString();

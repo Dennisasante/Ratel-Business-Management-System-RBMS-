@@ -15,6 +15,7 @@ import {
   ServiceCatalogItem,
   ServiceCatalogItemPayload,
   ServiceType,
+  UserSummary,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import CustomerPicker from "@/components/CustomerPicker";
@@ -75,6 +76,7 @@ export default function SalesPage() {
   const [services, setServices] = useState<ServiceCatalogItem[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [staffMembers, setStaffMembers] = useState<UserSummary[]>([]);
   const [fetching, setFetching] = useState(true);
 
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -85,6 +87,7 @@ export default function SalesPage() {
   const [salesSearch, setSalesSearch] = useState("");
   const [salesDateRange, setSalesDateRange] = useState<DateRangeValue>(defaultDateRangeValue());
   const [salesFetching, setSalesFetching] = useState(true);
+  const [salesCashierFilter, setSalesCashierFilter] = useState("");
   const [salesPaymentFilter, setSalesPaymentFilter] = useState<PaymentMethod | "">("");
   const [salesPage, setSalesPage] = useState(0);
   const SALES_PAGE_SIZE = 10;
@@ -109,33 +112,36 @@ export default function SalesPage() {
 
   const loadAll = useCallback(async () => {
     if (!session) return;
-    const [p, cat, svc, svcTypes, gw] = await Promise.all([
+    const [p, cat, svc, svcTypes, gw, users] = await Promise.all([
       api.listProducts(session.token),
       api.listProductCategories(session.token),
       api.listServiceCatalog(session.token, true),
       api.listServiceTypes(session.token),
       api.getPaymentGatewayStatus(session.token),
+      api.listUsers(session.token),
     ]);
     setProducts(p);
     setCategories(cat);
     setServices(svc);
     setServiceTypes(svcTypes);
     setPaystackConfigured(gw.paystackConfigured);
+    setStaffMembers(users);
   }, [session]);
 
-  // Server-side date filter, refetched on its own whenever the range changes
-  // — separate from loadAll() so switching "Today" -> "This month" doesn't
-  // also re-fetch the whole product/service catalog. Defaults to Today (see
-  // defaultDateRangeValue) rather than loading every sale the business has
-  // ever made.
+  // Server-side date + staff filter, refetched on its own whenever either
+  // changes — separate from loadAll() so switching "Today" -> "This month"
+  // doesn't also re-fetch the whole product/service catalog. Defaults to
+  // Today (see defaultDateRangeValue) rather than loading every sale the
+  // business has ever made.
   const loadSales = useCallback(async () => {
     if (!session) return;
     const s = await api.listSales(session.token, {
+      cashierId: salesCashierFilter || undefined,
       from: salesDateRange.from ?? undefined,
       to: salesDateRange.to ?? undefined,
     });
     setSales(s);
-  }, [session, salesDateRange]);
+  }, [session, salesCashierFilter, salesDateRange]);
 
   const visibleProducts = products.filter((p) => {
     if (productCategoryId && p.categoryId !== productCategoryId) return false;
@@ -177,7 +183,7 @@ export default function SalesPage() {
 
   useEffect(() => {
     setSalesPage(0);
-  }, [salesSearch, salesDateRange, salesPaymentFilter]);
+  }, [salesSearch, salesDateRange, salesCashierFilter, salesPaymentFilter]);
 
   useEffect(() => {
     setSalesPage((p) => Math.min(p, salesPageCount - 1));
@@ -609,6 +615,18 @@ export default function SalesPage() {
             <h2 className="text-base font-semibold text-ink-900">Sales</h2>
             <div className="flex flex-wrap items-center gap-2">
               <select
+                value={salesCashierFilter}
+                onChange={(e) => setSalesCashierFilter(e.target.value)}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="">Everyone</option>
+                {staffMembers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName}
+                  </option>
+                ))}
+              </select>
+              <select
                 value={salesPaymentFilter}
                 onChange={(e) => setSalesPaymentFilter(e.target.value as PaymentMethod | "")}
                 className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
@@ -634,7 +652,7 @@ export default function SalesPage() {
           <DateRangeFilter value={salesDateRange} onChange={setSalesDateRange} />
         </div>
         {salesFetching ? (
-          <TableSkeleton cols={6} />
+          <TableSkeleton cols={7} />
         ) : sales.length === 0 ? (
           <EmptyState
             icon={Receipt}
@@ -651,6 +669,7 @@ export default function SalesPage() {
                   <Th>Sale</Th>
                   <Th>Customer</Th>
                   <Th>Items</Th>
+                  <Th>Sold by</Th>
                   <Th>Payment</Th>
                   <Th className="text-right">Total</Th>
                   <Th></Th>
@@ -664,6 +683,7 @@ export default function SalesPage() {
                     <Td className="text-ink-500">
                       {s.items.map((i) => `${i.productName} ×${i.quantity}${i.gift ? " (gift)" : ""}`).join(", ")}
                     </Td>
+                    <Td className="text-ink-500">{s.cashierName}</Td>
                     <Td className="text-ink-500">
                       <span className="block">{s.paymentMethod.replaceAll("_", " ")}</span>
                       {s.paymentStatus !== "PAID" && (

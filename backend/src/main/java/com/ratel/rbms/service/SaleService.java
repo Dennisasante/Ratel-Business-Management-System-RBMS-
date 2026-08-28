@@ -40,7 +40,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -241,24 +240,24 @@ public class SaleService {
     }
 
     public List<SaleResponse> listAll() {
-        return list(null, null);
+        return list(null, null, null);
     }
 
-    // Date-range filter for the Sales page's new date filter — from/to are
-    // both-or-neither; null on both means "all time" (used by listAll()
-    // above). Reuses the exact same findAllByBusinessIdAndCreatedAtBetween
-    // the reports endpoint already relies on, rather than a second query.
+    // Date-range filter for the Sales page (§Phase 1) — kept for any other
+    // caller that doesn't care about the cashier dimension.
     public List<SaleResponse> list(Instant from, Instant to) {
+        return list(null, from, to);
+    }
+
+    // Full filter for the Sales page's cashier + date-range row (§Phase 2) —
+    // every param optional, null-on-all-three means "everything." Uses
+    // SaleRepository.search's own ORDER BY rather than the old fetch-then-sort
+    // workaround, now that a single query handles both dimensions at once.
+    public List<SaleResponse> list(UUID cashierId, Instant from, Instant to) {
         UUID businessId = TenantContext.getBusinessId();
-        List<Sale> sales = (from == null && to == null)
+        List<Sale> sales = (cashierId == null && from == null && to == null)
                 ? saleRepository.findAllByBusinessIdOrderByCreatedAtDesc(businessId)
-                // findAllByBusinessIdAndCreatedAtBetween has no ORDER BY of its own
-                // (its other callers — reports/digests — only ever sum/count it),
-                // so sort explicitly here to keep this list's own "most recent
-                // first" convention.
-                : saleRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
-                        .sorted(Comparator.comparing(Sale::getCreatedAt).reversed())
-                        .toList();
+                : saleRepository.search(businessId, cashierId, from, to);
         return sales.stream()
                 .map(this::toResponseWithItems)
                 .toList();

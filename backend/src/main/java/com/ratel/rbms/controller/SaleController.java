@@ -47,15 +47,16 @@ public class SaleController {
 
     @GetMapping
     public List<SaleResponse> list(
+            @RequestParam(required = false) UUID cashierId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        if (from == null && to == null) {
+        if (cashierId == null && from == null && to == null) {
             return saleService.listAll();
         }
         Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
         Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
-        return saleService.list(fromInstant, toInstant);
+        return saleService.list(cashierId, fromInstant, toInstant);
     }
 
     @GetMapping("/{id}")
