@@ -262,6 +262,7 @@ export default function InventoryPage() {
                 <Th>Category</Th>
                 <Th>Stock</Th>
                 <Th>Cost / Sell</Th>
+                <Th>Margin</Th>
                 <Th></Th>
               </Tr>
             </THead>
@@ -281,6 +282,9 @@ export default function InventoryPage() {
                   </Td>
                   <Td className="tabular text-ink-500">
                     GH₵{p.costPrice.toFixed(2)} / GH₵{p.sellingPrice.toFixed(2)}
+                  </Td>
+                  <Td className="tabular text-ink-500">
+                    {p.profitMarginPercent === null ? "—" : `${p.profitMarginPercent.toFixed(1)}%`}
                   </Td>
                   <Td>
                     <div className="flex justify-end gap-4 whitespace-nowrap text-right">

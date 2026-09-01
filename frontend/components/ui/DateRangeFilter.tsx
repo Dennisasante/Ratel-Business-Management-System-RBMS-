@@ -1,5 +1,6 @@
 "use client";
 
+import { Calendar } from "lucide-react";
 import { DATE_RANGE_PRESETS, DateRangePreset, DateRangeValue, computeDateRange } from "@/lib/dateRangePresets";
 
 const inputClass =
@@ -41,12 +42,13 @@ export default function DateRangeFilter({
             key={key}
             type="button"
             onClick={() => selectPreset(key)}
-            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
               value.preset === key
                 ? "border-accent bg-accent-soft text-accent-hover"
                 : "border-border bg-surface text-ink-700 hover:border-border-strong"
             }`}
           >
+            {key === "custom" && <Calendar size={12} />}
             {label}
           </button>
         ))}

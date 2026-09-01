@@ -1,29 +1,39 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Users,
-  Wallet,
-  Wrench,
-  AlertTriangle,
-  ShoppingCart,
-  ShoppingBag,
-  Package,
-  Receipt,
-  History,
-  Sparkles,
-  ChevronRight,
-  Link2,
-  Copy,
-  Check,
-} from "lucide-react";
+import { Wrench, History, Sparkles, Link2, Copy, Check, ShoppingCart, Package, Receipt } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, ActivityLogEntry, ServiceOrder, UserSummary } from "@/lib/api";
+import {
+  api,
+  ActivityLogEntry,
+  ServiceOrder,
+  DashboardSummary,
+  DashboardChart,
+  DashboardAttention,
+  TopProduct,
+  TopProductRankMetric,
+  ProductsNeedingAttention,
+  InventorySnapshot,
+  SalesBreakdown,
+  SalesBreakdownDimension,
+  Expense,
+} from "@/lib/api";
+import { DateRangeValue, defaultDateRangeValue } from "@/lib/dateRangePresets";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import Card from "@/components/ui/Card";
 import StatCard from "@/components/ui/StatCard";
 import CardSkeleton from "@/components/ui/CardSkeleton";
+import BusinessOverviewGrid from "@/components/dashboard/BusinessOverviewGrid";
+import SalesProfitChart from "@/components/dashboard/SalesProfitChart";
+import NeedsAttentionCard from "@/components/dashboard/NeedsAttentionCard";
+import TopProductsCard from "@/components/dashboard/TopProductsCard";
+import ProductsNeedingAttentionCard from "@/components/dashboard/ProductsNeedingAttentionCard";
+import InventorySnapshotCard from "@/components/dashboard/InventorySnapshotCard";
+import SalesBreakdownCard from "@/components/dashboard/SalesBreakdownCard";
+import ExpensesSummaryCard from "@/components/dashboard/ExpensesSummaryCard";
+import ProfitabilitySummaryCard from "@/components/dashboard/ProfitabilitySummaryCard";
 
 function timeOfDayGreeting(): string {
   const hour = new Date().getHours();
@@ -50,121 +60,102 @@ const QUICK_ACTIONS = [
   { href: "/dashboard/expenses", label: "Log expense", icon: Receipt },
 ];
 
-function AttentionRow({
-  href,
-  icon: Icon,
-  label,
-  count,
-  zeroHint,
-}: {
-  href: string;
-  icon: typeof AlertTriangle;
-  label: string;
-  count: number;
-  zeroHint: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-between gap-3 border-b border-border py-3 text-sm last:border-0 transition hover:bg-canvas -mx-1 px-1 rounded-md"
-    >
-      <div className="flex items-center gap-3">
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-            count > 0 ? "bg-danger-soft text-danger" : "bg-canvas text-ink-500"
-          }`}
-        >
-          <Icon size={15} />
-        </span>
-        <div>
-          <p className="font-medium text-ink-900">{label}</p>
-          <p className="text-xs text-ink-500">{count > 0 ? `${count} need${count === 1 ? "s" : ""} your attention` : zeroHint}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5">
-        {count > 0 && (
-          <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-white">{count}</span>
-        )}
-        <ChevronRight size={15} className="text-ink-500" />
-      </div>
-    </Link>
-  );
-}
-
 export default function DashboardPage() {
   const { session, business, loading } = useAuth();
   const router = useRouter();
   const isStaff = session?.role === "STAFF";
-  const [users, setUsers] = useState<UserSummary[]>([]);
-  const [todayRevenue, setTodayRevenue] = useState(0);
-  const [todaySalesCount, setTodaySalesCount] = useState(0);
-  const [activeServiceOrders, setActiveServiceOrders] = useState(0);
-  const [lowStockCount, setLowStockCount] = useState(0);
-  const [newCustomWigCount, setNewCustomWigCount] = useState(0);
-  const [pendingEcommerceCount, setPendingEcommerceCount] = useState(0);
+
+  const [range, setRange] = useState<DateRangeValue>(defaultDateRangeValue());
+  const [rankBy, setRankBy] = useState<TopProductRankMetric>("REVENUE");
+  const [breakdownDimension, setBreakdownDimension] = useState<SalesBreakdownDimension>("PAYMENT_METHOD");
+
+  // Date-filtered — refetched whenever `range` (or the Top Products/breakdown
+  // selectors) changes.
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [chart, setChart] = useState<DashboardChart | null>(null);
+  const [topProducts, setTopProducts] = useState<TopProduct[] | null>(null);
+  const [salesBreakdown, setSalesBreakdown] = useState<SalesBreakdown | null>(null);
+  const [expenses, setExpenses] = useState<Expense[] | null>(null);
+
+  // Current-state — fetched once, never affected by the date filter.
+  const [attention, setAttention] = useState<DashboardAttention | null>(null);
+  const [productsNeedingAttention, setProductsNeedingAttention] = useState<ProductsNeedingAttention | null>(null);
+  const [inventorySnapshot, setInventorySnapshot] = useState<InventorySnapshot | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityLogEntry[]>([]);
+
+  // STAFF-only
+  const [activeServiceOrders, setActiveServiceOrders] = useState(0);
+
   const [fetching, setFetching] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const features = business?.planFeatures ?? [];
-  const hasCustomWig = features.includes("CUSTOM_WIG_REQUESTS");
-  const hasEcommerce = features.includes("WOOCOMMERCE_SYNC");
-
-  // STAFF only ever sees their own scheduled work — the business-wide
-  // financial/staffing/audit stats below aren't theirs to see, so skip
-  // fetching them entirely rather than fetch-then-hide.
-  const loadDashboard = useCallback(async () => {
+  const loadStaffView = useCallback(async () => {
     if (!session) return;
-    if (isStaff) {
-      const orders = await api.listServiceOrders(session.token);
-      setActiveServiceOrders(orders.filter((o: ServiceOrder) => o.status === "RECEIVED" || o.status === "IN_PROGRESS").length);
-      return;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    const [u, summary, orders, lowStock, activity] = await Promise.all([
-      api.listUsers(session.token),
-      api.getReportSummary(session.token, today, today),
-      api.listServiceOrders(session.token),
-      api.listLowStockProducts(session.token),
+    const orders = await api.listServiceOrders(session.token);
+    setActiveServiceOrders(orders.filter((o: ServiceOrder) => o.status === "RECEIVED" || o.status === "IN_PROGRESS").length);
+  }, [session]);
+
+  // Everything that depends on the global date filter — one Promise.all,
+  // not five separate round trips waiting on each other.
+  const loadDateScoped = useCallback(async () => {
+    if (!session) return;
+    const [s, c, tp, sb, ex] = await Promise.all([
+      api.getDashboardSummary(session.token, range.from, range.to),
+      api.getDashboardChart(session.token, range.from, range.to),
+      api.getTopProducts(session.token, range.from, range.to, rankBy, 10),
+      api.getSalesBreakdown(session.token, range.from, range.to, breakdownDimension),
+      api.listExpenses(session.token, { from: range.from ?? undefined, to: range.to ?? undefined }),
+    ]);
+    setSummary(s);
+    setChart(c);
+    setTopProducts(tp);
+    setSalesBreakdown(sb);
+    setExpenses(ex);
+  }, [session, range, rankBy, breakdownDimension]);
+
+  // Current-state sections — fetched once per page load, independent of the filter.
+  const loadCurrentState = useCallback(async () => {
+    if (!session) return;
+    const [att, pna, inv, activity] = await Promise.all([
+      api.getDashboardAttention(session.token),
+      api.getProductsNeedingAttention(session.token),
+      api.getInventorySnapshot(session.token),
       api.listActivityLogs(session.token),
     ]);
-    setUsers(u);
-    setTodayRevenue(summary.revenue);
-    setTodaySalesCount(summary.salesCount);
-    setActiveServiceOrders(orders.filter((o: ServiceOrder) => o.status === "RECEIVED" || o.status === "IN_PROGRESS").length);
-    setLowStockCount(lowStock.length);
+    setAttention(att);
+    setProductsNeedingAttention(pna);
+    setInventorySnapshot(inv);
     setRecentActivity(activity.slice(0, 6));
-
-    const featureFetches: Promise<void>[] = [];
-    if (hasCustomWig) {
-      featureFetches.push(
-        api.listCustomWigRequests(session.token).then((reqs) => {
-          setNewCustomWigCount(reqs.filter((r) => r.status === "SUBMITTED").length);
-        })
-      );
-    }
-    if (hasEcommerce) {
-      featureFetches.push(
-        api.listEcommerceOrders(session.token).then((ecomOrders) => {
-          setPendingEcommerceCount(ecomOrders.filter((o) => o.status === "RECEIVED").length);
-        })
-      );
-    }
-    await Promise.all(featureFetches);
-  }, [session, isStaff, hasCustomWig, hasEcommerce]);
+  }, [session]);
 
   useEffect(() => {
     if (!loading && !session) router.push("/login");
   }, [loading, session, router]);
 
+  // Current-state sections load exactly once per page visit (tracked via a
+  // ref, not state, so flipping it never itself triggers a re-render/effect
+  // loop) — every later run of this effect (range/rankBy/dimension changes)
+  // only refetches the date-scoped half.
+  const loadedCurrentStateRef = useRef(false);
   useEffect(() => {
     if (!session) return;
-    // Wait for the business record (and its plan features) to load before
-    // fetching owner-facing stats, so the feature-gated fetches below run on
-    // the first pass instead of a silent, panel-flashing second one.
-    if (!isStaff && !business) return;
-    loadDashboard().finally(() => setFetching(false));
-  }, [session, isStaff, business, loadDashboard]);
+    if (isStaff) {
+      loadStaffView().finally(() => setFetching(false));
+      return;
+    }
+    // Wait for the business record (plan features) before fetching, same as before.
+    if (!business) return;
+
+    const tasks: Promise<unknown>[] = [loadDateScoped()];
+    if (!loadedCurrentStateRef.current) {
+      loadedCurrentStateRef.current = true;
+      tasks.push(loadCurrentState());
+    }
+    Promise.all(tasks).finally(() => setFetching(false));
+    // loadDateScoped/loadCurrentState/loadStaffView are recreated from the
+    // deps already listed below, so omitting the functions themselves is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, isStaff, business, range, rankBy, breakdownDimension]);
 
   async function copyCustomerLink() {
     if (!business) return;
@@ -195,158 +186,147 @@ export default function DashboardPage() {
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           {timeOfDayGreeting()}, {session.fullName.split(" ")[0]}!
         </h1>
-        <p className="mt-2 text-sm text-white/80">Here&apos;s a quick look at how things are going today.</p>
+        <p className="mt-2 text-sm text-white/80">Here&apos;s a quick look at how things are going.</p>
       </div>
 
-      {fetching ? (
-        <CardSkeleton count={4} />
-      ) : isStaff ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Your service orders"
-            value={activeServiceOrders}
-            hint="Received or in progress"
-            icon={Wrench}
-            tone="info"
-          />
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <StatCard label="Team members" value={users.length} icon={Users} tone="accent" />
+      {isStaff ? (
+        fetching ? (
+          <CardSkeleton count={4} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              label="Today's revenue"
-              value={`GH₵${todayRevenue.toFixed(2)}`}
-              hint={`${todaySalesCount} sale${todaySalesCount === 1 ? "" : "s"} today`}
-              icon={Wallet}
-              tone="success"
-            />
-            <StatCard
-              label="Active service orders"
+              label="Your service orders"
               value={activeServiceOrders}
               hint="Received or in progress"
               icon={Wrench}
               tone="info"
             />
           </div>
-
-          <Card className="p-5">
-            <h2 className="text-base font-semibold text-ink-900">Needs your attention</h2>
-            <p className="mt-1 text-sm text-ink-500">A running list of what&apos;s waiting on you today.</p>
-            <div className="mt-3 flex flex-col">
-              <AttentionRow
-                href="/dashboard/inventory"
-                icon={AlertTriangle}
-                label="Low stock alerts"
-                count={lowStockCount}
-                zeroHint="All good"
-              />
-              {hasCustomWig && (
-                <AttentionRow
-                  href="/dashboard/custom-wig-requests"
-                  icon={Sparkles}
-                  label="New custom wig requests"
-                  count={newCustomWigCount}
-                  zeroHint="All caught up"
-                />
-              )}
-              {hasEcommerce && (
-                <AttentionRow
-                  href="/dashboard/ecommerce-orders"
-                  icon={ShoppingBag}
-                  label="E-commerce orders to fulfill"
-                  count={pendingEcommerceCount}
-                  zeroHint="All caught up"
-                />
-              )}
-            </div>
+        )
+      ) : (
+        <>
+          {/* One global date filter drives every period-based metric below —
+              current-state sections (Needs Attention, Products Needing
+              Attention, Inventory Snapshot) are unaffected by it. */}
+          <Card className="p-4">
+            <DateRangeFilter value={range} onChange={setRange} />
           </Card>
 
-          {business && (
-            <Card className="flex flex-col gap-3 border-accent/20 bg-accent-soft/40 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-hover">
-                  <Link2 size={16} />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-900">Your customer link</p>
-                  <p className="mt-0.5 text-xs text-ink-500">
-                    One link for booking, custom orders, and more — share it anywhere, WhatsApp bio included.
-                  </p>
-                  <code className="mt-2 block max-w-full truncate rounded-lg bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-700 sm:hidden">
-                    {customerLinkUrl}
-                  </code>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <code className="hidden max-w-[240px] truncate rounded-lg bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-700 sm:block">
-                  {customerLinkUrl}
-                </code>
-                <button
-                  onClick={copyCustomerLink}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
-                >
-                  {copiedLink ? <Check size={13} /> : <Copy size={13} />}
-                  {copiedLink ? "Copied" : "Copy link"}
-                </button>
-              </div>
-            </Card>
-          )}
+          {fetching ? (
+            <CardSkeleton count={4} />
+          ) : (
+            <>
+              <BusinessOverviewGrid summary={summary!} />
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="p-5">
-              <h2 className="text-base font-semibold text-ink-900">Quick actions</h2>
-              <p className="mt-1 text-sm text-ink-500">Jump straight into your most common tasks.</p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                {QUICK_ACTIONS.map((action) => (
-                  <Link
-                    key={action.href}
-                    href={action.href}
-                    className="flex flex-col items-start gap-2 rounded-lg border border-border p-3 text-sm transition hover:border-accent hover:bg-accent-soft"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-soft text-accent-hover">
-                      <action.icon size={16} />
+              <SalesProfitChart chart={chart} />
+
+              <NeedsAttentionCard attention={attention} />
+
+              <TopProductsCard products={topProducts} rankBy={rankBy} onRankByChange={setRankBy} />
+
+              <ProductsNeedingAttentionCard data={productsNeedingAttention} />
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <InventorySnapshotCard snapshot={inventorySnapshot} />
+                <SalesBreakdownCard
+                  breakdown={salesBreakdown}
+                  dimension={breakdownDimension}
+                  onDimensionChange={setBreakdownDimension}
+                />
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <ExpensesSummaryCard expenses={expenses} />
+                <ProfitabilitySummaryCard summary={summary} />
+              </div>
+
+              {business && (
+                <Card className="flex flex-col gap-3 border-accent/20 bg-accent-soft/40 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-hover">
+                      <Link2 size={16} />
                     </span>
-                    <span className="font-medium text-ink-900">{action.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </Card>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink-900">Your customer link</p>
+                      <p className="mt-0.5 text-xs text-ink-500">
+                        One link for booking, custom orders, and more — share it anywhere, WhatsApp bio included.
+                      </p>
+                      <code className="mt-2 block max-w-full truncate rounded-lg bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-700 sm:hidden">
+                        {customerLinkUrl}
+                      </code>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <code className="hidden max-w-[240px] truncate rounded-lg bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-700 sm:block">
+                      {customerLinkUrl}
+                    </code>
+                    <button
+                      onClick={copyCustomerLink}
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+                    >
+                      {copiedLink ? <Check size={13} /> : <Copy size={13} />}
+                      {copiedLink ? "Copied" : "Copy link"}
+                    </button>
+                  </div>
+                </Card>
+              )}
 
-            <Card className="p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-ink-900">Recent activity</h2>
-                <Link href="/dashboard/activity" className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline">
-                  <History size={12} /> View all
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className="p-5">
+                  <h2 className="text-base font-semibold text-ink-900">Quick actions</h2>
+                  <p className="mt-1 text-sm text-ink-500">Jump straight into your most common tasks.</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {QUICK_ACTIONS.map((action) => (
+                      <Link
+                        key={action.href}
+                        href={action.href}
+                        className="flex flex-col items-start gap-2 rounded-lg border border-border p-3 text-sm transition hover:border-accent hover:bg-accent-soft"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-soft text-accent-hover">
+                          <action.icon size={16} />
+                        </span>
+                        <span className="font-medium text-ink-900">{action.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card className="p-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-ink-900">Recent activity</h2>
+                    <Link href="/dashboard/activity" className="flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline">
+                      <History size={12} /> View all
+                    </Link>
+                  </div>
+                  {recentActivity.length === 0 ? (
+                    <p className="mt-4 text-sm text-ink-500">Nothing yet — activity will show up here as your team works.</p>
+                  ) : (
+                    <ul className="mt-4 space-y-3">
+                      {recentActivity.map((log) => (
+                        <li key={log.id} className="flex items-start justify-between gap-3 border-b border-border pb-3 text-sm last:border-0 last:pb-0">
+                          <div>
+                            <p className="text-ink-900">{log.action}</p>
+                            <p className="mt-0.5 text-xs text-ink-500">{log.userName}</p>
+                          </div>
+                          <span className="shrink-0 whitespace-nowrap text-xs text-ink-500">{timeAgo(log.createdAt)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-5 py-4 shadow-card">
+                <div>
+                  <p className="text-sm font-medium text-ink-900">Want to update your business logo, contact info, or industry?</p>
+                  <p className="text-xs text-ink-500">That all lives in your business profile now.</p>
+                </div>
+                <Link href="/dashboard/profile" className="shrink-0 text-sm font-medium text-accent-hover hover:underline">
+                  Go to profile →
                 </Link>
               </div>
-              {recentActivity.length === 0 ? (
-                <p className="mt-4 text-sm text-ink-500">Nothing yet — activity will show up here as your team works.</p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {recentActivity.map((log) => (
-                    <li key={log.id} className="flex items-start justify-between gap-3 border-b border-border pb-3 text-sm last:border-0 last:pb-0">
-                      <div>
-                        <p className="text-ink-900">{log.action}</p>
-                        <p className="mt-0.5 text-xs text-ink-500">{log.userName}</p>
-                      </div>
-                      <span className="shrink-0 whitespace-nowrap text-xs text-ink-500">{timeAgo(log.createdAt)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-5 py-4 shadow-card">
-            <div>
-              <p className="text-sm font-medium text-ink-900">Want to update your business logo, contact info, or industry?</p>
-              <p className="text-xs text-ink-500">That all lives in your business profile now.</p>
-            </div>
-            <Link href="/dashboard/profile" className="shrink-0 text-sm font-medium text-accent-hover hover:underline">
-              Go to profile →
-            </Link>
-          </div>
+            </>
+          )}
         </>
       )}
     </div>

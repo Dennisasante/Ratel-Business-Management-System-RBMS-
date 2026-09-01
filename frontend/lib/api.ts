@@ -139,6 +139,10 @@ export interface Product {
   sku: string | null;
   costPrice: number;
   sellingPrice: number;
+  // Computed server-side from cost/selling price — never entered directly,
+  // no markup field exists anywhere.
+  profitPerUnit: number;
+  profitMarginPercent: number | null;
   quantity: number;
   lowStockThreshold: number;
   lowStock: boolean;
@@ -269,6 +273,12 @@ export interface SaleItem {
   discountAmount: number;
   subtotal: number;
   gift: boolean;
+  // Null for a SERVICE line, or a PRODUCT line sold before cost tracking
+  // existed and never backfilled — never a fabricated 0.
+  unitCost: number | null;
+  costOfGoodsSold: number | null;
+  grossProfit: number | null;
+  grossMarginPercent: number | null;
 }
 
 export interface Sale {
@@ -550,6 +560,93 @@ export interface ReportSummary {
   profit: number;
   salesCount: number;
   expenseCount: number;
+}
+
+// --- Dashboard (see backend DashboardController/DashboardService) ---
+
+export interface DashboardSummary {
+  from: string;
+  to: string;
+  revenue: number;
+  previousRevenue: number | null;
+  cogs: number;
+  grossProfit: number | null;
+  previousGrossProfit: number | null;
+  // Null (never a misleading 0) whenever revenue is zero/negative.
+  grossMarginPercent: number | null;
+  previousGrossMarginPercent: number | null;
+  expenses: number;
+  previousExpenses: number | null;
+  netProfit: number | null;
+  previousNetProfit: number | null;
+  teamMembers: number;
+  activeServiceOrders: number;
+}
+
+export interface DashboardChartPoint {
+  bucketStart: string;
+  label: string;
+  revenue: number;
+  grossProfit: number;
+  orders: number;
+}
+
+export interface DashboardChart {
+  granularity: "DAY" | "WEEK" | "MONTH";
+  points: DashboardChartPoint[];
+}
+
+export interface DashboardAttention {
+  lowStockProducts: number;
+  outOfStockProducts: number;
+  lowMarginProducts: number;
+  customWigRequestsEnabled: boolean;
+  newCustomWigRequests: number;
+  ecommerceEnabled: boolean;
+  ecommerceOrdersToFulfill: number;
+  pendingApprovals: number;
+  overdueInvoices: number;
+}
+
+export type TopProductRankMetric = "REVENUE" | "UNITS_SOLD" | "GROSS_PROFIT" | "MARGIN";
+
+export interface TopProduct {
+  productId: string;
+  productName: string;
+  unitsSold: number;
+  revenue: number;
+  grossProfit: number | null;
+  grossMarginPercent: number | null;
+}
+
+export interface ProductAttentionItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  lowStockThreshold: number;
+  profitMarginPercent: number | null;
+}
+
+export interface ProductsNeedingAttention {
+  lowStock: ProductAttentionItem[];
+  outOfStock: ProductAttentionItem[];
+  lowMargin: ProductAttentionItem[];
+}
+
+export interface InventorySnapshot {
+  totalProducts: number;
+  totalQuantity: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  inventoryValue: number;
+  lowStockItems: { productId: string; productName: string; quantity: number; lowStockThreshold: number }[];
+}
+
+export type SalesBreakdownDimension = "PAYMENT_METHOD" | "CATEGORY" | "SALESPERSON";
+
+export interface SalesBreakdown {
+  dimension: SalesBreakdownDimension;
+  entries: { label: string; revenue: number; percentOfTotal: number | null }[];
 }
 
 export interface GoogleRegisterPayload {
@@ -990,6 +1087,9 @@ export interface BusinessIntegrations {
   notifyOnSale: boolean;
   receiptPrinterEnabled: boolean;
   receiptPrinterPaperWidth: "58" | "80";
+  // Below this gross margin %, a product shows under "Low Margin Products"
+  // on the dashboard. Default 15.
+  minProfitMarginPercent: number;
 }
 
 // Every field: undefined/omitted = leave unchanged, "" = clear, else = set.
@@ -1004,6 +1104,7 @@ export interface BusinessIntegrationsPayload {
   notifyOnSale?: boolean;
   receiptPrinterEnabled?: boolean;
   receiptPrinterPaperWidth?: "58" | "80";
+  minProfitMarginPercent?: number;
 }
 
 export interface PaymentGatewayStatus {
@@ -1998,6 +2099,58 @@ export const api = {
     if (to) params.set("to", to);
     const qs = params.toString();
     return request<ReportSummary>(`/api/reports/summary${qs ? `?${qs}` : ""}`, {}, token);
+  },
+
+  getDashboardSummary: (token: string, from?: string | null, to?: string | null) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return request<DashboardSummary>(`/api/dashboard/summary${qs ? `?${qs}` : ""}`, {}, token);
+  },
+
+  getDashboardChart: (token: string, from?: string | null, to?: string | null) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return request<DashboardChart>(`/api/dashboard/chart${qs ? `?${qs}` : ""}`, {}, token);
+  },
+
+  getDashboardAttention: (token: string) => request<DashboardAttention>("/api/dashboard/attention", {}, token),
+
+  getTopProducts: (
+    token: string,
+    from?: string | null,
+    to?: string | null,
+    rankBy: TopProductRankMetric = "REVENUE",
+    limit = 10
+  ) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    params.set("rankBy", rankBy);
+    params.set("limit", String(limit));
+    return request<TopProduct[]>(`/api/dashboard/top-products?${params.toString()}`, {}, token);
+  },
+
+  getProductsNeedingAttention: (token: string) =>
+    request<ProductsNeedingAttention>("/api/dashboard/products-needing-attention", {}, token),
+
+  getInventorySnapshot: (token: string) =>
+    request<InventorySnapshot>("/api/dashboard/inventory-snapshot", {}, token),
+
+  getSalesBreakdown: (
+    token: string,
+    from?: string | null,
+    to?: string | null,
+    by: SalesBreakdownDimension = "PAYMENT_METHOD"
+  ) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    params.set("by", by);
+    return request<SalesBreakdown>(`/api/dashboard/sales-breakdown?${params.toString()}`, {}, token);
   },
 
   getCommissions: (token: string, from?: string, to?: string) => {

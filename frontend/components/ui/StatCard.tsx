@@ -15,12 +15,17 @@ export default function StatCard({
   label,
   value,
   hint,
+  trend,
   icon: Icon,
   tone = "accent",
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  // Optional period-over-period comparison, rendered below hint — see
+  // components/dashboard/TrendBadge.tsx. Renders nothing when absent, so
+  // every other existing StatCard usage is unaffected.
+  trend?: ReactNode;
   icon: LucideIcon;
   tone?: StatTone;
 }) {
@@ -33,6 +38,7 @@ export default function StatCard({
           <p className="text-sm text-ink-500">{label}</p>
           <p className="tabular mt-1 text-2xl font-semibold text-ink-900">{value}</p>
           {hint && <p className="mt-1 text-xs text-ink-500">{hint}</p>}
+          {trend && <p className="mt-1">{trend}</p>}
         </div>
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconBg} ${t.icon} shadow-sm`}>
           <Icon size={20} strokeWidth={1.75} />

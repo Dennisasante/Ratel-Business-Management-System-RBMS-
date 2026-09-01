@@ -48,6 +48,11 @@ export default function IntegrationsPage() {
   const [printerPaperWidth, setPrinterPaperWidth] = useState<"58" | "80">("80");
   const [savingPrinterPaperWidth, setSavingPrinterPaperWidth] = useState(false);
 
+  // Dashboard's "Low Margin Products" threshold
+  const [minMarginInput, setMinMarginInput] = useState("15");
+  const [savingMinMargin, setSavingMinMargin] = useState(false);
+  const [minMarginResult, setMinMarginResult] = useState<{ success: boolean; message: string } | null>(null);
+
   const load = useCallback(async () => {
     if (!session) return;
     const result = await api.getBusinessIntegrations(session.token);
@@ -59,6 +64,7 @@ export default function IntegrationsPage() {
     setNotifyOnSale(result.notifyOnSale);
     setPrinterEnabled(result.receiptPrinterEnabled);
     setPrinterPaperWidth(result.receiptPrinterPaperWidth);
+    setMinMarginInput(String(result.minProfitMarginPercent));
   }, [session]);
 
   useEffect(() => {
@@ -208,6 +214,28 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function saveMinMargin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session) return;
+    const parsed = Number(minMarginInput);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
+      setMinMarginResult({ success: false, message: "Enter a number between 0 and 100." });
+      return;
+    }
+    setSavingMinMargin(true);
+    setMinMarginResult(null);
+    try {
+      const result = await api.updateBusinessIntegrations(session.token, { minProfitMarginPercent: parsed });
+      setData(result);
+      setMinMarginInput(String(result.minProfitMarginPercent));
+      setMinMarginResult({ success: true, message: "Saved." });
+    } catch (err) {
+      setMinMarginResult({ success: false, message: err instanceof ApiError ? err.message : "Couldn't save." });
+    } finally {
+      setSavingMinMargin(false);
+    }
+  }
+
   if (loading || !session) {
     return <p className="text-sm text-ink-500">Loading...</p>;
   }
@@ -313,6 +341,40 @@ export default function IntegrationsPage() {
                   ))}
                 </div>
               </div>
+            )}
+          </Card>
+
+          <Card className="max-w-2xl p-5">
+            <h2 className="text-base font-semibold text-ink-900">Minimum profit margin</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              A product below this gross margin shows under &quot;Low Margin Products&quot; on your Dashboard — a heads-up
+              that it might be underpriced or costing more than it should.
+            </p>
+            <form onSubmit={saveMinMargin} className="mt-3 flex items-end gap-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-ink-700">Minimum margin</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={minMarginInput}
+                    onChange={(e) => setMinMarginInput(e.target.value)}
+                    className="w-24 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  />
+                  <span className="text-sm text-ink-500">%</span>
+                </div>
+              </div>
+              <Button type="submit" disabled={savingMinMargin}>
+                {savingMinMargin ? "Saving..." : "Save"}
+              </Button>
+            </form>
+            {minMarginResult && (
+              <p className={`mt-2 flex items-center gap-1.5 text-sm ${minMarginResult.success ? "text-success" : "text-danger"}`}>
+                {minMarginResult.success ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+                {minMarginResult.message}
+              </p>
             )}
           </Card>
 
