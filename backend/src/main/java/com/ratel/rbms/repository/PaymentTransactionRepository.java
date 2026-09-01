@@ -79,6 +79,14 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("to") Instant to
     );
 
+    // Backs the dashboard revenue chart's daily/weekly/monthly buckets — the
+    // full list (not just a sum) so DashboardService can bucket every
+    // transaction in the range in one pass instead of one sumAmount() query
+    // per bucket.
+    List<PaymentTransaction> findAllByBusinessIdAndDirectionAndStatusAndCreatedAtBetween(
+            UUID businessId, PaymentTransaction.Direction direction, String status, Instant from, Instant to
+    );
+
     // "How was this most recently paid?" for a single source record — backs
     // CustomWigRequestDetailResponse.paymentMethod. Deliberately not a column
     // on CustomWigRequest itself (that would just be a copy of what the

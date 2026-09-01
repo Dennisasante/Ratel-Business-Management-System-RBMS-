@@ -12,4 +12,10 @@ public interface SaleItemRepository extends JpaRepository<SaleItem, UUID> {
     List<SaleItem> findAllBySaleId(UUID saleId);
 
     Optional<SaleItem> findByIdAndSaleId(UUID id, UUID saleId);
+
+    // Backs dashboard profitability aggregation (COGS/gross profit/top
+    // products) — the caller already resolved which sales fall in the
+    // date range (see DashboardService), this just pulls their line items
+    // in one query instead of one round trip per sale.
+    List<SaleItem> findAllBySaleIdIn(List<UUID> saleIds);
 }
