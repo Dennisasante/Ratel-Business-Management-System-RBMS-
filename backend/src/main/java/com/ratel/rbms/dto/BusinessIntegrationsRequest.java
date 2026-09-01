@@ -19,6 +19,9 @@ public record BusinessIntegrationsRequest(
         Boolean notifyOnSale,
         Boolean receiptPrinterEnabled,
         // "58" or "80" — validated server-side, not just relied on from the client.
-        String receiptPrinterPaperWidth
+        String receiptPrinterPaperWidth,
+        // Below this gross margin %, a product shows under "Low Margin
+        // Products" on the dashboard — validated server-side (0-100).
+        java.math.BigDecimal minProfitMarginPercent
 ) {
 }

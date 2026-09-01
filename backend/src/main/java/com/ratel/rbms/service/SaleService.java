@@ -133,6 +133,11 @@ public class SaleService {
             UUID serviceCatalogId = null;
             String itemName;
             BigDecimal unitPrice;
+            // Snapshotted from the product's cost_price at this exact moment —
+            // same reasoning as unitPrice being a snapshot: a later cost change
+            // must never retroactively alter this sale's own gross profit.
+            // Stays null for a SERVICE line (no cost concept at all).
+            BigDecimal unitCost = null;
 
             if (itemReq.productId() != null) {
                 Product product = productService.getOwned(itemReq.productId());
@@ -149,6 +154,7 @@ public class SaleService {
                 productId = product.getId();
                 itemName = product.getName();
                 unitPrice = product.getSellingPrice();
+                unitCost = product.getCostPrice();
             } else {
                 ServiceCatalogItem service = serviceCatalogItemRepository.findByIdAndBusinessId(itemReq.serviceCatalogId(), businessId)
                         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service not found."));
@@ -181,6 +187,7 @@ public class SaleService {
                     .serviceCatalogId(serviceCatalogId)
                     .productName(itemName)
                     .unitPrice(unitPrice)
+                    .unitCost(unitCost)
                     .quantity(itemReq.quantity())
                     .discountAmount(discount)
                     .subtotal(subtotal)

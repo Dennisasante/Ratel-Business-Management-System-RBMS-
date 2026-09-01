@@ -10,6 +10,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -111,6 +112,13 @@ public class BusinessIntegrations {
     @Column(name = "receipt_printer_paper_width", nullable = false, length = 5)
     @Builder.Default
     private String receiptPrinterPaperWidth = "80";
+
+    // Below this gross margin %, a product surfaces under "Low Margin
+    // Products" on the dashboard (see DashboardService) — configurable per
+    // business rather than a single hardcoded threshold for everyone.
+    @Column(name = "min_profit_margin_percent", nullable = false, precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal minProfitMarginPercent = new BigDecimal("15.00");
 
     // PAYSTACK today — only value supported. Kept as an explicit field (rather
     // than inferring "which gateway" purely from which secret key is set) so a

@@ -13,6 +13,7 @@ public record BusinessIntegrationsResponse(
         boolean notifyOnSale,
         boolean receiptPrinterEnabled,
         String receiptPrinterPaperWidth,
+        java.math.BigDecimal minProfitMarginPercent,
         // PAYSTACK today — only value supported; see BusinessIntegrations.paymentGateway.
         String paymentGateway
 ) {

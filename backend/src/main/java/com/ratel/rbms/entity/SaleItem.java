@@ -51,6 +51,16 @@ public class SaleItem {
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
 
+    // Snapshot of the PRODUCT's cost price at the moment of this sale — null
+    // for SERVICE lines (no cost concept, see spec: don't invent COGS for
+    // services) and for PRODUCT rows sold before this column existed
+    // (backfilled once from the product's then-current cost, see V52; never
+    // recalculated afterward). This is what makes historical gross profit
+    // accurate even after a product's cost_price changes later — the exact
+    // same reasoning as unitPrice already being a snapshot, not a live join.
+    @Column(name = "unit_cost", precision = 12, scale = 2)
+    private BigDecimal unitCost;
+
     @Column(nullable = false)
     private int quantity;
 

@@ -93,6 +93,14 @@ public class BusinessIntegrationsService {
             }
             integrations.setReceiptPrinterPaperWidth(req.receiptPrinterPaperWidth());
         }
+        if (req.minProfitMarginPercent() != null) {
+            if (req.minProfitMarginPercent().compareTo(java.math.BigDecimal.ZERO) < 0
+                    || req.minProfitMarginPercent().compareTo(new java.math.BigDecimal("100")) > 0) {
+                throw new com.ratel.rbms.exception.ApiException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Minimum margin must be between 0 and 100.");
+            }
+            integrations.setMinProfitMarginPercent(req.minProfitMarginPercent());
+        }
 
         return toResponse(businessIntegrationsRepository.save(integrations));
     }
@@ -219,6 +227,7 @@ public class BusinessIntegrationsService {
                 i.isNotifyOnSale(),
                 i.isReceiptPrinterEnabled(),
                 i.getReceiptPrinterPaperWidth(),
+                i.getMinProfitMarginPercent(),
                 i.getPaymentGateway()
         );
     }
