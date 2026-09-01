@@ -68,6 +68,7 @@ public class DashboardService {
 
     private static final BigDecimal DEFAULT_MIN_MARGIN_PERCENT = new BigDecimal("15.00");
 
+    private final ReportService reportService;
     private final SaleRepository saleRepository;
     private final SaleItemRepository saleItemRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
@@ -83,6 +84,7 @@ public class DashboardService {
     private final PlanFeatureService planFeatureService;
 
     public DashboardService(
+            ReportService reportService,
             SaleRepository saleRepository,
             SaleItemRepository saleItemRepository,
             PaymentTransactionRepository paymentTransactionRepository,
@@ -97,6 +99,7 @@ public class DashboardService {
             BusinessIntegrationsRepository businessIntegrationsRepository,
             PlanFeatureService planFeatureService
     ) {
+        this.reportService = reportService;
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
@@ -165,13 +168,11 @@ public class DashboardService {
         Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant toInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        // Actual money collected, from every source — identical to
-        // ReportService.summary()'s own revenue figure.
-        BigDecimal revenue = paymentTransactionRepository.sumAmount(
-                businessId, PaymentTransaction.Direction.INCOMING, "SUCCESS", fromInstant, toInstant
-        );
+        // Identical formula to ReportService.summary() — money actually
+        // retained, net of refunds. Never a second copy of this calculation.
+        BigDecimal revenue = reportService.revenue(businessId, from, to);
 
-        List<Sale> sales = nonFailedSalesInRange(businessId, fromInstant, toInstant);
+        List<Sale> sales = completedSalesInRange(businessId, fromInstant, toInstant);
         List<SaleItem> items = productItemsFor(sales);
         BigDecimal cogs = items.stream()
                 .filter(i -> i.getUnitCost() != null)
@@ -189,13 +190,17 @@ public class DashboardService {
         return new PeriodMetrics(revenue, cogs, grossProfit, grossMarginPercent, expenseTotal, netProfit);
     }
 
-    // A sale whose online payment failed never actually collected any money —
-    // it's already excluded from `revenue` above via the SUCCESS filter on
-    // PaymentTransaction, so its cost is excluded here too rather than
-    // distorting COGS/gross profit against revenue that was never realized.
-    private List<Sale> nonFailedSalesInRange(UUID businessId, Instant from, Instant to) {
+    // Excludes FAILED (never actually collected — already excluded from
+    // `revenue` via the SUCCESS filter on PaymentTransaction) and REFUNDED
+    // (money was paid back out — already excluded from `revenue` via
+    // ReportService.revenue()'s refund-netting) sales, so COGS/top products/
+    // breakdowns never count inventory cost or line revenue for a sale that
+    // isn't actually contributing to realized revenue anymore. Matches the
+    // spec's own "completed sales only, excluding cancelled/voided" rule —
+    // this codebase's equivalent of "voided" for a Sale is REFUNDED.
+    private List<Sale> completedSalesInRange(UUID businessId, Instant from, Instant to) {
         return saleRepository.findAllByBusinessIdAndCreatedAtBetween(businessId, from, to).stream()
-                .filter(s -> !"FAILED".equals(s.getPaymentStatus()))
+                .filter(s -> !"FAILED".equals(s.getPaymentStatus()) && !"REFUNDED".equals(s.getPaymentStatus()))
                 .toList();
     }
 
@@ -225,7 +230,16 @@ public class DashboardService {
         List<PaymentTransaction> transactions = paymentTransactionRepository
                 .findAllByBusinessIdAndDirectionAndStatusAndCreatedAtBetween(
                         businessId, PaymentTransaction.Direction.INCOMING, "SUCCESS", fromInstant, toInstant);
-        List<Sale> sales = nonFailedSalesInRange(businessId, fromInstant, toInstant);
+        // Refunds net against revenue in the bucket the refund itself
+        // happened in (not the original sale's bucket) — same cash-basis
+        // timing ReportService.revenue() uses.
+        List<PaymentTransaction> refunds = paymentTransactionRepository
+                .findAllByBusinessIdAndDirectionAndStatusAndCreatedAtBetween(
+                        businessId, PaymentTransaction.Direction.OUTGOING, "SUCCESS", fromInstant, toInstant)
+                .stream()
+                .filter(t -> t.getSourceType() != PaymentTransaction.SourceType.PURCHASE_ORDER)
+                .toList();
+        List<Sale> sales = completedSalesInRange(businessId, fromInstant, toInstant);
         List<SaleItem> items = productItemsFor(sales);
         Map<UUID, List<SaleItem>> itemsBySaleId = new LinkedHashMap<>();
         for (SaleItem item : items) {
@@ -240,6 +254,10 @@ public class DashboardService {
         for (PaymentTransaction t : transactions) {
             LocalDate bucket = bucketStart(t.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate(), granularity);
             revenueByBucket.merge(bucket, t.getAmount(), BigDecimal::add);
+        }
+        for (PaymentTransaction refund : refunds) {
+            LocalDate bucket = bucketStart(refund.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate(), granularity);
+            revenueByBucket.merge(bucket, refund.getAmount().negate(), BigDecimal::add);
         }
         for (Sale sale : sales) {
             LocalDate bucket = bucketStart(sale.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate(), granularity);
@@ -360,7 +378,7 @@ public class DashboardService {
         Instant fromInstant = effFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant toInstant = effTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        List<Sale> sales = nonFailedSalesInRange(businessId, fromInstant, toInstant);
+        List<Sale> sales = completedSalesInRange(businessId, fromInstant, toInstant);
         List<SaleItem> items = productItemsFor(sales);
 
         Map<UUID, ProductAgg> byProduct = new LinkedHashMap<>();
@@ -481,7 +499,7 @@ public class DashboardService {
         LocalDate effTo = to != null ? to : LocalDate.now();
         Instant fromInstant = effFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant toInstant = effTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-        List<Sale> sales = nonFailedSalesInRange(businessId, fromInstant, toInstant);
+        List<Sale> sales = completedSalesInRange(businessId, fromInstant, toInstant);
 
         Map<String, BigDecimal> byLabel = new LinkedHashMap<>();
 

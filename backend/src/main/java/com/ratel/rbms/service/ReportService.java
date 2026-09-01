@@ -47,15 +47,7 @@ public class ReportService {
         var sales = salesInRange(businessId, from, to);
         var expenses = expenseRepository.findAllByBusinessIdAndExpenseDateBetween(businessId, from, to);
 
-        // Actual money collected in this range, from every source (Sale,
-        // ServiceOrder, Booking, PurchaseOrder, CustomWigRequest, or anything
-        // added later) — not just Sale.totalAmount, which used to leave every
-        // other entity type's payments out of this figure entirely.
-        var fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        var toInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-        BigDecimal revenue = paymentTransactionRepository.sumAmount(
-                businessId, PaymentTransaction.Direction.INCOMING, "SUCCESS", fromInstant, toInstant
-        );
+        BigDecimal revenue = revenue(businessId, from, to);
         BigDecimal expenseTotal = expenses.stream().map(Expense::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return new ReportSummaryResponse(
@@ -97,6 +89,29 @@ public class ReportService {
 
         results.sort((a, b) -> b.commissionEarned().compareTo(a.commissionEarned()));
         return results;
+    }
+
+    /**
+     * Money actually retained in this range, from every revenue source (Sale,
+     * ServiceOrder, Booking, PurchaseOrder, CustomWigRequest, or anything
+     * added later) — net of any refunds paid back out on those same source
+     * types. A PURCHASE_ORDER outgoing payment (money paid to a supplier) is
+     * a completely different kind of transaction and is never netted against
+     * revenue here. This is THE single revenue formula — DashboardService
+     * calls this too, never its own copy, so Dashboard and Reports can never
+     * disagree (see PaymentTransactionRepository.sumAmount/sumRefunds).
+     */
+    public BigDecimal revenue(UUID businessId, LocalDate from, LocalDate to) {
+        var fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+        var toInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        BigDecimal collected = paymentTransactionRepository.sumAmount(
+                businessId, PaymentTransaction.Direction.INCOMING, "SUCCESS", fromInstant, toInstant
+        );
+        BigDecimal refunded = paymentTransactionRepository.sumRefunds(
+                businessId, PaymentTransaction.Direction.OUTGOING, "SUCCESS",
+                PaymentTransaction.SourceType.PURCHASE_ORDER, fromInstant, toInstant
+        );
+        return collected.subtract(refunded);
     }
 
     private List<Sale> salesInRange(UUID businessId, LocalDate from, LocalDate to) {

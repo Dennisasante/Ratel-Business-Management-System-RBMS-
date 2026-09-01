@@ -63,6 +63,26 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("to") Instant to
     );
 
+    // Money paid BACK out on a refund in a date range — a Sale/ServiceOrder/
+    // Booking/CustomWigRequest refund is recorded as an OUTGOING transaction
+    // against that same SourceType (see SaleService.doRefund() and its
+    // ServiceOrder/CustomWigRequest equivalents), which is what distinguishes
+    // it from a PURCHASE_ORDER outgoing payment (money paid to a supplier —
+    // never a "refund" and never something Revenue should net against).
+    // Backs ReportService.revenue()'s "money actually collected, net of
+    // refunds" figure.
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.businessId = :businessId "
+            + "AND t.direction = :direction AND t.status = :status AND t.sourceType <> :excludedSourceType "
+            + "AND t.createdAt >= :from AND t.createdAt < :to")
+    BigDecimal sumRefunds(
+            @Param("businessId") UUID businessId,
+            @Param("direction") PaymentTransaction.Direction direction,
+            @Param("status") String status,
+            @Param("excludedSourceType") PaymentTransaction.SourceType excludedSourceType,
+            @Param("from") Instant from,
+            @Param("to") Instant to
+    );
+
     // Same as sumAmount() above but platform-wide, all-time, no business
     // filter — backs PlatformStatsService's "platform revenue" figure.
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PaymentTransaction t WHERE t.direction = :direction AND t.status = :status")
