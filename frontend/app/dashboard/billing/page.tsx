@@ -50,6 +50,7 @@ export default function BillingPage() {
   const [saveCard, setSaveCard] = useState(false);
   const [savingCardPref, setSavingCardPref] = useState(false);
   const [monthsByPlan, setMonthsByPlan] = useState<Record<string, 1 | 3 | 6 | 12>>({});
+  const [retryingReference, setRetryingReference] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -95,6 +96,23 @@ export default function BillingPage() {
       setError(err instanceof ApiError ? err.message : "Couldn't confirm this payment. If you were charged, contact support.");
       return false;
     }
+  }
+
+  // "I've paid — check again" on a still-PENDING history row. Distinct from
+  // handleVerify above (which fires automatically as part of a fresh
+  // checkout's own Paystack popup callback) — this exists because that
+  // automatic path can miss entirely, most plausibly for Mobile Money, whose
+  // confirmation lands asynchronously and can arrive after the popup and its
+  // callback are already gone. Without this, a customer in that situation had
+  // no way to recover on their own (see the 2026-09 "Chelle Luxury Hair"
+  // incident this button was added for) short of contacting support for a
+  // manual fix — this hits the exact same, already-idempotent
+  // /api/billing/verify endpoint, so it's always safe to click, including
+  // more than once.
+  async function handleRetryVerify(reference: string) {
+    setRetryingReference(reference);
+    await handleVerify(reference); // sets its own error/notice message either way
+    setRetryingReference(null);
   }
 
   async function handleToggleAutoRenew(enabled: boolean) {
@@ -328,6 +346,7 @@ export default function BillingPage() {
                       <Th>Months</Th>
                       <Th>Status</Th>
                       <Th className="text-right">Amount</Th>
+                      <Th />
                     </Tr>
                   </THead>
                   <TBody>
@@ -343,6 +362,17 @@ export default function BillingPage() {
                         </Td>
                         <Td className="tabular text-right font-medium">
                           {h.currency} {h.amount.toFixed(2)}
+                        </Td>
+                        <Td className="text-right">
+                          {h.status === "PENDING" && (
+                            <button
+                              onClick={() => handleRetryVerify(h.paystackReference)}
+                              disabled={retryingReference === h.paystackReference}
+                              className="text-xs font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {retryingReference === h.paystackReference ? "Checking…" : "I've paid — check again"}
+                            </button>
+                          )}
                         </Td>
                       </Tr>
                     ))}

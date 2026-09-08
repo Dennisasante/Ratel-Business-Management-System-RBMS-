@@ -339,6 +339,7 @@ public class PaystackService {
     public boolean verifyWebhookSignature(String rawBody, String signatureHeader) {
         String secretKey = resolvePlatformSecretKey();
         if (signatureHeader == null || signatureHeader.isBlank() || secretKey == null || secretKey.isBlank()) {
+            log.warn("Paystack webhook signature check skipped — missing signature header or platform secret key configured.");
             return false;
         }
         try {
@@ -346,8 +347,24 @@ public class PaystackService {
             mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA512"));
             byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
             String computed = HexFormat.of().formatHex(hash);
-            return computed.equalsIgnoreCase(signatureHeader.trim());
+            boolean matches = computed.equalsIgnoreCase(signatureHeader.trim());
+            // Diagnostic logging added 2026-09 after a real incident where a
+            // genuine-looking webhook delivery was rejected here for reasons
+            // that couldn't be root-caused after the fact — nothing about the
+            // mismatch had been logged at the time. Nothing below is secret:
+            // the computed/received signatures are public-per-payload
+            // verification artifacts (not the key itself), the key's own
+            // *length* reveals nothing about its value, and the body length
+            // helps rule out a truncated/mangled request body. This is the
+            // difference between diagnosing a repeat of that incident in
+            // minutes versus the hours it took this time.
+            if (!matches) {
+                log.warn("Rejected Paystack webhook — signature mismatch. computed={} received={} secretKeyLength={} rawBodyLength={}",
+                        computed, signatureHeader.trim(), secretKey.length(), rawBody.length());
+            }
+            return matches;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            log.error("Paystack webhook signature check threw unexpectedly", e);
             return false;
         }
     }

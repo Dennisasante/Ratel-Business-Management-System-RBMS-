@@ -1426,6 +1426,7 @@ export interface SubscriptionPaymentSummary {
   periodEnd: string | null;
   paidAt: string | null;
   createdAt: string;
+  paystackReference: string;
 }
 
 export type PlatformBillingStatus = "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";

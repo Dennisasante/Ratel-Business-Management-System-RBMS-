@@ -325,6 +325,17 @@ public class BillingService {
         return new VerifyPaymentResponse(true, BillingStatus.ACTIVE.name(), periodEnd, "Payment confirmed.");
     }
 
+    // Read-only finder for PaymentReconciliationScheduler — deliberately just a
+    // query, no looping/verification logic here. verifyPayment(reference) below
+    // must be invoked by that scheduler as a genuine external call through this
+    // bean's Spring proxy (never via internal self-invocation), so each payment
+    // gets its own transaction: one payment's failure must never abort the
+    // batch's later ones, which a shared transaction would risk in Postgres
+    // (an error poisons the whole transaction until rollback).
+    public List<SubscriptionPayment> findStalePendingPayments(Instant olderThan) {
+        return subscriptionPaymentRepository.findAllByStatusAndCreatedAtBefore("PENDING", olderThan);
+    }
+
     @Transactional
     public void setAutoRenew(boolean enabled) {
         Business business = getOwnBusiness();

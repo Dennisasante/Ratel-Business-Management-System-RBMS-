@@ -95,6 +95,15 @@ app:
     # Runs once a day, shortly after the digest — flips lapsed trials/subscriptions
     # to read-only and sends the 3-day-out renewal reminder.
     expiry-cron: ${BILLING_EXPIRY_CRON:0 30 6 * * *}
+    # PaymentReconciliationScheduler — runs every 10 minutes, deliberately far more
+    # often than expiry-cron above. Re-checks any subscription payment that's been
+    # PENDING longer than reconciliation-stale-after-minutes directly against
+    # Paystack, so a payment whose inline client-side verify and webhook both
+    # missed (see that class's own header comment for the 2026-09-08 incident that
+    # motivated this) recovers on its own within one sweep instead of needing a
+    # manual fix.
+    reconciliation-cron: ${BILLING_RECONCILIATION_CRON:0 */10 * * * *}
+    reconciliation-stale-after-minutes: ${BILLING_RECONCILIATION_STALE_MINUTES:10}
   ai:
     # Which AiProvider bean is active — "openai" (real Chat Completions
     # calls, see OpenAiProvider) or "mock" (deterministic demo provider,

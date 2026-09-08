@@ -27,6 +27,13 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
     // same payment resolve to the same row instead of double-extending the period.
     Optional<SubscriptionPayment> findByPaystackReference(String paystackReference);
 
+    // Feeds PaymentReconciliationService's own sweep — a payment stuck this long
+    // has already missed its best chance at both the inline client-side verify
+    // (fired once, right after checkout) and a prompt webhook delivery, so it's
+    // treated as needing an active re-check rather than a passive wait. See
+    // BillingService.reconcileStalePendingPayments() for what happens to each.
+    List<SubscriptionPayment> findAllByStatusAndCreatedAtBefore(String status, Instant createdBefore);
+
     // Atomic guard: flips PENDING/FAILED -> SUCCESS only if it isn't already SUCCESS,
     // and reports how many rows it actually changed (0 or 1). BillingService only
     // extends a business's period when this returns 1 — if a racing call already won
