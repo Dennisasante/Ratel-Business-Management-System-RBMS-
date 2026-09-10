@@ -41,6 +41,9 @@ public record CreateStaffBookingRequest(
         // the phone. UNPAID, PAID, or PAY_IN_PERSON (not FAILED — that's a
         // payment-attempt outcome, not a choice staff make).
         @NotBlank(message = "Payment status is required")
-        String paymentStatus
+        String paymentStatus,
+
+        // Phase 4 — nullable, same role as CreateBookingRequest.commitmentReference.
+        UUID commitmentReference
 ) {
 }

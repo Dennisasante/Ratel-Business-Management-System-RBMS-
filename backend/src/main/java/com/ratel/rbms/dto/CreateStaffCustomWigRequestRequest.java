@@ -1,6 +1,7 @@
 package com.ratel.rbms.dto;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 // Not @Valid-annotated on its controller — arrives as a JSON string inside a
 // multipart request (alongside the optional inspiration photo file), same
@@ -19,6 +20,9 @@ public record CreateStaffCustomWigRequestRequest(
         String source,
         String description,
         BigDecimal price,
-        String notes
+        String notes,
+
+        // Phase 4 — nullable, same role as CreateBookingRequest.commitmentReference.
+        UUID commitmentReference
 ) {
 }

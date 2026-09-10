@@ -50,6 +50,7 @@ public class AiToolService {
             "checkAvailability",
             "findCustomer",
             "createCustomer",
+            "beginPolicyCommitment",
             "createBooking",
             "escalateToStaff"
     );
@@ -61,6 +62,7 @@ public class AiToolService {
     private final NotificationService notificationService;
     private final ActivityLogService activityLogService;
     private final AiConversationService aiConversationService;
+    private final PolicyEngine policyEngine;
     private final Validator validator;
 
     public AiToolService(
@@ -71,6 +73,7 @@ public class AiToolService {
             NotificationService notificationService,
             ActivityLogService activityLogService,
             AiConversationService aiConversationService,
+            PolicyEngine policyEngine,
             Validator validator
     ) {
         this.objectMapper = objectMapper;
@@ -80,6 +83,7 @@ public class AiToolService {
         this.notificationService = notificationService;
         this.activityLogService = activityLogService;
         this.aiConversationService = aiConversationService;
+        this.policyEngine = policyEngine;
         this.validator = validator;
     }
 
@@ -117,6 +121,14 @@ public class AiToolService {
                                 + "\"phone\":{\"type\":\"string\"},"
                                 + "\"email\":{\"type\":\"string\"}"
                                 + "},\"required\":[\"fullName\",\"phone\"]}"),
+                new AiToolDefinition("beginPolicyCommitment",
+                        "Call this once, before createBooking, whenever the business has a policy that must be shown and agreed to for a booking "
+                                + "(you'll know because a policy will already have been mentioned to you in this conversation's context, or "
+                                + "listBookableServices/getServiceDetails indicated one). Returns a commitmentReference — pass that same value into "
+                                + "createBooking's own commitmentReference argument. If you never call this, createBooking will simply fail with a "
+                                + "clear error when a policy actually needs to be shown first — it is always safe to skip this when you're not sure "
+                                + "one applies.",
+                        "{\"type\":\"object\",\"properties\":{}}"),
                 new AiToolDefinition("createBooking",
                         "Create a real booking for a customer. Only call this after confirming the service, date/time, and that checkAvailability said it's available. Requires a valid phone number and email.",
                         "{\"type\":\"object\",\"properties\":{"
@@ -125,7 +137,8 @@ public class AiToolService {
                                 + "\"customerPhone\":{\"type\":\"string\"},"
                                 + "\"customerEmail\":{\"type\":\"string\"},"
                                 + "\"scheduledAt\":{\"type\":\"string\",\"description\":\"ISO-8601 date-time in UTC, e.g. 2026-08-27T14:00:00Z\"},"
-                                + "\"notes\":{\"type\":\"string\"}"
+                                + "\"notes\":{\"type\":\"string\"},"
+                                + "\"commitmentReference\":{\"type\":\"string\",\"description\":\"The value returned by a prior beginPolicyCommitment call in this conversation, if you made one. Omit if you didn't.\"}"
                                 + "},\"required\":[\"serviceId\",\"customerName\",\"customerPhone\",\"customerEmail\",\"scheduledAt\"]}"),
                 new AiToolDefinition("escalateToStaff",
                         "Hand this conversation off to a real staff member — use when the customer explicitly asks for a human, or you cannot safely help.",
@@ -153,6 +166,7 @@ public class AiToolService {
                 case "checkAvailability" -> checkAvailability(businessId, args);
                 case "findCustomer" -> findCustomer(conversation, args);
                 case "createCustomer" -> createCustomer(conversation, args);
+                case "beginPolicyCommitment" -> beginPolicyCommitment(businessId);
                 case "createBooking" -> createBooking(businessId, conversation, args);
                 case "escalateToStaff" -> escalateToStaff(businessId, conversation, args);
                 // Unreachable in practice — AiChatService only ever calls
@@ -247,6 +261,18 @@ public class AiToolService {
         return ToolResult.success(writeJson(customer), "CUSTOMER", customer.id());
     }
 
+    // Phase 4 — the AI never decides policy truth itself (see class-level note); this tool only
+    // asks PolicyEngine to open a fresh, single-use commitment and hands the LLM an opaque
+    // reference to carry forward. beginCommitment(businessId, "BOOKING") — "BOOKING" is the only
+    // transactionType this tool's caller (createBooking) can ever bind the commitment to; a
+    // mismatched later use is rejected by evaluateGate(), not by anything checked here.
+    private ToolResult beginPolicyCommitment(UUID businessId) {
+        UUID commitmentReference = policyEngine.beginCommitment(businessId, "BOOKING");
+        var result = objectMapper.createObjectNode();
+        result.put("commitmentReference", commitmentReference.toString());
+        return ToolResult.success(result.toString());
+    }
+
     private ToolResult createBooking(UUID businessId, AiConversation conversation, JsonNode args) {
         UUID serviceId = parseUuid(args, "serviceId");
         String customerName = args.path("customerName").asText(null);
@@ -254,6 +280,12 @@ public class AiToolService {
         String customerEmail = args.path("customerEmail").asText(null);
         Instant scheduledAt = parseInstant(args, "scheduledAt");
         String notes = args.path("notes").asText(null);
+        // Phase 4 — carried forward from a prior beginPolicyCommitment tool call, if any (see
+        // that tool's own definition). Purely a Layer-A convenience: the final gate inside
+        // BookingService.createBooking() never trusts this value blindly — it re-derives and
+        // re-checks everything structurally (Revision 4 §6/§10), so a stale/wrong/missing
+        // reference here simply results in the gate blocking, never in a silent policy bypass.
+        UUID commitmentReference = parseUuid(args, "commitmentReference");
 
         if (serviceId == null || customerName == null || customerPhone == null || scheduledAt == null) {
             return ToolResult.failure("serviceId, customerName, customerPhone and a valid ISO-8601 scheduledAt are required.");
@@ -267,10 +299,12 @@ public class AiToolService {
         // Never reimplements phone validation, working-hours/blackout-date/
         // capacity validation, customer resolution, or pricing — all of
         // that happens exactly as it does for a public booking, inside
-        // BookingService.createBooking() itself.
+        // BookingService.createBooking() itself. Policy gating is no
+        // exception (Phase 4) — this tool never evaluates policy truth
+        // itself, it only threads the commitment reference through.
         CreateBookingRequest request = new CreateBookingRequest(
                 detail.serviceCatalogId(), detail.packageId(), customerName, customerEmail, customerPhone,
-                scheduledAt, notes, null
+                scheduledAt, notes, null, commitmentReference
         );
 
         // Calling createBooking() as a plain Java method bypasses Spring MVC's

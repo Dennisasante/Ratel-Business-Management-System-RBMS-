@@ -9,6 +9,7 @@ import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
@@ -22,15 +23,18 @@ public class ServiceCatalogService {
     private final ServiceCatalogItemRepository serviceCatalogItemRepository;
     private final ServiceTypeService serviceTypeService;
     private final ActivityLogService activityLogService;
+    private final OfferingSyncService offeringSyncService;
 
     public ServiceCatalogService(
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             ServiceTypeService serviceTypeService,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            OfferingSyncService offeringSyncService
     ) {
         this.serviceCatalogItemRepository = serviceCatalogItemRepository;
         this.serviceTypeService = serviceTypeService;
         this.activityLogService = activityLogService;
+        this.offeringSyncService = offeringSyncService;
     }
 
     // activeOnly=true backs the order form's "pick a catalog price" dropdown;
@@ -49,6 +53,12 @@ public class ServiceCatalogService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Catalog item not found."));
     }
 
+    // Phase 5A: @Transactional added (this method previously had no transaction boundary of its
+    // own — a single save() was already implicitly transactional via Spring Data, but the new
+    // Offering/OfferingBookingConfig sync write below must commit or roll back atomically with
+    // this one, per the approved coexistence design — "one authorized write, fanning out to two
+    // representations," never two independently-committing writes).
+    @Transactional
     public ServiceCatalogItemResponse create(ServiceCatalogItemRequest req) {
         ServiceType type = serviceTypeService.getOwned(req.serviceTypeId());
 
@@ -64,10 +74,12 @@ public class ServiceCatalogService {
                 .paymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()))
                 .build();
         item = serviceCatalogItemRepository.save(item);
+        offeringSyncService.syncServiceCatalogItem(item);
         activityLogService.log("Added service catalog item \"" + item.getName() + "\"", "SERVICE_CATALOG", item.getId());
         return ServiceCatalogItemResponse.from(item, type.getName());
     }
 
+    @Transactional
     public ServiceCatalogItemResponse update(UUID id, ServiceCatalogItemRequest req) {
         ServiceCatalogItem item = getOwned(id);
         ServiceType type = serviceTypeService.getOwned(req.serviceTypeId());
@@ -81,6 +93,7 @@ public class ServiceCatalogService {
         if (req.requiresLocation() != null) item.setRequiresLocation(req.requiresLocation());
         item.setPaymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()));
         item = serviceCatalogItemRepository.save(item);
+        offeringSyncService.syncServiceCatalogItem(item);
         return ServiceCatalogItemResponse.from(item, type.getName());
     }
 
@@ -97,10 +110,12 @@ public class ServiceCatalogService {
 
     // Archive/restore instead of delete — an order's service_catalog_id would otherwise
     // dangle, and reactivating a discontinued price later should be a toggle, not a redo.
+    @Transactional
     public ServiceCatalogItemResponse setActive(UUID id, boolean active) {
         ServiceCatalogItem item = getOwned(id);
         item.setActive(active);
         item = serviceCatalogItemRepository.save(item);
+        offeringSyncService.syncServiceCatalogItem(item);
         activityLogService.log(
                 (active ? "Reactivated" : "Archived") + " service catalog item \"" + item.getName() + "\"",
                 "SERVICE_CATALOG", item.getId()

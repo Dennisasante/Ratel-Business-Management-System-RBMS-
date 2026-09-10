@@ -26,6 +26,9 @@ public record ServiceOrderRequest(
         UUID assignedStaffId,
 
         // Nullable: set only when this is booked ahead for a future slot.
-        Instant scheduledAt
+        Instant scheduledAt,
+
+        // Phase 4 — nullable, same role as CreateBookingRequest.commitmentReference.
+        UUID commitmentReference
 ) {
 }

@@ -114,15 +114,27 @@ class AiToolServiceTest {
     }
 
     @Test
-    void onlyTheNineSpecifiedToolsAreRegistered() {
+    void onlyTheTenSpecifiedToolsAreRegistered() {
+        // Phase 4 added beginPolicyCommitment — see AiToolService's own ALLOWED_TOOLS set.
         List<String> expected = List.of(
                 "getBusinessInfo", "getBusinessHours", "listBookableServices", "getServiceDetails",
-                "checkAvailability", "findCustomer", "createCustomer", "createBooking", "escalateToStaff"
+                "checkAvailability", "findCustomer", "createCustomer", "beginPolicyCommitment",
+                "createBooking", "escalateToStaff"
         );
         for (String tool : expected) {
             assertTrue(aiToolService.isRegistered(tool), tool + " should be registered");
         }
         assertEquals(expected.size(), aiToolService.definitions().size());
+    }
+
+    @Test
+    void beginPolicyCommitmentReturnsARealCommitmentReference() throws Exception {
+        AiToolService.ToolResult result = aiToolService.execute(business.getId(), conversation, "beginPolicyCommitment", "{}");
+        assertTrue(result.success());
+        com.fasterxml.jackson.databind.JsonNode parsed = objectMapper.readTree(result.resultJson());
+        assertNotNull(parsed.path("commitmentReference").asText(null));
+        // Must parse as a real UUID — not just any non-null string.
+        UUID.fromString(parsed.path("commitmentReference").asText());
     }
 
     @Test

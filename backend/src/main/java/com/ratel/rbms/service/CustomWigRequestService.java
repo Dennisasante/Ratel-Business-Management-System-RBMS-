@@ -87,6 +87,7 @@ public class CustomWigRequestService {
     private final ApprovalGateService approvalGateService;
     private final ModuleAccessService moduleAccessService;
     private final CustomerRepository customerRepository;
+    private final PolicyEngine policyEngine;
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
@@ -107,7 +108,8 @@ public class CustomWigRequestService {
             PaymentTransactionRepository paymentTransactionRepository,
             ApprovalGateService approvalGateService,
             ModuleAccessService moduleAccessService,
-            CustomerRepository customerRepository
+            CustomerRepository customerRepository,
+            PolicyEngine policyEngine
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
         this.attributeRepository = attributeRepository;
@@ -128,6 +130,7 @@ public class CustomWigRequestService {
         this.approvalGateService = approvalGateService;
         this.moduleAccessService = moduleAccessService;
         this.customerRepository = customerRepository;
+        this.policyEngine = policyEngine;
     }
 
     // Same phone-tying pattern as BookingService.createBooking() — a request
@@ -221,6 +224,13 @@ public class CustomWigRequestService {
 
         UUID customerId = resolveCustomerId(businessId, req.customerName(), req.customerWhatsapp(), req.customerEmail());
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting.
+        GateResult gate = policyEngine.evaluateGate(businessId, "CUSTOM_WIG_REQUEST_CREATE", null,
+                req.commitmentReference(), "CUSTOM_WIG_REQUEST", customerId);
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         CustomWigRequest request = CustomWigRequest.builder()
                 .businessId(businessId)
                 .customerId(customerId)
@@ -235,6 +245,11 @@ public class CustomWigRequestService {
                 .build();
         request = customWigRequestRepository.save(request);
         customWigRequestRepository.flush(); // so request_number is readable below
+
+        // Phase 4 — step 8 of the frozen gate sequence, same transaction as the gate check/insert above.
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "CUSTOM_WIG_REQUEST", request.getId());
+        }
 
         emailService.sendCustomWigRequestReceived(
                 req.customerEmail(), req.customerName(), request.getRequestNumber(), business.getName(),
@@ -357,6 +372,13 @@ public class CustomWigRequestService {
         String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
         UUID customerId = resolveCustomerId(businessId, req.customerName(), req.customerWhatsapp(), req.customerEmail());
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting.
+        GateResult gate = policyEngine.evaluateGate(businessId, "STAFF_CUSTOM_WIG_REQUEST_CREATE", null,
+                req.commitmentReference(), "CUSTOM_WIG_REQUEST", customerId);
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         CustomWigRequest request = CustomWigRequest.builder()
                 .businessId(businessId)
                 .customerId(customerId)
@@ -375,6 +397,11 @@ public class CustomWigRequestService {
                 .build();
         request = customWigRequestRepository.save(request);
         customWigRequestRepository.flush(); // so request_number is readable below
+
+        // Phase 4 — step 8 of the frozen gate sequence, same transaction as the gate check/insert above.
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "CUSTOM_WIG_REQUEST", request.getId());
+        }
 
         activityLogService.log(
                 "Logged a custom wig request" + (request.getSource() != null ? " (" + request.getSource() + ")" : ""),

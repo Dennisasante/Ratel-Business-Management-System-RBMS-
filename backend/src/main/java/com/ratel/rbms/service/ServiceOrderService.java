@@ -91,6 +91,7 @@ public class ServiceOrderService {
     private final PaymentTransactionService paymentTransactionService;
     private final ApprovalGateService approvalGateService;
     private final ModuleAccessService moduleAccessService;
+    private final PolicyEngine policyEngine;
 
     public ServiceOrderService(
             ServiceOrderRepository serviceOrderRepository,
@@ -109,7 +110,8 @@ public class ServiceOrderService {
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
             ApprovalGateService approvalGateService,
-            ModuleAccessService moduleAccessService
+            ModuleAccessService moduleAccessService,
+            PolicyEngine policyEngine
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -128,6 +130,7 @@ public class ServiceOrderService {
         this.paymentTransactionService = paymentTransactionService;
         this.approvalGateService = approvalGateService;
         this.moduleAccessService = moduleAccessService;
+        this.policyEngine = policyEngine;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -168,6 +171,16 @@ public class ServiceOrderService {
         BigDecimal totalDiscount = resolvedItems.stream().map(ResolvedItem::discountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         ResolvedItem first = resolvedItems.get(0);
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting. Only
+        // covers service orders created directly through this method — a booking-originated
+        // ServiceOrder row is created by BookingService itself (its own, separate gate call) and
+        // never passes through here; see the Phase 4 implementation report's audit correction.
+        GateResult gate = policyEngine.evaluateGate(businessId, "SERVICE_ORDER_CREATE", null,
+                req.commitmentReference(), "SERVICE_ORDER", req.customerId());
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
                 .serviceTypeId(first.type().getId())
@@ -205,6 +218,11 @@ public class ServiceOrderService {
                 "Created service order #" + order.getOrderNumber() + " (" + serviceSummary + ") for GH₵" + totalPrice,
                 "SERVICE_ORDER", order.getId()
         );
+
+        // Phase 4 — step 8 of the frozen gate sequence, same transaction as the gate check/insert above.
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "SERVICE_ORDER", order.getId());
+        }
 
         return toResponse(order);
     }

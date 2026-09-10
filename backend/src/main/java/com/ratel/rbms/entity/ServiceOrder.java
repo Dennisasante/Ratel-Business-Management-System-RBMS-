@@ -56,6 +56,13 @@ public class ServiceOrder {
     @Column(name = "service_package_id")
     private UUID servicePackageId;
 
+    // Phase 5C — nullable tracking/audit pointer to the canonical Offering this order was priced
+    // against when created under CANONICAL_ENABLED; null for every legacy-priced order (including
+    // every order created before this phase). Never re-read for pricing or historical display —
+    // see ServiceOrderLineSnapshot for the actual immutable commercial record (Revision 4 §2/§13).
+    @Column(name = "offering_id")
+    private UUID offeringId;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

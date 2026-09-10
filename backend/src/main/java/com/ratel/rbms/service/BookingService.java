@@ -15,10 +15,14 @@ import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.BusinessIntegrations;
 import com.ratel.rbms.entity.BusinessWorkingHours;
 import com.ratel.rbms.entity.Customer;
+import com.ratel.rbms.entity.Offering;
+import com.ratel.rbms.entity.OfferingBookingConfig;
+import com.ratel.rbms.entity.PackageComponent;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.ServiceCatalogItem;
 import com.ratel.rbms.entity.ServiceOrder;
 import com.ratel.rbms.entity.ServiceOrderItem;
+import com.ratel.rbms.entity.ServiceOrderLineSnapshot;
 import com.ratel.rbms.entity.ServicePackage;
 import com.ratel.rbms.entity.ServicePackageItem;
 import com.ratel.rbms.entity.ServiceType;
@@ -32,8 +36,13 @@ import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.BusinessWorkingHoursRepository;
 import com.ratel.rbms.repository.CustomerRepository;
+import com.ratel.rbms.repository.OfferingBookingConfigRepository;
+import com.ratel.rbms.repository.OfferingRepository;
+import com.ratel.rbms.repository.OptionRepository;
+import com.ratel.rbms.repository.PackageComponentRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.repository.ServiceOrderItemRepository;
+import com.ratel.rbms.repository.ServiceOrderLineSnapshotRepository;
 import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServicePackageItemRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
@@ -100,7 +109,20 @@ public class BookingService {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final ModuleAccessService moduleAccessService;
+    private final PolicyEngine policyEngine;
     private final String frontendUrl;
+
+    // Phase 5C — canonical cutover collaborators. See BookingCutoverStateResolver's own class
+    // comment for the "consult exactly once, branch entirely from that result" discipline every
+    // method below follows.
+    private final BookingCutoverStateResolver bookingCutoverStateResolver;
+    private final OfferingResolutionService offeringResolutionService;
+    private final OfferingRepository offeringRepository;
+    private final OfferingBookingConfigRepository offeringBookingConfigRepository;
+    private final PackageComponentRepository packageComponentRepository;
+    private final OptionRepository optionRepository;
+    private final PackagePricingService packagePricingService;
+    private final ServiceOrderLineSnapshotRepository serviceOrderLineSnapshotRepository;
 
     public BookingService(
             BusinessRepository businessRepository,
@@ -125,6 +147,15 @@ public class BookingService {
             NotificationService notificationService,
             UserRepository userRepository,
             ModuleAccessService moduleAccessService,
+            PolicyEngine policyEngine,
+            BookingCutoverStateResolver bookingCutoverStateResolver,
+            OfferingResolutionService offeringResolutionService,
+            OfferingRepository offeringRepository,
+            OfferingBookingConfigRepository offeringBookingConfigRepository,
+            PackageComponentRepository packageComponentRepository,
+            OptionRepository optionRepository,
+            PackagePricingService packagePricingService,
+            ServiceOrderLineSnapshotRepository serviceOrderLineSnapshotRepository,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -149,6 +180,15 @@ public class BookingService {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.moduleAccessService = moduleAccessService;
+        this.policyEngine = policyEngine;
+        this.bookingCutoverStateResolver = bookingCutoverStateResolver;
+        this.offeringResolutionService = offeringResolutionService;
+        this.offeringRepository = offeringRepository;
+        this.offeringBookingConfigRepository = offeringBookingConfigRepository;
+        this.packageComponentRepository = packageComponentRepository;
+        this.optionRepository = optionRepository;
+        this.packagePricingService = packagePricingService;
+        this.serviceOrderLineSnapshotRepository = serviceOrderLineSnapshotRepository;
         this.frontendUrl = frontendUrl;
     }
 
@@ -190,6 +230,16 @@ public class BookingService {
         if (!planFeatureService.hasFeature(businessId, PlanFeature.BOOKING_WIDGET)) {
             return List.of();
         }
+        // Phase 5C — consulted exactly once, entire method behaviour branches from this single
+        // result (BookingCutoverStateResolver's own frozen discipline). AI inherits automatically:
+        // AiToolService.listBookableServices/getServiceDetails call this exact method.
+        if (bookingCutoverStateResolver.useCanonical(businessId)) {
+            return listBookableServicesCanonical(businessId);
+        }
+        return listBookableServicesLegacy(businessId);
+    }
+
+    private List<BookableServiceResponse> listBookableServicesLegacy(UUID businessId) {
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
         List<BookableServiceResponse> results = new ArrayList<>();
         serviceCatalogItemRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId).forEach(item ->
@@ -227,6 +277,71 @@ public class BookingService {
         return results;
     }
 
+    // Phase 5C — canonical mirror of listBookableServicesLegacy(). Catalog MEMBERSHIP (which
+    // items exist/are active+bookableOnline) still comes from legacy — Phase 5C introduces no
+    // independent canonical catalog-editing surface (Revision 1 §12/coexistence rule); only each
+    // item's DISPLAYED price/label/duration/etc. is sourced canonically. An active+bookableOnline
+    // legacy item with no (yet) canonical mapping or a broken canonical calculation is skipped
+    // rather than shown with wrong/absent data — this can only happen via a same-business race
+    // right after a legacy edit, since CANONICAL_ENABLED itself requires zero-mismatch
+    // verification, which already proves every such item resolves and prices cleanly.
+    private List<BookableServiceResponse> listBookableServicesCanonical(UUID businessId) {
+        BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
+        List<BookableServiceResponse> results = new ArrayList<>();
+
+        for (ServiceCatalogItem item : serviceCatalogItemRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId)) {
+            UUID offeringId = offeringResolutionService.resolveOfferingId(
+                    businessId, OfferingResolutionService.LegacyType.SERVICE_CATALOG_ITEM, item.getId());
+            if (offeringId == null) continue;
+            Offering offering = offeringRepository.findByIdAndBusinessId(offeringId, businessId).orElse(null);
+            OfferingBookingConfig config = offeringBookingConfigRepository.findByOfferingIdAndBusinessId(offeringId, businessId).orElse(null);
+            if (offering == null || !offering.isActive() || config == null || !config.isBookableOnline()) continue;
+            PricingResult pricing = packagePricingService.calculate(businessId, offeringId, Map.of(), Map.of());
+            if (!pricing.valid() || pricing.finalPrice() == null) continue;
+            results.add(new BookableServiceResponse(
+                    item.getId(), null, offering.getName(), item.getServiceTypeId(),
+                    serviceTypeRepository.findByIdAndBusinessId(item.getServiceTypeId(), businessId)
+                            .map(ServiceType::getName).orElse(null),
+                    null, pricing.finalPrice(), false, config.isRequiresLocation(), List.of(),
+                    effectivePolicy(integrations, config.getPaymentPolicyOverride())
+            ));
+        }
+
+        for (ServicePackage pkg : servicePackageRepository.findAllByBusinessIdAndActiveTrueAndBookableOnlineTrueOrderByNameAsc(businessId)) {
+            UUID offeringId = offeringResolutionService.resolveOfferingId(
+                    businessId, OfferingResolutionService.LegacyType.SERVICE_PACKAGE, pkg.getId());
+            if (offeringId == null) continue;
+            Offering offering = offeringRepository.findByIdAndBusinessId(offeringId, businessId).orElse(null);
+            OfferingBookingConfig config = offeringBookingConfigRepository.findByOfferingIdAndBusinessId(offeringId, businessId).orElse(null);
+            if (offering == null || !offering.isActive() || config == null || !config.isBookableOnline()) continue;
+            Map<UUID, Set<UUID>> selections = offeringResolutionService.defaultSelections(businessId, offeringId);
+            PricingResult pricing = packagePricingService.calculate(businessId, offeringId, selections, Map.of());
+            if (!pricing.valid() || pricing.manualQuoteRequired() || pricing.finalPrice() == null) continue;
+            results.add(new BookableServiceResponse(
+                    null, pkg.getId(), offering.getName(), pkg.getServiceTypeId(),
+                    serviceTypeRepository.findByIdAndBusinessId(pkg.getServiceTypeId(), businessId)
+                            .map(ServiceType::getName).orElse(null),
+                    pkg.getDescription(), pricing.finalPrice(), true, config.isRequiresLocation(),
+                    canonicalIncludedItemLabels(businessId, offeringId),
+                    effectivePolicy(integrations, config.getPaymentPolicyOverride())
+            ));
+        }
+        return results;
+    }
+
+    // Canonical mirror of includedItemLabels(UUID) — reads the backfilled default Option labels
+    // (already "Nx Name"-formatted by PackageContentBackfillService) in display order, rather than
+    // re-deriving from ServicePackageItem/ServiceCatalogItem directly.
+    private List<String> canonicalIncludedItemLabels(UUID businessId, UUID offeringId) {
+        List<String> labels = new ArrayList<>();
+        for (PackageComponent component : packageComponentRepository.findAllByBusinessIdAndOfferingIdOrderByDisplayOrderAsc(businessId, offeringId)) {
+            if (component.getDefaultOptionId() == null) continue;
+            optionRepository.findByIdAndBusinessId(component.getDefaultOptionId(), businessId)
+                    .ifPresent(option -> labels.add(option.getLabel()));
+        }
+        return labels;
+    }
+
     // Added for Tallia AI's getServiceDetails tool — a thin filter over the
     // same safe, already-public listBookableServices() rather than a new
     // repository query, so it can never expose anything that list doesn't
@@ -250,34 +365,160 @@ public class BookingService {
     public AvailabilityCheckResponse checkAvailability(UUID businessId, UUID serviceCatalogId, UUID packageId, Instant scheduledAt) {
         try {
             BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
-            validateWorkingWindow(businessId, integrations, scheduledAt);
+            validateWorkingWindow(businessId, integrations, scheduledAt); // business-level, unaffected by cutover state
+
+            // Phase 5C — consulted exactly once; AiToolService.checkAvailability calls this exact
+            // method, so it inherits the same branch automatically.
+            boolean canonical = bookingCutoverStateResolver.useCanonical(businessId);
 
             if (packageId != null) {
-                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(packageId, businessId)
-                        .filter(ServicePackage::isActive)
-                        .filter(ServicePackage::isBookableOnline)
-                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
-                Instant requestEnd = scheduledAt.plusSeconds(pkg.getDurationMinutes() * 60L);
-                Instant searchFrom = scheduledAt.minusSeconds(pkg.getDurationMinutes() * 60L);
-                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
-                        businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-                validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, scheduledAt);
+                if (canonical) {
+                    ResolvedOffering resolved = resolveCanonicalPackage(businessId, packageId, false, true);
+                    Instant requestEnd = scheduledAt.plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                    Instant searchFrom = scheduledAt.minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                    List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                            businessId, packageId, ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                    validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, scheduledAt);
+                } else {
+                    ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(packageId, businessId)
+                            .filter(ServicePackage::isActive)
+                            .filter(ServicePackage::isBookableOnline)
+                            .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
+                    Instant requestEnd = scheduledAt.plusSeconds(pkg.getDurationMinutes() * 60L);
+                    Instant searchFrom = scheduledAt.minusSeconds(pkg.getDurationMinutes() * 60L);
+                    List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                            businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                    validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, scheduledAt);
+                }
             } else if (serviceCatalogId != null) {
-                ServiceCatalogItem item = serviceCatalogItemRepository.findByIdAndBusinessId(serviceCatalogId, businessId)
-                        .filter(ServiceCatalogItem::isActive)
-                        .filter(ServiceCatalogItem::isBookableOnline)
-                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
-                Instant requestEnd = scheduledAt.plusSeconds(item.getDurationMinutes() * 60L);
-                Instant searchFrom = scheduledAt.minusSeconds(item.getDurationMinutes() * 60L);
-                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
-                        businessId, item.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-                validateCapacity(item.getDurationMinutes(), item.getMaxConcurrentBookings(), candidates, scheduledAt);
+                if (canonical) {
+                    ResolvedOffering resolved = resolveCanonicalService(businessId, serviceCatalogId, false, true);
+                    Instant requestEnd = scheduledAt.plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                    Instant searchFrom = scheduledAt.minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                    List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                            businessId, serviceCatalogId, ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                    validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, scheduledAt);
+                } else {
+                    ServiceCatalogItem item = serviceCatalogItemRepository.findByIdAndBusinessId(serviceCatalogId, businessId)
+                            .filter(ServiceCatalogItem::isActive)
+                            .filter(ServiceCatalogItem::isBookableOnline)
+                            .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+                    Instant requestEnd = scheduledAt.plusSeconds(item.getDurationMinutes() * 60L);
+                    Instant searchFrom = scheduledAt.minusSeconds(item.getDurationMinutes() * 60L);
+                    List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                            businessId, item.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                    validateCapacity(item.getDurationMinutes(), item.getMaxConcurrentBookings(), candidates, scheduledAt);
+                }
             } else {
                 return AvailabilityCheckResponse.unavailable("Select a service.");
             }
             return AvailabilityCheckResponse.ok();
         } catch (ApiException e) {
             return AvailabilityCheckResponse.unavailable(e.getMessage());
+        }
+    }
+
+    // ==================== Phase 5C — canonical Offering resolution helpers ====================
+
+    /** offering + its booking config, resolved and (optionally) row-locked together. */
+    private record ResolvedOffering(UUID offeringId, Offering offering, OfferingBookingConfig config) {
+    }
+
+    // lock=true acquires the capacity-race correctness fix's Offering-row FOR UPDATE (frozen
+    // design §10) BEFORE any capacity-dependent read/insert — used by the actual booking-creation
+    // paths, never by a pure availability check (lock=false there, since nothing is inserted).
+    // enforceBookableOnline mirrors the exact legacy asymmetry re-confirmed by fresh source: the
+    // public/AI path filters bookableOnline, the staff path does not.
+    private ResolvedOffering resolveCanonicalPackage(UUID businessId, UUID packageId, boolean lock, boolean enforceBookableOnline) {
+        UUID offeringId = offeringResolutionService.resolveOfferingId(
+                businessId, OfferingResolutionService.LegacyType.SERVICE_PACKAGE, packageId);
+        if (offeringId == null) {
+            // Never silently fall back to legacy while canonical is authoritative (frozen design §5).
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking.");
+        }
+        Offering offering = lock
+                ? offeringRepository.findByIdAndBusinessIdForUpdate(offeringId, businessId).orElse(null)
+                : offeringRepository.findByIdAndBusinessId(offeringId, businessId).orElse(null);
+        if (offering == null || !offering.isActive()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking.");
+        }
+        OfferingBookingConfig config = offeringBookingConfigRepository.findByOfferingIdAndBusinessId(offeringId, businessId).orElse(null);
+        if (config == null || (enforceBookableOnline && !config.isBookableOnline())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking.");
+        }
+        return new ResolvedOffering(offeringId, offering, config);
+    }
+
+    private ResolvedOffering resolveCanonicalService(UUID businessId, UUID serviceCatalogId, boolean lock, boolean enforceBookableOnline) {
+        UUID offeringId = offeringResolutionService.resolveOfferingId(
+                businessId, OfferingResolutionService.LegacyType.SERVICE_CATALOG_ITEM, serviceCatalogId);
+        if (offeringId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking.");
+        }
+        Offering offering = lock
+                ? offeringRepository.findByIdAndBusinessIdForUpdate(offeringId, businessId).orElse(null)
+                : offeringRepository.findByIdAndBusinessId(offeringId, businessId).orElse(null);
+        if (offering == null || !offering.isActive()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking.");
+        }
+        OfferingBookingConfig config = offeringBookingConfigRepository.findByOfferingIdAndBusinessId(offeringId, businessId).orElse(null);
+        if (config == null || (enforceBookableOnline && !config.isBookableOnline())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking.");
+        }
+        return new ResolvedOffering(offeringId, offering, config);
+    }
+
+    /** One line of the historical transaction snapshot, pending persistence until the booking commits. */
+    private record PendingLineSnapshot(String label, BigDecimal amount, Integer quantity, UUID componentId, UUID optionId) {
+    }
+
+    // Line amounts always sum to exactly pricing.finalPrice() (== the price ServiceOrder.price is
+    // set to in the same transaction) — the invariant that makes SERVICE_ORDER_FIELD_DRIFT
+    // provable by construction rather than merely asserted. basePrice is its own explicit line
+    // (never folded silently into the first adjustment) since every backfilled package component
+    // adjustment is 0.00 by construction (Revision 4 §3/§6) — omitting a base-price line would
+    // otherwise leave the snapshot summing to zero while the order is charged its full price.
+    private List<PendingLineSnapshot> snapshotsFromPricing(PricingResult pricing, UUID businessId, String offeringName) {
+        List<PendingLineSnapshot> lines = new ArrayList<>();
+        if (pricing.basePrice().compareTo(BigDecimal.ZERO) != 0 || pricing.adjustments().isEmpty()) {
+            lines.add(new PendingLineSnapshot(offeringName, pricing.basePrice(), null, null, null));
+        }
+        for (PricingAdjustment adjustment : pricing.adjustments()) {
+            String label = adjustment.optionId() != null
+                    ? optionRepository.findByIdAndBusinessId(adjustment.optionId(), businessId).map(o -> o.getLabel()).orElse("Item")
+                    : "Item";
+            lines.add(new PendingLineSnapshot(label, adjustment.amount(), adjustment.quantity(),
+                    adjustment.componentId(), adjustment.optionId()));
+        }
+        return lines;
+    }
+
+    private void persistLineSnapshots(UUID businessId, UUID serviceOrderId, List<PendingLineSnapshot> lines) {
+        for (PendingLineSnapshot line : lines) {
+            serviceOrderLineSnapshotRepository.save(ServiceOrderLineSnapshot.builder()
+                    .businessId(businessId)
+                    .serviceOrderId(serviceOrderId)
+                    .label(line.label())
+                    .amount(line.amount())
+                    .quantity(line.quantity())
+                    .sourceComponentId(line.componentId())
+                    .sourceOptionId(line.optionId())
+                    .build());
+        }
+    }
+
+    // Capacity-race correctness fix (frozen design §10) applies to BOTH the legacy and canonical
+    // pricing paths equally — it's the same validateCapacity() method either way. On the legacy
+    // path there is no Offering the caller is already resolving, so this best-effort helper
+    // acquires (and discards, matching BillingService/InvoiceService's own established
+    // "findByIdForUpdate for its lock side effect alone" pattern) the row lock on whatever
+    // canonical Offering Phase 5A's own sync already mapped this legacy item to, if any — a
+    // no-op, matching pre-Phase-5C behaviour exactly, only in the (should-not-occur) case no
+    // mapping exists yet.
+    private void lockMappedOfferingBestEffort(UUID businessId, OfferingResolutionService.LegacyType legacyType, UUID legacyId) {
+        UUID offeringId = offeringResolutionService.resolveOfferingId(businessId, legacyType, legacyId);
+        if (offeringId != null) {
+            offeringRepository.findByIdAndBusinessIdForUpdate(offeringId, businessId);
         }
     }
 
@@ -318,6 +559,10 @@ public class BookingService {
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
         validateWorkingWindow(businessId, integrations, req.scheduledAt());
 
+        // Phase 5C — consulted exactly once, at the top of the resolution block; the entire
+        // pricing/eligibility branch below follows from this single result.
+        boolean canonical = bookingCutoverStateResolver.useCanonical(businessId);
+
         String serviceName;
         UUID serviceTypeId;
         UUID serviceCatalogId = null;
@@ -325,43 +570,99 @@ public class BookingService {
         BigDecimal price;
         boolean requiresLocation;
         String itemPolicyOverride;
+        UUID offeringIdForOrder = null;
+        List<PendingLineSnapshot> pendingSnapshots = List.of();
 
         if (req.packageId() != null) {
-            ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
-                    .filter(ServicePackage::isActive)
-                    .filter(ServicePackage::isBookableOnline)
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
+            if (canonical) {
+                // Capacity-race fix: Offering row locked FIRST, before any capacity read/insert.
+                ResolvedOffering resolved = resolveCanonicalPackage(businessId, req.packageId(), true, true);
+                Instant requestEnd = req.scheduledAt().plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                        businessId, req.packageId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, req.scheduledAt());
 
-            Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
-            Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
-            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
-                    businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-            validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+                Map<UUID, Set<UUID>> selections = offeringResolutionService.defaultSelections(businessId, resolved.offeringId());
+                PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), selections, Map.of());
+                if (!pricing.valid() || pricing.manualQuoteRequired() || pricing.finalPrice() == null) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "This package isn't available for online booking right now.");
+                }
+                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Package not found."));
 
-            serviceName = pkg.getName();
-            serviceTypeId = pkg.getServiceTypeId();
-            servicePackageId = pkg.getId();
-            price = pkg.getPrice();
-            requiresLocation = false; // packages don't carry the flag today — component items might, but the package itself is the bookable unit
-            itemPolicyOverride = pkg.getPaymentPolicyOverride();
+                serviceName = resolved.offering().getName();
+                serviceTypeId = pkg.getServiceTypeId();
+                servicePackageId = pkg.getId();
+                price = pricing.finalPrice();
+                requiresLocation = resolved.config().isRequiresLocation();
+                itemPolicyOverride = resolved.config().getPaymentPolicyOverride();
+                offeringIdForOrder = resolved.offeringId();
+                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName());
+            } else {
+                lockMappedOfferingBestEffort(businessId, OfferingResolutionService.LegacyType.SERVICE_PACKAGE, req.packageId());
+                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                        .filter(ServicePackage::isActive)
+                        .filter(ServicePackage::isBookableOnline)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available for booking."));
+
+                Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                        businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+                serviceName = pkg.getName();
+                serviceTypeId = pkg.getServiceTypeId();
+                servicePackageId = pkg.getId();
+                price = pkg.getPrice();
+                requiresLocation = false; // packages don't carry the flag today — component items might, but the package itself is the bookable unit
+                itemPolicyOverride = pkg.getPaymentPolicyOverride();
+            }
         } else {
-            ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
-                    .filter(ServiceCatalogItem::isActive)
-                    .filter(ServiceCatalogItem::isBookableOnline)
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+            if (canonical) {
+                ResolvedOffering resolved = resolveCanonicalService(businessId, req.serviceCatalogId(), true, true);
+                Instant requestEnd = req.scheduledAt().plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                        businessId, req.serviceCatalogId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, req.scheduledAt());
 
-            Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
-            Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
-            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
-                    businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-            validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+                PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), Map.of(), Map.of());
+                if (!pricing.valid() || pricing.finalPrice() == null) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "This service isn't available for online booking right now.");
+                }
+                ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service not found."));
 
-            serviceName = catalogItem.getName();
-            serviceTypeId = catalogItem.getServiceTypeId();
-            serviceCatalogId = catalogItem.getId();
-            price = catalogItem.getPrice();
-            requiresLocation = catalogItem.isRequiresLocation();
-            itemPolicyOverride = catalogItem.getPaymentPolicyOverride();
+                serviceName = resolved.offering().getName();
+                serviceTypeId = catalogItem.getServiceTypeId();
+                serviceCatalogId = catalogItem.getId();
+                price = pricing.finalPrice();
+                requiresLocation = resolved.config().isRequiresLocation();
+                itemPolicyOverride = resolved.config().getPaymentPolicyOverride();
+                offeringIdForOrder = resolved.offeringId();
+                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName());
+            } else {
+                lockMappedOfferingBestEffort(businessId, OfferingResolutionService.LegacyType.SERVICE_CATALOG_ITEM, req.serviceCatalogId());
+                ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                        .filter(ServiceCatalogItem::isActive)
+                        .filter(ServiceCatalogItem::isBookableOnline)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available for booking."));
+
+                Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                        businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+                serviceName = catalogItem.getName();
+                serviceTypeId = catalogItem.getServiceTypeId();
+                serviceCatalogId = catalogItem.getId();
+                price = catalogItem.getPrice();
+                requiresLocation = catalogItem.isRequiresLocation();
+                itemPolicyOverride = catalogItem.getPaymentPolicyOverride();
+            }
         }
 
         if (requiresLocation && (req.customerLocation() == null || req.customerLocation().isBlank())) {
@@ -376,6 +677,17 @@ public class BookingService {
                         .email(req.customerEmail())
                         .build()));
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting. Phase
+        // 5C now supplies a real offeringId when canonical (null when legacy, unchanged from
+        // before this phase) — no PolicyEngine code changed; this is purely the missing value it
+        // already accepted. Zero behaviour change for a business with no BOOKING_CREATE policy
+        // configured: see PolicyEngine.evaluateGate's own empty-applicable-set short circuit.
+        GateResult gate = policyEngine.evaluateGate(businessId, "BOOKING_CREATE", offeringIdForOrder,
+                req.commitmentReference(), "BOOKING", customer.getId());
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
                 .serviceTypeId(serviceTypeId)
@@ -383,12 +695,19 @@ public class BookingService {
                 .customerId(customer.getId())
                 .serviceCatalogId(serviceCatalogId)
                 .servicePackageId(servicePackageId)
+                .offeringId(offeringIdForOrder)
                 .notes(req.notes())
                 .price(price)
                 .scheduledAt(req.scheduledAt())
                 .build();
         order = serviceOrderRepository.save(order);
         createServiceOrderItem(businessId, order.getId(), serviceTypeId, serviceCatalogId, serviceName, price);
+        // Phase 5C — the immutable historical transaction snapshot (frozen design §2/§6), same
+        // transaction as the ServiceOrder/Booking insert below: if this method rolls back for any
+        // reason, these rows roll back with it (no snapshot can survive a failed booking).
+        if (!pendingSnapshots.isEmpty()) {
+            persistLineSnapshots(businessId, order.getId(), pendingSnapshots);
+        }
 
         Booking booking = Booking.builder()
                 .businessId(businessId)
@@ -402,6 +721,14 @@ public class BookingService {
                 .build();
         booking = bookingRepository.save(booking);
         bookingRepository.flush(); // so booking_number is readable below, same reasoning as ServiceOrderService.create()
+
+        // Phase 4 — step 8 of the frozen gate sequence: complete the commitment now that the
+        // real transaction row exists, in the SAME @Transactional method/DB transaction as the
+        // gate check and the insert above (Revision 4 §10 — a commitment cannot become COMPLETED
+        // for a transaction that was not persisted, because both share one transaction boundary).
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "BOOKING", booking.getId());
+        }
 
         String manageLink = frontendUrl + "/booking/manage/" + booking.getManageToken();
         emailService.sendBookingConfirmation(
@@ -468,45 +795,104 @@ public class BookingService {
         BusinessIntegrations integrations = businessIntegrationsRepository.findByBusinessId(businessId).orElse(null);
         validateWorkingWindow(businessId, integrations, req.scheduledAt());
 
+        // Phase 5C — consulted exactly once; the entire pricing/eligibility branch below follows
+        // from this single result, mirroring createBooking()'s own discipline exactly.
+        boolean canonical = bookingCutoverStateResolver.useCanonical(businessId);
+
         String serviceName;
         UUID serviceTypeId;
         UUID serviceCatalogId = null;
         UUID servicePackageId = null;
         BigDecimal price;
         boolean requiresLocation;
+        UUID offeringIdForOrder = null;
+        List<PendingLineSnapshot> pendingSnapshots = List.of();
 
         if (req.packageId() != null) {
-            ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
-                    .filter(ServicePackage::isActive)
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available."));
+            if (canonical) {
+                // Staff path never filters on bookableOnline (fresh source re-confirmed — only
+                // .isActive() is enforced today) — enforceBookableOnline=false mirrors that exactly.
+                ResolvedOffering resolved = resolveCanonicalPackage(businessId, req.packageId(), true, false);
+                Instant requestEnd = req.scheduledAt().plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                        businessId, req.packageId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, req.scheduledAt());
 
-            Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
-            Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
-            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
-                    businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-            validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+                Map<UUID, Set<UUID>> selections = offeringResolutionService.defaultSelections(businessId, resolved.offeringId());
+                PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), selections, Map.of());
+                if (!pricing.valid() || pricing.manualQuoteRequired() || pricing.finalPrice() == null) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "This package isn't available for booking right now.");
+                }
+                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Package not found."));
 
-            serviceName = pkg.getName();
-            serviceTypeId = pkg.getServiceTypeId();
-            servicePackageId = pkg.getId();
-            price = pkg.getPrice();
-            requiresLocation = false;
+                serviceName = resolved.offering().getName();
+                serviceTypeId = pkg.getServiceTypeId();
+                servicePackageId = pkg.getId();
+                price = pricing.finalPrice();
+                requiresLocation = resolved.config().isRequiresLocation();
+                offeringIdForOrder = resolved.offeringId();
+                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName());
+            } else {
+                lockMappedOfferingBestEffort(businessId, OfferingResolutionService.LegacyType.SERVICE_PACKAGE, req.packageId());
+                ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
+                        .filter(ServicePackage::isActive)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That package isn't available."));
+
+                Instant requestEnd = req.scheduledAt().plusSeconds(pkg.getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(pkg.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServicePackageIdAndStatusNotAndScheduledAtBetween(
+                        businessId, pkg.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(pkg.getDurationMinutes(), pkg.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+                serviceName = pkg.getName();
+                serviceTypeId = pkg.getServiceTypeId();
+                servicePackageId = pkg.getId();
+                price = pkg.getPrice();
+                requiresLocation = false;
+            }
         } else {
-            ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
-                    .filter(ServiceCatalogItem::isActive)
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available."));
+            if (canonical) {
+                ResolvedOffering resolved = resolveCanonicalService(businessId, req.serviceCatalogId(), true, false);
+                Instant requestEnd = req.scheduledAt().plusSeconds(resolved.config().getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(resolved.config().getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                        businessId, req.serviceCatalogId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, req.scheduledAt());
 
-            Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
-            Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
-            List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
-                    businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
-            validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+                PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), Map.of(), Map.of());
+                if (!pricing.valid() || pricing.finalPrice() == null) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "This service isn't available for booking right now.");
+                }
+                ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Service not found."));
 
-            serviceName = catalogItem.getName();
-            serviceTypeId = catalogItem.getServiceTypeId();
-            serviceCatalogId = catalogItem.getId();
-            price = catalogItem.getPrice();
-            requiresLocation = catalogItem.isRequiresLocation();
+                serviceName = resolved.offering().getName();
+                serviceTypeId = catalogItem.getServiceTypeId();
+                serviceCatalogId = catalogItem.getId();
+                price = pricing.finalPrice();
+                requiresLocation = resolved.config().isRequiresLocation();
+                offeringIdForOrder = resolved.offeringId();
+                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName());
+            } else {
+                lockMappedOfferingBestEffort(businessId, OfferingResolutionService.LegacyType.SERVICE_CATALOG_ITEM, req.serviceCatalogId());
+                ServiceCatalogItem catalogItem = serviceCatalogItemRepository.findByIdAndBusinessId(req.serviceCatalogId(), businessId)
+                        .filter(ServiceCatalogItem::isActive)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "That service isn't available."));
+
+                Instant requestEnd = req.scheduledAt().plusSeconds(catalogItem.getDurationMinutes() * 60L);
+                Instant searchFrom = req.scheduledAt().minusSeconds(catalogItem.getDurationMinutes() * 60L);
+                List<ServiceOrder> candidates = serviceOrderRepository.findAllByBusinessIdAndServiceCatalogIdAndStatusNotAndScheduledAtBetween(
+                        businessId, catalogItem.getId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
+                validateCapacity(catalogItem.getDurationMinutes(), catalogItem.getMaxConcurrentBookings(), candidates, req.scheduledAt());
+
+                serviceName = catalogItem.getName();
+                serviceTypeId = catalogItem.getServiceTypeId();
+                serviceCatalogId = catalogItem.getId();
+                price = catalogItem.getPrice();
+                requiresLocation = catalogItem.isRequiresLocation();
+            }
         }
 
         if (requiresLocation && (req.customerLocation() == null || req.customerLocation().isBlank())) {
@@ -552,6 +938,14 @@ public class BookingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "A customer name is required.");
         }
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting. Phase
+        // 5C now supplies a real offeringId when canonical, same reasoning as createBooking().
+        GateResult gate = policyEngine.evaluateGate(businessId, "STAFF_BOOKING_CREATE", offeringIdForOrder,
+                req.commitmentReference(), "BOOKING", resolvedCustomerId);
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         ServiceOrder order = ServiceOrder.builder()
                 .businessId(businessId)
                 .serviceTypeId(serviceTypeId)
@@ -559,6 +953,7 @@ public class BookingService {
                 .customerId(resolvedCustomerId)
                 .serviceCatalogId(serviceCatalogId)
                 .servicePackageId(servicePackageId)
+                .offeringId(offeringIdForOrder)
                 .notes(req.notes())
                 .price(price)
                 .assignedStaffId(req.assignedStaffId())
@@ -567,6 +962,9 @@ public class BookingService {
                 .build();
         order = serviceOrderRepository.save(order);
         createServiceOrderItem(businessId, order.getId(), serviceTypeId, serviceCatalogId, serviceName, price);
+        if (!pendingSnapshots.isEmpty()) {
+            persistLineSnapshots(businessId, order.getId(), pendingSnapshots);
+        }
 
         Booking booking = Booking.builder()
                 .businessId(businessId)
@@ -582,6 +980,11 @@ public class BookingService {
                 .build();
         booking = bookingRepository.save(booking);
         bookingRepository.flush(); // so booking_number is readable below, same reasoning as ServiceOrderService.create()
+
+        // Phase 4 — step 8 of the frozen gate sequence, same transaction as the gate check/insert above.
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "BOOKING", booking.getId());
+        }
 
         // Staff chose PAID directly (cash already changed hands on the call) —
         // same ledger treatment as verifyPayment() below, just MANUAL/CASH

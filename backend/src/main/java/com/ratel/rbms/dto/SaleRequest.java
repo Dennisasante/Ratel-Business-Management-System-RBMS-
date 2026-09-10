@@ -19,6 +19,9 @@ public record SaleRequest(
 
         @NotEmpty(message = "A sale needs at least one item")
         @Valid
-        List<SaleItemRequest> items
+        List<SaleItemRequest> items,
+
+        // Phase 4 — nullable, same role as CreateBookingRequest.commitmentReference.
+        UUID commitmentReference
 ) {
 }

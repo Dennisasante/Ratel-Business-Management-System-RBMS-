@@ -1,6 +1,7 @@
 package com.ratel.rbms.entity;
 
 import com.ratel.rbms.entity.enums.BillingStatus;
+import com.ratel.rbms.entity.enums.BookingCutoverState;
 import com.ratel.rbms.entity.enums.Industry;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -158,6 +159,14 @@ public class Business {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    // Talia Unified Platform, Phase 5C — the sole per-business Booking cutover lifecycle state.
+    // ONLY com.ratel.rbms.service.BookingCutoverStateResolver may write this column; every other
+    // reader/writer goes through that resolver (Revision 4 §4).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "booking_cutover_state", nullable = false, length = 30)
+    @Builder.Default
+    private BookingCutoverState bookingCutoverState = BookingCutoverState.NOT_READY;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

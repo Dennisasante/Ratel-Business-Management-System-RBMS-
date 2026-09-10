@@ -31,6 +31,12 @@ public record CreateBookingRequest(
         String notes,
 
         // Required only when the resolved service/package has requiresLocation set.
-        String customerLocation
+        String customerLocation,
+
+        // Phase 4 — nullable. Opened via a prior PolicyEngine.beginCommitment() call (Layer-A
+        // pre-flight, e.g. after showing/acknowledging any required policy). BookingService
+        // passes this into PolicyEngine.evaluateGate(); its absence only blocks the booking if
+        // this business actually has an applicable, blocking policy configured for BOOKING_CREATE.
+        UUID commitmentReference
 ) {
 }

@@ -2,6 +2,7 @@ package com.ratel.rbms.repository;
 
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.enums.BillingStatus;
+import com.ratel.rbms.entity.enums.BookingCutoverState;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -31,6 +32,12 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
     // request and only needs this one column, not the full entity.
     @Query("SELECT b.billingStatus FROM Business b WHERE b.id = :id")
     Optional<BillingStatus> findBillingStatusById(@Param("id") UUID id);
+
+    // Phase 5C — the lean, unlocked read BookingCutoverStateResolver.resolve()/useCanonical() uses
+    // on every booking-adjacent request; state TRANSITIONS instead lock the whole row via the
+    // existing findByIdForUpdate above (Revision 4 §4/§29 — concurrent transitions must serialize).
+    @Query("SELECT b.bookingCutoverState FROM Business b WHERE b.id = :id")
+    Optional<BookingCutoverState> findBookingCutoverStateById(@Param("id") UUID id);
 
     long countBySubscriptionPlanId(UUID planId);
 

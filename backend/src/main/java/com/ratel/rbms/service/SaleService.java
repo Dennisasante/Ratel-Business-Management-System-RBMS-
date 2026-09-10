@@ -60,6 +60,7 @@ public class SaleService {
     private final PaymentTransactionService paymentTransactionService;
     private final NotificationService notificationService;
     private final ApprovalGateService approvalGateService;
+    private final PolicyEngine policyEngine;
 
     public SaleService(
             SaleRepository saleRepository,
@@ -74,7 +75,8 @@ public class SaleService {
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
             NotificationService notificationService,
-            ApprovalGateService approvalGateService
+            ApprovalGateService approvalGateService,
+            PolicyEngine policyEngine
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
@@ -89,6 +91,7 @@ public class SaleService {
         this.paymentTransactionService = paymentTransactionService;
         this.notificationService = notificationService;
         this.approvalGateService = approvalGateService;
+        this.policyEngine = policyEngine;
     }
 
     @Transactional
@@ -109,6 +112,13 @@ public class SaleService {
         boolean collectedInPerson = req.paymentMethod() == PaymentMethod.CASH
                 || req.paymentMethod() == PaymentMethod.MOBILE_MONEY_DIRECT;
 
+        // Phase 4 — the authoritative gate (Revision 4 §5), immediately before persisting.
+        GateResult gate = policyEngine.evaluateGate(businessId, "SALE_CREATE", null,
+                req.commitmentReference(), "SALE", req.customerId());
+        if (!gate.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, String.join(" ", gate.reasons()));
+        }
+
         Sale sale = Sale.builder()
                 .businessId(businessId)
                 .customerId(req.customerId())
@@ -119,6 +129,11 @@ public class SaleService {
                 .build();
         sale = saleRepository.save(sale); // flush needed so sale_number + id are available below
         saleRepository.flush();
+
+        // Phase 4 — step 8 of the frozen gate sequence, same transaction as the gate check/insert above.
+        if (req.commitmentReference() != null) {
+            policyEngine.linkCommitmentToTransaction(businessId, req.commitmentReference(), "SALE", sale.getId());
+        }
 
         BigDecimal runningTotal = BigDecimal.ZERO;
         List<SaleItemResponse> itemResponses = new java.util.ArrayList<>();
