@@ -7,6 +7,7 @@ import com.ratel.rbms.dto.WhatsAppConnectionTestResponse;
 import com.ratel.rbms.entity.AiChannelBinding;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.enums.AiChannel;
+import com.ratel.rbms.entity.enums.ChannelConnectionMethod;
 import com.ratel.rbms.exception.ApiException;
 import com.ratel.rbms.repository.AiChannelBindingRepository;
 import com.ratel.rbms.repository.BusinessRepository;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -26,6 +28,17 @@ import java.util.UUID;
  * from anywhere inside the request body. Access tokens are write-only:
  * once saved, nothing here (or anywhere else) ever reads it back out to an
  * API response — see WhatsAppBindingResponse.
+ *
+ * <p>Phase 5D Stage 0: this class and the new business-facing
+ * {@code AiChannelConnectionService}/{@code WhatsAppManualConnectionInitiator} now operate on the
+ * SAME {@link AiChannelBinding} rows. {@code connectionState} is recomputed here via the exact
+ * same {@code AiChannelConnectionService.deriveState} function that surface uses, so the value
+ * can never drift depending on which of the two management surfaces last touched a row. This
+ * class's own public contract/tests are otherwise unchanged — no eager health check was added to
+ * {@code create()}/{@code update()} (that would introduce a new, previously-unstubbed
+ * {@code WhatsAppApiClient} interaction into every existing test); {@code testConnection()} alone
+ * now also persists the real health signal it already computes, which existing tests only ever
+ * assert the return value of, not the absence of a side effect.
  */
 @Service
 public class WhatsAppBindingService {
@@ -70,7 +83,9 @@ public class WhatsAppBindingService {
                 .displayName(req.displayName())
                 .credentialsEncrypted(req.accessToken())
                 .active(req.active())
+                .connectionMethod(ChannelConnectionMethod.MANUAL)
                 .build();
+        binding.setConnectionState(AiChannelConnectionService.deriveState(binding));
 
         try {
             binding = aiChannelBindingRepository.saveAndFlush(binding);
@@ -98,6 +113,7 @@ public class WhatsAppBindingService {
         if (req.displayName() != null) binding.setDisplayName(req.displayName());
         if (req.accessToken() != null && !req.accessToken().isBlank()) binding.setCredentialsEncrypted(req.accessToken());
         if (req.active() != null) binding.setActive(req.active());
+        binding.setConnectionState(AiChannelConnectionService.deriveState(binding));
 
         try {
             binding = aiChannelBindingRepository.saveAndFlush(binding);
@@ -117,6 +133,7 @@ public class WhatsAppBindingService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No WhatsApp binding configured for this business."));
 
         binding.setActive(active);
+        binding.setConnectionState(AiChannelConnectionService.deriveState(binding));
         binding = aiChannelBindingRepository.save(binding);
 
         platformAuditLogService.log(adminId, (active ? "Activated" : "Deactivated") + " the WhatsApp binding for \"" + business.getName() + "\"",
@@ -124,7 +141,14 @@ public class WhatsAppBindingService {
         return WhatsAppBindingResponse.from(binding, business.getName());
     }
 
-    /** Validates the configured phone number/token against the real Graph API — never sends a customer-facing message (spec §31). */
+    /**
+     * Validates the configured phone number/token against the real Graph API — never sends a
+     * customer-facing message (spec §31). Phase 5D Stage 0: also persists the real health signal
+     * ({@code lastVerifiedAt}/{@code lastFailureAt}) and recomputes {@code connectionState}, so a
+     * Super-Admin-run test feeds the same connection-health picture the business-facing surface
+     * relies on — the return VALUE this method has always produced is unchanged.
+     */
+    @Transactional
     public WhatsAppConnectionTestResponse testConnection(UUID businessId) {
         AiChannelBinding binding = aiChannelBindingRepository.findByBusinessIdAndChannel(businessId, AiChannel.WHATSAPP)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "No WhatsApp binding configured for this business."));
@@ -135,6 +159,15 @@ public class WhatsAppBindingService {
 
         WhatsAppApiClient.PhoneNumberMetadata result = whatsAppApiClient.validatePhoneNumber(
                 binding.getExternalAccountId(), binding.getCredentialsEncrypted());
+
+        if (result.valid()) {
+            binding.setLastVerifiedAt(Instant.now());
+        } else {
+            binding.setLastFailureAt(Instant.now());
+        }
+        binding.setConnectionState(AiChannelConnectionService.deriveState(binding));
+        aiChannelBindingRepository.save(binding);
+
         return new WhatsAppConnectionTestResponse(result.valid(), result.displayPhoneNumber(), result.verifiedName(), result.errorMessage());
     }
 

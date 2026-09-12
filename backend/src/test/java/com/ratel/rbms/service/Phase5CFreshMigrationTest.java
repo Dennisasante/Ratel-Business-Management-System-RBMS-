@@ -12,13 +12,20 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Talia Unified Platform, Phase 5C — proves the FULL migration chain (V1..V59) applies cleanly to
- * a genuinely EMPTY PostgreSQL database (frozen implementation instruction §31), independent of
- * the shared local dev database's own already-migrated history. Not a Spring context test
+ * Talia Unified Platform, Phase 5C — proves the FULL migration chain applies cleanly to a
+ * genuinely EMPTY PostgreSQL database (frozen implementation instruction §31), independent of the
+ * shared local dev database's own already-migrated history. Not a Spring context test
  * deliberately — creates a throwaway database on the SAME local Postgres server this whole
  * project's tests already connect to (via plain JDBC/Flyway, no Spring Boot involved), runs every
- * migration from scratch, spot-checks the Phase 5C schema directly, then drops the throwaway
- * database — leaves no trace behind, never touches the real ratel_db or production.
+ * migration from scratch, spot-checks the schema directly, then drops the throwaway database —
+ * leaves no trace behind, never touches the real ratel_db or production.
+ *
+ * <p>Phase 5D Stage 0: extended forward to V60, exactly as this same class was itself extended at
+ * every prior phase boundary in this project (V57->V58->V59) — the target-version assertion and
+ * spot-checks below track whatever the current latest migration is; Phase 5C's OWN migrations
+ * (V1-V59) and their own assertions above this line are completely unmodified. Freezing Phase 5C
+ * means its schema/behavior never changes, not that this proof-of-a-clean-migration-chain test
+ * stops being extended as later phases legitimately add to the SAME chain.
  */
 class Phase5CFreshMigrationTest {
 
@@ -44,7 +51,7 @@ class Phase5CFreshMigrationTest {
 
             var result = flyway.migrate();
             assertTrue(result.success, "full migration chain must apply cleanly to an empty database");
-            assertEquals("59", result.targetSchemaVersion, "must end at V59 (Phase 5C)");
+            assertEquals("60", result.targetSchemaVersion, "must end at V60 (Phase 5D Stage 0)");
 
             try (Connection conn = DriverManager.getConnection(freshUrl, USER, PASSWORD);
                  Statement stmt = conn.createStatement()) {
@@ -57,6 +64,12 @@ class Phase5CFreshMigrationTest {
                 assertTrue(columnExists(stmt, "package_components", "legacy_service_package_item_id"));
                 assertTrue(columnExists(stmt, "service_orders", "offering_id"));
                 assertTrue(tableExists(stmt, "service_order_line_snapshots"));
+
+                // Phase 5D Stage 0 additions (V60) — same spot-check pattern, new columns only.
+                assertTrue(columnExists(stmt, "ai_channel_bindings", "connection_method"));
+                assertTrue(columnExists(stmt, "ai_channel_bindings", "last_verified_at"));
+                assertTrue(columnExists(stmt, "ai_channel_bindings", "last_failure_at"));
+                assertTrue(columnExists(stmt, "ai_channel_bindings", "connection_state"));
 
                 try (ResultSet rs = stmt.executeQuery(
                         "SELECT column_default FROM information_schema.columns "
