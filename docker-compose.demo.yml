@@ -1,0 +1,151 @@
+# Cafe Bar Noir — isolated demo stack. Deploy this ONLY with an explicit project
+# name so it can never collide with the real production stack on the same VPS:
+#
+#   docker compose -p ratel-demo -f docker-compose.demo.yml up -d --build
+#
+# Deliberately NOT a copy of docker-compose.prod.yml with things removed — it's
+# a distinct, narrower file: no Caddy service (production's own Caddy already
+# owns host ports 80/443 on this VPS; see CAFE_BAR_NOIR_DEMO_DEPLOY.md for how
+# it reaches this stack instead), and every resource that could otherwise
+# collide with production (volume name, network name, container names) is
+# fully disambiguated by Compose's own project-name prefixing — "-p ratel-demo"
+# turns every one of the bare names below into "ratel-demo-<name>", which can
+# never collide with production's own "ratel-<name>" containers/volumes as
+# long as production itself is ALSO always run with an explicit or
+# directory-derived project name of "ratel" (its own default, since DEPLOY.md
+# has you clone it into a directory literally called "ratel").
+#
+# No host ports are published for postgres/backend here — matches production's
+# own posture exactly (see docker-compose.prod.yml's own comments). Only the
+# frontend joins the shared "ratel-edge" network so the EXISTING production
+# Caddy can reach it by service name — see CAFE_BAR_NOIR_DEMO_DEPLOY.md for the
+# one manual, one-time step that creates that network and adds the Caddy site
+# block. Nothing in this file touches or requires editing docker-compose.prod.yml.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cafe_bar_noir_demo}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [ratel]
+    # Guardrail (VPS has only 2 vCPU / no swap) — a demo-scale single-tenant
+    # database needs nowhere near this; the ceiling exists purely so a runaway
+    # query/connection leak can't consume memory production or Serenity need.
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME:-cafe_bar_noir_demo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-cafe_bar_noir_demo}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ALLOWED_ORIGINS: ${FRONTEND_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
+      # --- Demo-irrelevant integrations: deliberately blank, same convention
+      # docker-compose.prod.yml already uses for "optional, quietly disabled
+      # when blank" values. Never populate these with production's own values. ---
+      GOOGLE_CLIENT_ID: ""
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      MAIL_FROM: "no-reply@demo.invalid"
+      PAYSTACK_SECRET_KEY: ""
+      PAYSTACK_PUBLIC_KEY: ""
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
+      VAPID_SUBJECT: "mailto:demo@demo.invalid"
+      # --- The one setting this whole deployment exists to prove out ---
+      # No per-tenant override exists (nor should one be built for this) — this
+      # is what makes an ENTIRELY SEPARATE backend container/database the
+      # correct isolation unit, not a config flag inside the shared one.
+      AI_PROVIDER: mock
+      OPENAI_API_KEY: ""
+      OPENAI_MODEL: ""
+      WHATSAPP_GRAPH_API_VERSION: "v21.0"
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ""
+      META_APP_SECRET: ""
+      # Demo-seeding gate — see CAFE_BAR_NOIR_DEMO_DEPLOY.md's "seed once, then
+      # disable" step. Defaults to true here ONLY because this whole stack's
+      # sole purpose is running that one seed; still flip it back to false
+      # afterward, same discipline as production.
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
+      UPLOAD_DIR: /app/uploads
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Demo Super Admin}
+      # JVM heap/metaspace cap — read directly by the JVM launcher from the
+      # environment (no Dockerfile/entrypoint change needed; same mechanism
+      # this project's own local .env already uses for the Avast trust-store
+      # flag). Sized so the container's own mem_limit below is the real
+      # ceiling the JVM can never exceed, not a number it can quietly ignore.
+      JAVA_TOOL_OPTIONS: "-Xmx512m -XX:MaxMetaspaceSize=128m"
+    volumes:
+      - uploads:/app/uploads
+    networks: [ratel]
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: 0.75
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Deliberately the INTERNAL Docker service address, not a public
+        # BACKEND_URL — verified from frontend/middleware.ts: every /api/*
+        # and /uploads/* call from the browser is proxied SERVER-SIDE by
+        # Next.js's own middleware (it's what attaches the Authorization
+        # header from the httpOnly cookie), so this value is only ever read
+        # by that server-side process running inside this same container, on
+        # this same "ratel" network as the backend — the browser never sees
+        # or needs it. Production instead bakes in a real public API_DOMAIN
+        # because it also needs a directly-callable public endpoint for
+        # Paystack/WooCommerce webhooks (see DEPLOY.md) — this demo has
+        # neither integration configured, so the backend needs no public
+        # route at all, and doesn't join the ratel-edge network below.
+        NEXT_PUBLIC_API_URL: http://backend:8090
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+        NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY: ""
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""
+    restart: unless-stopped
+    depends_on: [backend]
+    # Joins BOTH this stack's own internal network AND the shared edge network
+    # production's Caddy also joins (see CAFE_BAR_NOIR_DEMO_DEPLOY.md) — no
+    # host port published here at all, so there is nothing to misconfigure
+    # into public exposure by omission or typo.
+    networks: [ratel, ratel-edge]
+    mem_limit: 384m
+    mem_reservation: 192m
+    cpus: 0.5
+
+networks:
+  ratel:
+  # Pre-existing, shared with production's Caddy — created ONCE, manually, by
+  # you, outside of any compose file (see CAFE_BAR_NOIR_DEMO_DEPLOY.md). Never
+  # created by this file; `external: true` means Compose only ever looks it up,
+  # never creates or deletes it, so `down` here can never remove it.
+  ratel-edge:
+    external: true
+
+volumes:
+  pg_data:
+  uploads:
