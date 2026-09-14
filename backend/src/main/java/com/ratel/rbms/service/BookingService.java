@@ -9,6 +9,8 @@ import com.ratel.rbms.dto.BookingWidgetConfigResponse;
 import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.CreateBookingRequest;
 import com.ratel.rbms.dto.CreateStaffBookingRequest;
+import com.ratel.rbms.dto.PackageOptionsResponse;
+import com.ratel.rbms.dto.PackagePricingPreviewResponse;
 import com.ratel.rbms.dto.WorkingHoursResponse;
 import com.ratel.rbms.entity.Booking;
 import com.ratel.rbms.entity.Business;
@@ -17,6 +19,7 @@ import com.ratel.rbms.entity.BusinessWorkingHours;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.Offering;
 import com.ratel.rbms.entity.OfferingBookingConfig;
+import com.ratel.rbms.entity.Option;
 import com.ratel.rbms.entity.PackageComponent;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.ServiceCatalogItem;
@@ -26,6 +29,7 @@ import com.ratel.rbms.entity.ServiceOrderLineSnapshot;
 import com.ratel.rbms.entity.ServicePackage;
 import com.ratel.rbms.entity.ServicePackageItem;
 import com.ratel.rbms.entity.ServiceType;
+import com.ratel.rbms.entity.SubstitutionRule;
 import com.ratel.rbms.entity.User;
 import com.ratel.rbms.entity.enums.Role;
 import com.ratel.rbms.entity.enums.ServiceOrderStatus;
@@ -47,6 +51,7 @@ import com.ratel.rbms.repository.ServiceOrderRepository;
 import com.ratel.rbms.repository.ServicePackageItemRepository;
 import com.ratel.rbms.repository.ServicePackageRepository;
 import com.ratel.rbms.repository.ServiceTypeRepository;
+import com.ratel.rbms.repository.SubstitutionRuleRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.security.RateLimiterService;
 import com.ratel.rbms.tenant.TenantContext;
@@ -123,6 +128,7 @@ public class BookingService {
     private final OptionRepository optionRepository;
     private final PackagePricingService packagePricingService;
     private final ServiceOrderLineSnapshotRepository serviceOrderLineSnapshotRepository;
+    private final SubstitutionRuleRepository substitutionRuleRepository;
 
     public BookingService(
             BusinessRepository businessRepository,
@@ -156,6 +162,7 @@ public class BookingService {
             OptionRepository optionRepository,
             PackagePricingService packagePricingService,
             ServiceOrderLineSnapshotRepository serviceOrderLineSnapshotRepository,
+            SubstitutionRuleRepository substitutionRuleRepository,
             @org.springframework.beans.factory.annotation.Value("${app.frontend-url}") String frontendUrl
     ) {
         this.businessRepository = businessRepository;
@@ -189,6 +196,7 @@ public class BookingService {
         this.optionRepository = optionRepository;
         this.packagePricingService = packagePricingService;
         this.serviceOrderLineSnapshotRepository = serviceOrderLineSnapshotRepository;
+        this.substitutionRuleRepository = substitutionRuleRepository;
         this.frontendUrl = frontendUrl;
     }
 
@@ -479,18 +487,43 @@ public class BookingService {
     // adjustment is 0.00 by construction (Revision 4 §3/§6) — omitting a base-price line would
     // otherwise leave the snapshot summing to zero while the order is charged its full price.
     private List<PendingLineSnapshot> snapshotsFromPricing(PricingResult pricing, UUID businessId, String offeringName) {
+        return snapshotsFromPricing(pricing, businessId, offeringName, 1);
+    }
+
+    // partySize multiplies every line's amount (and, where already present, its own submitted
+    // quantity) so the snapshot keeps summing to exactly the party-size-adjusted total the
+    // ServiceOrder is actually charged (Restaurant-AI-demo phase) — the same
+    // "provable by construction" invariant this method already upheld for partySize==1, just
+    // carried through the multiplication. The multiplication itself happens here, in plain Java,
+    // never inside PackagePricingService (which has no concept of party size) and never by the AI.
+    private List<PendingLineSnapshot> snapshotsFromPricing(PricingResult pricing, UUID businessId, String offeringName, int partySize) {
         List<PendingLineSnapshot> lines = new ArrayList<>();
         if (pricing.basePrice().compareTo(BigDecimal.ZERO) != 0 || pricing.adjustments().isEmpty()) {
-            lines.add(new PendingLineSnapshot(offeringName, pricing.basePrice(), null, null, null));
+            lines.add(new PendingLineSnapshot(offeringName, scaleAmount(pricing.basePrice(), partySize), null, null, null));
         }
         for (PricingAdjustment adjustment : pricing.adjustments()) {
             String label = adjustment.optionId() != null
                     ? optionRepository.findByIdAndBusinessId(adjustment.optionId(), businessId).map(o -> o.getLabel()).orElse("Item")
                     : "Item";
-            lines.add(new PendingLineSnapshot(label, adjustment.amount(), adjustment.quantity(),
+            Integer scaledQuantity = adjustment.quantity() != null ? adjustment.quantity() * partySize : null;
+            lines.add(new PendingLineSnapshot(label, scaleAmount(adjustment.amount(), partySize), scaledQuantity,
                     adjustment.componentId(), adjustment.optionId()));
         }
         return lines;
+    }
+
+    private BigDecimal scaleAmount(BigDecimal amount, int partySize) {
+        return partySize == 1 ? amount : amount.multiply(BigDecimal.valueOf(partySize));
+    }
+
+    // Restaurant-AI-demo phase — plain human-readable line, not a new column. Deliberately
+    // formatted as a standalone "Party size: N" line (not folded into free text) so a future
+    // reminder feature could still parse it back out of ServiceOrder.notes if it ever needs to,
+    // without this phase building any reminder logic itself (explicitly out of scope here).
+    private String withPartySizeNote(String notes, Integer partySize) {
+        if (partySize == null) return notes;
+        String note = "Party size: " + partySize;
+        return (notes == null || notes.isBlank()) ? note : notes + "\n" + note;
     }
 
     private void persistLineSnapshots(UUID businessId, UUID serviceOrderId, List<PendingLineSnapshot> lines) {
@@ -530,6 +563,87 @@ public class BookingService {
                     return item.getQuantity() > 1 ? item.getQuantity() + "x " + name : name;
                 })
                 .toList();
+    }
+
+    // ==================== Restaurant-AI-demo phase — package customization discovery/preview ====================
+    // Both methods below are pure reads, reusing exactly the same canonical Offering/
+    // PackageComponent/Option/SubstitutionRule/PackagePricingService machinery
+    // createBooking() itself uses — never a parallel pricing/catalog path, and never anything an
+    // AI tool computes itself. Added for AiToolService's getPackageOptions/previewPackagePricing
+    // tools, but not AI-specific in any way — any authenticated caller could use these the same
+    // way the public booking widget could grow structured substitution UI on top of them later.
+
+    /** Every SELECTION component of a package, its default, and every substitution-rule-backed alternative — exactly what createBooking's own `selections` map may validly name. */
+    public PackageOptionsResponse getPackageOptions(UUID businessId, UUID packageId) {
+        if (!bookingCutoverStateResolver.useCanonical(businessId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business doesn't support package customization yet.");
+        }
+        ResolvedOffering resolved = resolveCanonicalPackage(businessId, packageId, false, true);
+        ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(packageId, businessId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Package not found."));
+
+        List<PackageOptionsResponse.PackageComponentOptions> components = new ArrayList<>();
+        for (PackageComponent component : packageComponentRepository.findAllByBusinessIdAndOfferingIdOrderByDisplayOrderAsc(businessId, resolved.offeringId())) {
+            if (!"SELECTION".equals(component.getComponentKind())) continue; // no QUANTITY components in this phase's package model
+
+            String defaultLabel = null;
+            if (component.getDefaultOptionId() != null) {
+                defaultLabel = optionRepository.findByIdAndBusinessId(component.getDefaultOptionId(), businessId)
+                        .map(Option::getLabel).orElse(null);
+            }
+
+            List<PackageOptionsResponse.PackageAlternative> alternatives = new ArrayList<>();
+            if (component.getDefaultOptionId() != null) {
+                for (SubstitutionRule rule : substitutionRuleRepository.findAllByBusinessIdAndFromOptionId(businessId, component.getDefaultOptionId())) {
+                    optionRepository.findByIdAndBusinessId(rule.getToOptionId(), businessId).ifPresent(alt ->
+                            alternatives.add(new PackageOptionsResponse.PackageAlternative(alt.getId(), alt.getLabel(), rule.getPriceDelta())));
+                }
+            }
+
+            components.add(new PackageOptionsResponse.PackageComponentOptions(
+                    component.getId(), component.getSlotName(), component.isRequired(),
+                    component.getDefaultOptionId(), defaultLabel, alternatives));
+        }
+        return new PackageOptionsResponse(packageId, pkg.getName(), components);
+    }
+
+    /** The exact real total createBooking() itself would charge for this selections/partySize combination — never estimated, never LLM arithmetic. */
+    public PackagePricingPreviewResponse previewPackagePricing(UUID businessId, UUID packageId, Map<UUID, UUID> selections, Integer partySize) {
+        if (!bookingCutoverStateResolver.useCanonical(businessId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This business doesn't support package pricing preview yet.");
+        }
+        ResolvedOffering resolved = resolveCanonicalPackage(businessId, packageId, false, true);
+
+        Map<UUID, Set<UUID>> merged = offeringResolutionService.defaultSelections(businessId, resolved.offeringId());
+        if (selections != null) {
+            for (Map.Entry<UUID, UUID> entry : selections.entrySet()) {
+                merged.put(entry.getKey(), Set.of(entry.getValue()));
+            }
+        }
+        PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), merged, Map.of());
+        if (!pricing.valid()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That combination isn't valid: " + String.join(", ", pricing.reasons()));
+        }
+        if (pricing.manualQuoteRequired() || pricing.finalPrice() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This selection requires a manual quote from staff.");
+        }
+
+        int size = (partySize != null && partySize > 0) ? partySize : 1;
+        BigDecimal total = pricing.finalPrice().multiply(BigDecimal.valueOf(size)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal deposit = total.multiply(new BigDecimal("0.70")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal balance = total.subtract(deposit).setScale(2, RoundingMode.HALF_UP);
+
+        List<PackagePricingPreviewResponse.PricingLine> lines = new ArrayList<>();
+        if (pricing.basePrice().compareTo(BigDecimal.ZERO) != 0 || pricing.adjustments().isEmpty()) {
+            lines.add(new PackagePricingPreviewResponse.PricingLine(resolved.offering().getName(), pricing.basePrice()));
+        }
+        for (PricingAdjustment adjustment : pricing.adjustments()) {
+            String label = adjustment.optionId() != null
+                    ? optionRepository.findByIdAndBusinessId(adjustment.optionId(), businessId).map(Option::getLabel).orElse("Item")
+                    : "Item";
+            lines.add(new PackagePricingPreviewResponse.PricingLine(label, adjustment.amount()));
+        }
+        return new PackagePricingPreviewResponse(packageId, pricing.finalPrice(), size, total, deposit, balance, lines);
     }
 
     @Transactional
@@ -572,6 +686,12 @@ public class BookingService {
         String itemPolicyOverride;
         UUID offeringIdForOrder = null;
         List<PendingLineSnapshot> pendingSnapshots = List.of();
+        // Restaurant-AI-demo phase — set only for a canonical package booking with partySize > 1;
+        // appended to ServiceOrder.notes below as a plain human-readable line (never a new
+        // column/migration). Kept structured enough (a plain "Party size: N" line) that a future
+        // reminder feature could parse it back out if it ever needs to, without this phase
+        // building any reminder logic itself.
+        Integer bookingNotesPartySize = null;
 
         if (req.packageId() != null) {
             if (canonical) {
@@ -583,7 +703,18 @@ public class BookingService {
                         businessId, req.packageId(), ServiceOrderStatus.CANCELLED, searchFrom, requestEnd);
                 validateCapacity(resolved.config().getDurationMinutes(), resolved.config().getMaxConcurrentBookings(), candidates, req.scheduledAt());
 
+                // Restaurant-AI-demo phase — req.selections() overrides only the components it
+                // names; every component it omits keeps the default defaultSelections() already
+                // put there, which is exactly PackagePricingService's own "omission implies
+                // default" contract (never re-implemented here, just fed through it). A caller
+                // (every pre-existing one) that never sets selections gets the untouched defaults
+                // map, i.e. today's exact existing behaviour.
                 Map<UUID, Set<UUID>> selections = offeringResolutionService.defaultSelections(businessId, resolved.offeringId());
+                if (req.selections() != null) {
+                    for (Map.Entry<UUID, UUID> entry : req.selections().entrySet()) {
+                        selections.put(entry.getKey(), Set.of(entry.getValue()));
+                    }
+                }
                 PricingResult pricing = packagePricingService.calculate(businessId, resolved.offeringId(), selections, Map.of());
                 if (!pricing.valid() || pricing.manualQuoteRequired() || pricing.finalPrice() == null) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "This package isn't available for online booking right now.");
@@ -591,14 +722,20 @@ public class BookingService {
                 ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
                         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Package not found."));
 
+                // partySize is a plain integer multiplier applied here, in application code —
+                // never inside PackagePricingService (which has no concept of it) and never by the
+                // AI/LLM. Absent/1 preserves exactly today's existing single-instance behaviour.
+                int partySize = (req.partySize() != null && req.partySize() > 0) ? req.partySize() : 1;
+
                 serviceName = resolved.offering().getName();
                 serviceTypeId = pkg.getServiceTypeId();
                 servicePackageId = pkg.getId();
-                price = pricing.finalPrice();
+                price = pricing.finalPrice().multiply(BigDecimal.valueOf(partySize)).setScale(2, RoundingMode.HALF_UP);
                 requiresLocation = resolved.config().isRequiresLocation();
                 itemPolicyOverride = resolved.config().getPaymentPolicyOverride();
                 offeringIdForOrder = resolved.offeringId();
-                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName());
+                pendingSnapshots = snapshotsFromPricing(pricing, businessId, resolved.offering().getName(), partySize);
+                bookingNotesPartySize = partySize > 1 ? partySize : null;
             } else {
                 lockMappedOfferingBestEffort(businessId, OfferingResolutionService.LegacyType.SERVICE_PACKAGE, req.packageId());
                 ServicePackage pkg = servicePackageRepository.findByIdAndBusinessId(req.packageId(), businessId)
@@ -696,7 +833,7 @@ public class BookingService {
                 .serviceCatalogId(serviceCatalogId)
                 .servicePackageId(servicePackageId)
                 .offeringId(offeringIdForOrder)
-                .notes(req.notes())
+                .notes(withPartySizeNote(req.notes(), bookingNotesPartySize))
                 .price(price)
                 .scheduledAt(req.scheduledAt())
                 .build();

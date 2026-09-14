@@ -191,7 +191,7 @@ class Phase5CCapacityRaceTest {
                 try {
                     bookingService.createBooking(business.getId(), new CreateBookingRequest(
                             item.id(), null, "Racer " + UUID.randomUUID(), "racer@example.com",
-                            "024412340" + (int) (Math.random() * 10), slot, null, null, null));
+                            "024412340" + (int) (Math.random() * 10), slot, null, null, null, null, null));
                     succeeded.incrementAndGet();
                 } catch (ApiException e) {
                     if (e.getMessage() != null && e.getMessage().contains("fully booked")) {

@@ -92,6 +92,27 @@ public class PolicyEngine {
     }
 
     /**
+     * Restaurant-AI-demo phase — the actual customer-facing text of every applicable policy's
+     * CURRENT version, for a tool/UI that needs to literally show/tell a customer what a policy
+     * says (not just whether one is outstanding, which {@link #unsatisfiedRequiredPolicies} and
+     * {@link #canProceed} already answer). Read-only, advisory — same two-layer distinction as
+     * every other pre-flight method here; never a substitute for {@link #evaluateGate}.
+     */
+    public List<PolicyContent> applicablePolicyContent(UUID businessId, String appliesToAction, UUID offeringId) {
+        return applicablePolicies(businessId, appliesToAction, offeringId).stream()
+                .map(policy -> {
+                    PolicyVersion current = currentVersion(policy.getId());
+                    return new PolicyContent(policy.getId(), policy.getPolicyKey(), current.getTitle(), current.getContent(),
+                            current.isRequiresAcknowledgement(), current.isBlocksTransaction());
+                })
+                .toList();
+    }
+
+    public record PolicyContent(UUID policyId, String policyKey, String title, String content,
+                                 boolean requiresAcknowledgement, boolean blocksTransaction) {
+    }
+
+    /**
      * Applicable policies whose CURRENT version requires acknowledgement and have not yet been
      * acknowledged (at that current version) for this specific commitment attempt. Advisory
      * only — see the class-level note on the two-layer distinction.

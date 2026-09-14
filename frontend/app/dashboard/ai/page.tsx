@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Sparkles, MessageCircle, Plus, Send, Wrench, ShieldAlert } from "lucide-react";
+import { Bot, Sparkles, MessageCircle, Plus, Send, Wrench, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -94,7 +94,7 @@ export default function AiDashboardPage() {
             <TabChip label="Knowledge Base" active={tab === "knowledge"} onClick={() => setTab("knowledge")} />
             <TabChip label="Conversations" active={tab === "conversations"} onClick={() => setTab("conversations")} />
             <TabChip label="Channels" active={tab === "channels"} onClick={() => setTab("channels")} />
-            <TabChip label="Test AI" active={tab === "test"} onClick={() => setTab("test")} />
+            <TabChip label="AI Concierge" active={tab === "test"} onClick={() => setTab("test")} />
           </div>
 
           {fetching ? (
@@ -718,28 +718,278 @@ function ActionMarker({ action }: { action: AiActionEntry }) {
 }
 
 // ---------------------------------------------------------------------------
-// Test AI
+// AI Concierge (formerly "Test AI") — Cafe Bar Noir client-demo UI upgrade.
+//
+// Presentation only: every message rendered here is still exactly the real
+// text AiChatService/MockAiProvider generated from real tool calls (see the
+// parse* helpers below) — nothing here invents package names, prices,
+// substitution options, or policy text. "Choose package" / "I understand and
+// agree — Confirm" are convenience buttons that simply SEND the equivalent
+// natural-language reply through the exact same api.sendAiChatMessage() every
+// typed message goes through — never a shortcut around the AI/tool/policy
+// layer, matching the same "quick-start populates and sends a real message"
+// discipline QUICK_STARTS already used. Substitutions are deliberately NOT
+// given a second, independent dropdown-editing path here — that would be a
+// parallel mechanism alongside the real one (natural language in the chat,
+// resolved by the real MockAiProvider/AiToolService/PackagePricingService
+// chain); the summary card below only ever DISPLAYS the current real
+// selection, exactly as returned.
 // ---------------------------------------------------------------------------
 
 type TestTurn = { role: "USER" | "ASSISTANT"; content: string; toolCalls?: AiToolCallSummary[] };
 
-// Quick-start shortcuts (spec §15) — these just populate and send a normal
-// chat message through the same endpoint every other message goes through;
-// they never bypass the AI/tool layer.
+// Quick-start shortcuts — these just populate and send a normal chat message
+// through the same endpoint every other message goes through; they never
+// bypass the AI/tool layer. "Ask about the beach" (a leftover from the
+// earlier resort demo) has been removed — every label below is Cafe Bar
+// Noir-appropriate.
 const QUICK_STARTS: { label: string; message: string }[] = [
-  { label: "Ask about the beach", message: "What activities and facilities do you have?" },
-  { label: "Check availability", message: "Can I visit this Saturday?" },
-  { label: "Make a booking", message: "I want to book the beach day pass." },
-  { label: "Plan an event", message: "I want to organize a birthday party." },
-  { label: "Talk to someone", message: "I'd like to speak with a member of staff." },
+  { label: "View the Menu", message: "What's on the menu?" },
+  { label: "Explore Dinner Packages", message: "What dinner packages do you have?" },
+  { label: "Make a Booking", message: "I'd like to make a reservation." },
+  { label: "Plan an Event", message: "I'm planning an event." },
+  { label: "Talk to Someone", message: "I'd like to speak with a member of staff." },
 ];
 
+// ---- Parsing real assistant text into presentation shapes ----------------
+// Every shape below is detected from the EXACT text MockAiProvider emits
+// (see backend/.../MockAiProvider.java — buildOrderAndPolicySummary,
+// handlePackageBooking's package-listing branch, finalBookingText). If a
+// message doesn't match any of these, it just renders as a normal formatted
+// chat bubble — most replies (menu/policy Q&A, substitution rejections,
+// clarifying questions) are exactly that, deliberately never forced into a
+// card.
+
+type ParsedPackageListing = { intro: string; packages: { name: string; pricePerGuest: string }[]; outro: string };
+type ParsedOrderSummary = {
+  packageName: string;
+  guests: string;
+  when: string;
+  lines: { label: string; value: string }[];
+  perGuest: string;
+  total: string;
+  deposit: string;
+  balance: string;
+  policyText: string | null;
+};
+type ParsedConfirmation = { guests: string; bookingNumber: string };
+
+function parsePackageListing(text: string): ParsedPackageListing | null {
+  const lines = text.split("\n");
+  if (!/^We have \d+ dinner packages available:$/.test(lines[0] ?? "")) return null;
+  const packages: { name: string; pricePerGuest: string }[] = [];
+  let outro = "";
+  for (let i = 1; i < lines.length; i++) {
+    const m = lines[i].match(/^- (.+) — GH₵([\d,.]+) per guest$/);
+    if (m) packages.push({ name: m[1], pricePerGuest: m[2] });
+    else if (lines[i].trim()) outro = lines[i].trim();
+  }
+  if (packages.length === 0) return null;
+  return { intro: lines[0], packages, outro };
+}
+
+function parseOrderSummary(text: string): ParsedOrderSummary | null {
+  if (!text.startsWith("Here's your ") || !text.includes("Shall I go ahead and confirm this reservation?")) return null;
+  const lines = text.split("\n");
+  const headerMatch = lines[0]?.match(/^Here's your (.+) for (\d+) guests? on (.+):$/);
+  if (!headerMatch) return null;
+  const [, packageName, guests, when] = headerMatch;
+
+  const lineItems: { label: string; value: string }[] = [];
+  let idx = 1;
+  while (idx < lines.length && lines[idx].startsWith("- ")) {
+    const m = lines[idx].match(/^- (.+?): (.+)$/);
+    if (m) lineItems.push({ label: m[1], value: m[2] });
+    idx++;
+  }
+
+  const priceMatch = (lines[idx] ?? "").match(/Per guest: GH₵([\d,.]+) — Total: GH₵([\d,.]+)/);
+  idx++;
+  const depositMatch = (lines[idx] ?? "").match(
+    /A 70% deposit of GH₵([\d,.]+) secures the booking, with the remaining GH₵([\d,.]+) due/
+  );
+  idx++;
+  if (!priceMatch || !depositMatch) return null;
+
+  const rest = lines.slice(idx).join("\n");
+  const policyMatch = rest.match(/^A couple of important policies: ([\s\S]*)\nShall I go ahead/);
+
+  return {
+    packageName,
+    guests,
+    when,
+    lines: lineItems,
+    perGuest: priceMatch[1],
+    total: priceMatch[2],
+    deposit: depositMatch[1],
+    balance: depositMatch[2],
+    policyText: policyMatch ? policyMatch[1] : null,
+  };
+}
+
+function parseConfirmation(text: string): ParsedConfirmation | null {
+  const m = text.match(/reservation for (\d+) guests is confirmed! Booking #(\S+?)\.?$/);
+  if (!m) return null;
+  return { guests: m[1], bookingNumber: m[2] };
+}
+
+// Bullet-aware plain-text renderer — the fallback for any assistant message
+// that isn't one of the specific card shapes above (menu answers, policy
+// answers, substitution rejections, clarifying questions).
+function FormattedMessage({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < lines.length) {
+    if (lines[i].startsWith("- ")) {
+      const items: string[] = [];
+      while (i < lines.length && lines[i].startsWith("- ")) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      blocks.push(
+        <ul key={key++} className="list-disc space-y-0.5 pl-5">
+          {items.map((it, j) => (
+            <li key={j}>{it}</li>
+          ))}
+        </ul>
+      );
+    } else if (lines[i].trim() === "") {
+      i++;
+    } else {
+      blocks.push(<p key={key++}>{lines[i]}</p>);
+      i++;
+    }
+  }
+  return <div className="flex flex-col gap-1.5 text-[13.5px] leading-relaxed text-ink-900">{blocks}</div>;
+}
+
+function PackageListCard({
+  data,
+  onChoose,
+  disabled,
+}: {
+  data: ParsedPackageListing;
+  onChoose: (name: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[13.5px] text-ink-700">{data.intro}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {data.packages.map((p) => (
+          <div key={p.name} className="flex flex-col gap-2 rounded-xl border border-border bg-canvas p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-ink-900">{p.name}</p>
+              <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-500">
+                Demo
+              </span>
+            </div>
+            <p className="text-lg font-semibold text-ink-900">
+              GH₵{p.pricePerGuest} <span className="text-xs font-normal text-ink-500">/ guest</span>
+            </p>
+            <Button variant="secondary" disabled={disabled} onClick={() => onChoose(p.name)} className="mt-1 w-full justify-center">
+              Choose package
+            </Button>
+          </div>
+        ))}
+      </div>
+      {data.outro && <p className="text-[13.5px] text-ink-500">{data.outro}</p>}
+    </div>
+  );
+}
+
+function OrderSummaryCard({
+  data,
+  onConfirm,
+  disabled,
+}: {
+  data: ParsedOrderSummary;
+  onConfirm: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-ink-500">Your dinner</p>
+        <p className="text-base font-semibold text-ink-900">{data.packageName}</p>
+        <p className="text-xs text-ink-500">
+          {data.guests} guests · {data.when}
+        </p>
+      </div>
+
+      <ul className="flex flex-col gap-1 text-[13.5px]">
+        {data.lines.map((l) => (
+          <li key={l.label} className="flex justify-between gap-3">
+            <span className="text-ink-500">{l.label}</span>
+            <span className="font-medium text-ink-900">{l.value}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-col gap-1 border-t border-border pt-3 text-[13.5px]">
+        <div className="flex justify-between">
+          <span className="text-ink-500">
+            GH₵{data.perGuest} × {data.guests}
+          </span>
+          <span className="font-semibold text-ink-900">GH₵{data.total}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-ink-500">70% deposit</span>
+          <span className="font-medium text-ink-900">GH₵{data.deposit}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-ink-500">Balance due before the event</span>
+          <span className="font-medium text-ink-900">GH₵{data.balance}</span>
+        </div>
+      </div>
+
+      {data.policyText && (
+        <div className="flex flex-col gap-1.5 rounded-lg bg-canvas p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">Before we confirm your reservation</p>
+          <p className="text-xs leading-relaxed text-ink-700">{data.policyText}</p>
+        </div>
+      )}
+
+      <Button disabled={disabled} onClick={onConfirm} className="w-full justify-center">
+        I understand and agree — Confirm
+      </Button>
+    </div>
+  );
+}
+
+function ConfirmationCard({ data }: { data: ParsedConfirmation }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <CheckCircle2 size={18} className="text-success" />
+        <p className="text-sm font-semibold text-ink-900">Reservation request confirmed</p>
+      </div>
+      <p className="text-[13.5px] text-ink-700">
+        Booking #{data.bookingNumber} · {data.guests} guests
+      </p>
+      <span className="w-fit rounded-full bg-canvas px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+        Demo — payment not processed
+      </span>
+    </div>
+  );
+}
+
 function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted: () => void }) {
+  const { business } = useAuth();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [turns, setTurns] = useState<TestTurn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Off by default — the client-facing view never shows raw tool names; this
+  // is purely a developer/debug toggle (per the "hide tool activity, keep it
+  // behind a developer mechanism" requirement), never shown or hinted at
+  // during a normal demo.
+  const [devMode, setDevMode] = useState(false);
+
+  const businessName = business?.name ?? "Your business";
 
   async function sendMessage(message: string) {
     if (!message.trim() || busy) return;
@@ -752,7 +1002,11 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
       setTurns((prev) => [...prev, { role: "ASSISTANT", content: response.assistantMessage, toolCalls: response.toolCalls }]);
       onTurnCompleted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't reach Tallia AI.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : `Sorry, I couldn't complete that request. Would you like me to connect you with someone from ${businessName}?`
+      );
     } finally {
       setBusy(false);
     }
@@ -776,13 +1030,33 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
 
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-ink-500">
-          Chat with your AI exactly as a customer would — this uses your real settings and knowledge base.
-        </p>
-        <Button variant="secondary" onClick={startNewConversation} className="shrink-0">
-          New conversation
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[#D9B36C]">
+            <Bot size={18} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-ink-900">{businessName} · AI Concierge</p>
+            <p className="flex items-center gap-1.5 text-xs text-ink-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              Online · Demo
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setDevMode((v) => !v)}
+            title="Developer-only: show which tools the AI called for each reply"
+            className="flex items-center gap-1 text-[11px] font-medium text-ink-300 hover:text-ink-500"
+          >
+            <Wrench size={11} />
+            {devMode ? "Hide activity" : "Dev view"}
+          </button>
+          <Button variant="secondary" onClick={startNewConversation} className="shrink-0">
+            New conversation
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -792,64 +1066,103 @@ function TestAiTab({ token, onTurnCompleted }: { token: string; onTurnCompleted:
             type="button"
             disabled={busy}
             onClick={() => sendMessage(q.message)}
-            className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-ink-700 hover:border-accent hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-medium text-ink-700 shadow-card transition hover:border-accent hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {q.label}
           </button>
         ))}
       </div>
 
-      <div className="flex min-h-64 max-h-[28rem] flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-canvas p-4">
+      <div className="flex min-h-64 max-h-[32rem] flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-canvas p-4 sm:p-5">
         {turns.length === 0 ? (
-          <p className="m-auto text-sm text-ink-400">Say hello, or try one of the shortcuts above.</p>
-        ) : (
-          turns.map((turn, i) => (
-            <div key={i} className="flex flex-col gap-1">
-              <div className={`flex ${turn.role === "USER" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${
-                    turn.role === "USER" ? "bg-accent text-white" : "bg-surface text-ink-900 shadow-card"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{turn.content}</p>
-                </div>
-              </div>
-              {turn.toolCalls && turn.toolCalls.length > 0 && (
-                <div className="ml-1 flex flex-wrap gap-1.5">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-ink-400">Internal — tool activity:</span>
-                  {turn.toolCalls.map((tc, j) => (
-                    <span
-                      key={j}
-                      title={tc.summary}
-                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                        tc.status === "SUCCEEDED"
-                          ? "border-success/30 bg-success/10 text-success"
-                          : tc.status === "BLOCKED"
-                          ? "border-danger/30 bg-danger/10 text-danger"
-                          : "border-border bg-surface text-ink-500"
-                      }`}
-                    >
-                      <Wrench size={10} />
-                      {tc.toolName}
-                    </span>
-                  ))}
-                </div>
-              )}
+          <div className="m-auto flex max-w-sm flex-col items-center gap-2 py-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-ink-900 text-[#D9B36C]">
+              <Sparkles size={20} />
             </div>
-          ))
+            <p className="text-sm font-semibold text-ink-900">{businessName}</p>
+            <p className="text-xs text-ink-500">Your AI Concierge</p>
+            <p className="mt-1 text-sm text-ink-500">
+              Ask about our menu, explore dinner packages, make a reservation, or speak with our team.
+            </p>
+          </div>
+        ) : (
+          turns.map((turn, i) => {
+            const isUser = turn.role === "USER";
+            const packageListing = !isUser ? parsePackageListing(turn.content) : null;
+            const orderSummary = !isUser && !packageListing ? parseOrderSummary(turn.content) : null;
+            const confirmation = !isUser && !packageListing && !orderSummary ? parseConfirmation(turn.content) : null;
+            const isCard = !!(packageListing || orderSummary || confirmation);
+
+            return (
+              <div key={i} className="flex flex-col gap-1.5">
+                <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={
+                      isUser
+                        ? "max-w-[80%] rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-sm text-white shadow-card"
+                        : `max-w-[88%] rounded-2xl rounded-bl-sm bg-surface text-ink-900 shadow-card ${
+                            isCard ? "p-4" : "px-4 py-2.5"
+                          }`
+                    }
+                  >
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap leading-relaxed">{turn.content}</p>
+                    ) : packageListing ? (
+                      <PackageListCard
+                        data={packageListing}
+                        disabled={busy}
+                        onChoose={(name) => sendMessage(`I'll take the ${name}.`)}
+                      />
+                    ) : orderSummary ? (
+                      <OrderSummaryCard
+                        data={orderSummary}
+                        disabled={busy}
+                        onConfirm={() => sendMessage("Yes, I understand and agree — please confirm.")}
+                      />
+                    ) : confirmation ? (
+                      <ConfirmationCard data={confirmation} />
+                    ) : (
+                      <FormattedMessage text={turn.content} />
+                    )}
+                  </div>
+                </div>
+                {devMode && turn.toolCalls && turn.toolCalls.length > 0 && (
+                  <div className="ml-1 flex flex-wrap gap-1.5">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-ink-400">Internal — tool activity:</span>
+                    {turn.toolCalls.map((tc, j) => (
+                      <span
+                        key={j}
+                        title={tc.summary}
+                        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                          tc.status === "SUCCEEDED"
+                            ? "border-success/30 bg-success/10 text-success"
+                            : tc.status === "BLOCKED"
+                            ? "border-danger/30 bg-danger/10 text-danger"
+                            : "border-border bg-surface text-ink-500"
+                        }`}
+                      >
+                        <Wrench size={10} />
+                        {tc.toolName}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
         {busy && <TypingIndicator />}
       </div>
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</div>}
 
       <form onSubmit={handleSend} className="flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={`Ask ${businessName} anything...`}
           disabled={busy}
-          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          className="flex-1 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
         <Button type="submit" disabled={busy || !input.trim()}>
           <Send size={15} className="mr-1.5" />

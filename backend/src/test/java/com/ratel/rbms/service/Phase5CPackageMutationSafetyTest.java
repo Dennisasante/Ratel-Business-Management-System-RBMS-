@@ -165,7 +165,7 @@ class Phase5CPackageMutationSafetyTest {
         // Public booking creation — must charge the legacy price and carry no canonical pointer.
         BookingCreatedResponse created = bookingService.createBooking(fx.business().getId(), new CreateBookingRequest(
                 null, fx.pkg().id(), "Fallback Public Customer", "fallback-public@example.com", "0244123410",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
         assertEquals(0, order.getPrice().compareTo(new BigDecimal("30.00")));
@@ -229,7 +229,7 @@ class Phase5CPackageMutationSafetyTest {
         // Final booking proves the canonical path is genuinely used again (new price, offeringId set).
         BookingCreatedResponse created = bookingService.createBooking(businessId, new CreateBookingRequest(
                 null, fx.pkg().id(), "Recovered Customer", "recovered@example.com", "0244123412",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
         assertEquals(0, order.getPrice().compareTo(new BigDecimal("40.00")));

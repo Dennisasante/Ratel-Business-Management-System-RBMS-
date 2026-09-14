@@ -114,7 +114,7 @@ class Phase5CLegacyFallbackTest {
 
         BookingCreatedResponse created = bookingService.createBooking(fx.business().getId(), new CreateBookingRequest(
                 fx.item().id(), null, "Legacy Path Customer " + UUID.randomUUID(), "legacy@example.com", "0244123401",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
         assertEquals(0, order.getPrice().compareTo(LEGACY_PRICE), "the actual charged price must be the legacy one");
@@ -131,7 +131,7 @@ class Phase5CLegacyFallbackTest {
 
         BookingCreatedResponse created = bookingService.createBooking(fx.business().getId(), new CreateBookingRequest(
                 fx.item().id(), null, "Canonical Path Customer " + UUID.randomUUID(), "canonical@example.com", "0244123402",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
         assertEquals(0, order.getPrice().compareTo(CANONICAL_PRICE), "the actual charged price must be the canonical one");

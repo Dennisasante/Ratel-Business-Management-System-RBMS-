@@ -268,7 +268,7 @@ class Phase4TransactionGateIntegrationTest {
         ServiceCatalogItem item = newBookableCatalogItem(business.getId(), type.getId());
 
         CreateBookingRequest req = new CreateBookingRequest(item.getId(), null, "Public Customer",
-                "public@example.com", "+233200000003", nextBookableSlot(), null, null, null);
+                "public@example.com", "+233200000003", nextBookableSlot(), null, null, null, null, null);
 
         ApiException ex = assertThrows(ApiException.class, () -> bookingService.createBooking(business.getId(), req));
         assertEquals(HttpStatus.CONFLICT, ex.getStatus());
@@ -296,7 +296,7 @@ class Phase4TransactionGateIntegrationTest {
         policyEngine.recordAcknowledgement(business.getId(), disclosure.getId(), "STAFF", UUID.randomUUID());
 
         CreateBookingRequest req = new CreateBookingRequest(item.getId(), null, "Public Customer",
-                "public@example.com", "+233200000004", nextBookableSlot(), null, null, commitment);
+                "public@example.com", "+233200000004", nextBookableSlot(), null, null, commitment, null, null);
 
         BookingCreatedResponse response = bookingService.createBooking(business.getId(), req);
         assertNotNull(response.bookingNumber());

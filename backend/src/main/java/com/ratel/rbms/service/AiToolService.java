@@ -17,8 +17,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -52,7 +54,12 @@ public class AiToolService {
             "createCustomer",
             "beginPolicyCommitment",
             "createBooking",
-            "escalateToStaff"
+            "escalateToStaff",
+            // Restaurant-AI-demo phase — package customization + policy disclosure/acknowledgement.
+            "getPackageOptions",
+            "previewPackagePricing",
+            "getApplicablePolicies",
+            "acknowledgePolicy"
     );
 
     private final ObjectMapper objectMapper;
@@ -138,11 +145,34 @@ public class AiToolService {
                                 + "\"customerEmail\":{\"type\":\"string\"},"
                                 + "\"scheduledAt\":{\"type\":\"string\",\"description\":\"ISO-8601 date-time in UTC, e.g. 2026-08-27T14:00:00Z\"},"
                                 + "\"notes\":{\"type\":\"string\"},"
-                                + "\"commitmentReference\":{\"type\":\"string\",\"description\":\"The value returned by a prior beginPolicyCommitment call in this conversation, if you made one. Omit if you didn't.\"}"
+                                + "\"commitmentReference\":{\"type\":\"string\",\"description\":\"The value returned by a prior beginPolicyCommitment call in this conversation, if you made one. Omit if you didn't.\"},"
+                                + "\"selections\":{\"type\":\"object\",\"description\":\"Only for a package booking with substitutions: an object mapping each componentId (from getPackageOptions) to the optionId the customer chose for it. Omit a component entirely to keep its default. Omit this whole field for a package with no substitutions, or for a plain (non-package) service.\","
+                                + "\"additionalProperties\":{\"type\":\"string\"}},"
+                                + "\"partySize\":{\"type\":\"integer\",\"description\":\"Only for a package booking: how many people/guests this booking is for. The package's price is multiplied by this. Omit for a plain (non-package) service.\"}"
                                 + "},\"required\":[\"serviceId\",\"customerName\",\"customerPhone\",\"customerEmail\",\"scheduledAt\"]}"),
                 new AiToolDefinition("escalateToStaff",
                         "Hand this conversation off to a real staff member — use when the customer explicitly asks for a human, or you cannot safely help.",
-                        "{\"type\":\"object\",\"properties\":{\"reason\":{\"type\":\"string\"}},\"required\":[]}")
+                        "{\"type\":\"object\",\"properties\":{\"reason\":{\"type\":\"string\"}},\"required\":[]}"),
+                new AiToolDefinition("getPackageOptions",
+                        "Get a package's real customizable components: each slot's name, its default item, and every alternative item it can be swapped for with the exact price difference. Call this before offering substitutions on a package — never invent an alternative or a price difference yourself.",
+                        "{\"type\":\"object\",\"properties\":{\"packageId\":{\"type\":\"string\",\"description\":\"The packageId from listBookableServices.\"}},\"required\":[\"packageId\"]}"),
+                new AiToolDefinition("previewPackagePricing",
+                        "Get the exact, authoritative total price (plus the 70% deposit / 30% balance split, where that applies) for a package given a specific set of substitutions and party size — before booking. Always call this to quote a price after the customer changes their selection or party size; never calculate or estimate a total, deposit, or balance yourself.",
+                        "{\"type\":\"object\",\"properties\":{"
+                                + "\"packageId\":{\"type\":\"string\",\"description\":\"The packageId from listBookableServices.\"},"
+                                + "\"selections\":{\"type\":\"object\",\"description\":\"An object mapping each componentId (from getPackageOptions) whose default the customer wants to change, to the optionId they chose instead. Omit a component to keep its default. Omit this whole field for no substitutions.\","
+                                + "\"additionalProperties\":{\"type\":\"string\"}},"
+                                + "\"partySize\":{\"type\":\"integer\",\"description\":\"How many people/guests. Defaults to 1 if omitted.\"}"
+                                + "},\"required\":[\"packageId\"]}"),
+                new AiToolDefinition("getApplicablePolicies",
+                        "Get the business's actual reservation policy text that applies to making a booking (deposit, cancellation, confirmation deadlines, etc.) — use this to answer policy questions accurately, and to know what must be disclosed before a booking is confirmed. Never state a policy detail that isn't returned here — if something isn't covered, say so and offer to escalate to staff instead of guessing.",
+                        "{\"type\":\"object\",\"properties\":{}}"),
+                new AiToolDefinition("acknowledgePolicy",
+                        "Record that the customer has been shown a specific policy (from getApplicablePolicies) and has explicitly agreed to it. Call this once per policy that requires acknowledgement, after presenting its content and before createBooking, and only after the customer has been identified (findCustomer/createCustomer) and a commitment has been opened (beginPolicyCommitment).",
+                        "{\"type\":\"object\",\"properties\":{"
+                                + "\"policyId\":{\"type\":\"string\",\"description\":\"The policyId from getApplicablePolicies.\"},"
+                                + "\"commitmentReference\":{\"type\":\"string\",\"description\":\"The value returned by beginPolicyCommitment earlier in this conversation.\"}"
+                                + "},\"required\":[\"policyId\",\"commitmentReference\"]}")
         );
     }
 
@@ -169,6 +199,10 @@ public class AiToolService {
                 case "beginPolicyCommitment" -> beginPolicyCommitment(businessId);
                 case "createBooking" -> createBooking(businessId, conversation, args);
                 case "escalateToStaff" -> escalateToStaff(businessId, conversation, args);
+                case "getPackageOptions" -> getPackageOptions(businessId, args);
+                case "previewPackagePricing" -> previewPackagePricing(businessId, args);
+                case "getApplicablePolicies" -> getApplicablePolicies(businessId);
+                case "acknowledgePolicy" -> acknowledgePolicy(businessId, conversation, args);
                 // Unreachable in practice — AiChatService only ever calls
                 // execute() after isRegistered() already returned true — but
                 // fails closed rather than falling through if that ever changes.
@@ -286,9 +320,21 @@ public class AiToolService {
         // re-checks everything structurally (Revision 4 §6/§10), so a stale/wrong/missing
         // reference here simply results in the gate blocking, never in a silent policy bypass.
         UUID commitmentReference = parseUuid(args, "commitmentReference");
+        // Restaurant-AI-demo phase — both optional/additive (see CreateBookingRequest's own
+        // field comment). Only meaningful for a PACKAGE booking: selections maps a
+        // PackageComponent id to the chosen Option id, one entry per substitution the customer
+        // actually asked for; a component simply omitted here keeps its own default, exactly
+        // matching PackagePricingService's "omission implies default" contract. Never parsed as
+        // free-form JSON trusted blindly — malformed entries are dropped rather than failing the
+        // whole call, so a single bad id can't block an otherwise-valid booking.
+        Map<UUID, UUID> selections = parseSelections(args.get("selections"));
+        Integer partySize = args.hasNonNull("partySize") ? args.path("partySize").asInt() : null;
 
         if (serviceId == null || customerName == null || customerPhone == null || scheduledAt == null) {
             return ToolResult.failure("serviceId, customerName, customerPhone and a valid ISO-8601 scheduledAt are required.");
+        }
+        if (partySize != null && partySize < 1) {
+            return ToolResult.failure("partySize must be at least 1.");
         }
 
         var detail = bookingService.getBookableServiceDetail(businessId, serviceId).orElse(null);
@@ -304,7 +350,7 @@ public class AiToolService {
         // itself, it only threads the commitment reference through.
         CreateBookingRequest request = new CreateBookingRequest(
                 detail.serviceCatalogId(), detail.packageId(), customerName, customerEmail, customerPhone,
-                scheduledAt, notes, null, commitmentReference
+                scheduledAt, notes, null, commitmentReference, selections, partySize
         );
 
         // Calling createBooking() as a plain Java method bypasses Spring MVC's
@@ -331,6 +377,65 @@ public class AiToolService {
                 "BOOKING", null);
 
         return ToolResult.success(writeJson(created), "BOOKING", null);
+    }
+
+    // ---- Restaurant-AI-demo phase: package customization + policy disclosure ----
+
+    private ToolResult getPackageOptions(UUID businessId, JsonNode args) {
+        UUID packageId = parseUuid(args, "packageId");
+        if (packageId == null) {
+            return ToolResult.failure("packageId is required and must be a valid id from listBookableServices.");
+        }
+        return ToolResult.success(writeJson(bookingService.getPackageOptions(businessId, packageId)));
+    }
+
+    private ToolResult previewPackagePricing(UUID businessId, JsonNode args) {
+        UUID packageId = parseUuid(args, "packageId");
+        if (packageId == null) {
+            return ToolResult.failure("packageId is required and must be a valid id from listBookableServices.");
+        }
+        Map<UUID, UUID> selections = parseSelections(args.get("selections"));
+        Integer partySize = args.hasNonNull("partySize") ? args.path("partySize").asInt() : null;
+        if (partySize != null && partySize < 1) {
+            return ToolResult.failure("partySize must be at least 1.");
+        }
+        return ToolResult.success(writeJson(bookingService.previewPackagePricing(businessId, packageId, selections, partySize)));
+    }
+
+    // Phase 4 — read-only/advisory (PolicyEngine's own class-level "two layers" distinction);
+    // never the authoritative gate. offeringId deliberately omitted (passed null): every policy
+    // this tool is meant to surface is business-wide (Policy.offeringId null), which
+    // PolicyRepository.findApplicable already returns correctly for a null offeringId — see that
+    // query's own comment. A future phase that needs per-offering policy Q&A can extend this.
+    private ToolResult getApplicablePolicies(UUID businessId) {
+        List<PolicyEngine.PolicyContent> policies = policyEngine.applicablePolicyContent(businessId, "BOOKING_CREATE", null);
+        return ToolResult.success(writeJson(policies));
+    }
+
+    // Phase 4 — records a real disclosure+acknowledgement via PolicyEngine, the only way a
+    // CUSTOMER-type acknowledgement can ever later satisfy evaluateGate's own customer-identity
+    // rule (see that method's own doc comment): CUSTOMER-type evidence requires a non-null
+    // customerId equal to acknowledgedById. Requiring a resolved customer BEFORE this call — not
+    // just before createBooking — is what makes that requirement actually satisfiable regardless
+    // of what order the conversation happened to unfold in.
+    private ToolResult acknowledgePolicy(UUID businessId, AiConversation conversation, JsonNode args) {
+        UUID policyId = parseUuid(args, "policyId");
+        UUID commitmentReference = parseUuid(args, "commitmentReference");
+        if (policyId == null || commitmentReference == null) {
+            return ToolResult.failure("policyId and commitmentReference are required.");
+        }
+        UUID customerId = conversation.getCustomerId();
+        if (customerId == null) {
+            return ToolResult.failure("A customer must be identified first — call findCustomer or createCustomer before acknowledgePolicy.");
+        }
+
+        var disclosure = policyEngine.recordDisclosure(businessId, policyId, commitmentReference,
+                customerId, conversation.getId(), "AI", conversation.getChannel());
+        policyEngine.recordAcknowledgement(businessId, disclosure.getId(), "CUSTOMER", customerId);
+
+        var result = objectMapper.createObjectNode();
+        result.put("acknowledged", true);
+        return ToolResult.success(result.toString());
     }
 
     // ---- Human escalation ----
@@ -379,6 +484,24 @@ public class AiToolService {
         } catch (DateTimeParseException e) {
             return null;
         }
+    }
+
+    // selections arrives as a flat JSON object {"<componentId>":"<optionId>", ...} — anything that
+    // isn't a well-formed UUID pair is silently dropped (never fails the whole tool call), since a
+    // component the AI got wrong should just fall back to its own default, not block the booking.
+    private Map<UUID, UUID> parseSelections(JsonNode node) {
+        Map<UUID, UUID> result = new LinkedHashMap<>();
+        if (node == null || !node.isObject()) return result;
+        node.fields().forEachRemaining(entry -> {
+            try {
+                UUID componentId = UUID.fromString(entry.getKey().trim());
+                UUID optionId = UUID.fromString(entry.getValue().asText("").trim());
+                result.put(componentId, optionId);
+            } catch (IllegalArgumentException ignored) {
+                // malformed entry — dropped, component keeps its default.
+            }
+        });
+        return result;
     }
 
     private String writeJson(Object value) {

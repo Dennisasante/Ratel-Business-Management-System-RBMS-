@@ -114,12 +114,15 @@ class AiToolServiceTest {
     }
 
     @Test
-    void onlyTheTenSpecifiedToolsAreRegistered() {
-        // Phase 4 added beginPolicyCommitment — see AiToolService's own ALLOWED_TOOLS set.
+    void onlyTheFourteenSpecifiedToolsAreRegistered() {
+        // Phase 4 added beginPolicyCommitment; the Restaurant-AI-demo phase added
+        // getPackageOptions/previewPackagePricing/getApplicablePolicies/acknowledgePolicy — see
+        // AiToolService's own ALLOWED_TOOLS set.
         List<String> expected = List.of(
                 "getBusinessInfo", "getBusinessHours", "listBookableServices", "getServiceDetails",
                 "checkAvailability", "findCustomer", "createCustomer", "beginPolicyCommitment",
-                "createBooking", "escalateToStaff"
+                "createBooking", "escalateToStaff",
+                "getPackageOptions", "previewPackagePricing", "getApplicablePolicies", "acknowledgePolicy"
         );
         for (String tool : expected) {
             assertTrue(aiToolService.isRegistered(tool), tool + " should be registered");
@@ -260,6 +263,45 @@ class AiToolServiceTest {
         boolean logged = activityLogRepository.findTop300ByBusinessIdOrderByCreatedAtDesc(business.getId()).stream()
                 .anyMatch(a -> a.getAction() != null && a.getAction().contains("escalated") && a.getUserId() == null);
         assertTrue(logged);
+    }
+
+    @Test
+    void getApplicablePoliciesReturnsEmptyListWhenNoneConfigured() throws Exception {
+        AiToolService.ToolResult result = aiToolService.execute(business.getId(), conversation, "getApplicablePolicies", "{}");
+        assertTrue(result.success());
+        com.fasterxml.jackson.databind.JsonNode parsed = objectMapper.readTree(result.resultJson());
+        assertTrue(parsed.isArray());
+        assertEquals(0, parsed.size(), "This test business has no policies configured — must never invent one");
+    }
+
+    @Test
+    void acknowledgePolicyRefusesWithoutAResolvedCustomerFirst() throws Exception {
+        // Never called findCustomer/createCustomer on this conversation — conversation.customerId
+        // is still null, which must never be allowed to satisfy a CUSTOMER-type acknowledgement
+        // (see PolicyEngine.evaluateGate's own customer-identity rule).
+        String args = objectMapper.writeValueAsString(java.util.Map.of(
+                "policyId", UUID.randomUUID().toString(),
+                "commitmentReference", UUID.randomUUID().toString()
+        ));
+        AiToolService.ToolResult result = aiToolService.execute(business.getId(), conversation, "acknowledgePolicy", args);
+        assertFalse(result.success());
+        assertTrue(result.resultJson().toLowerCase().contains("customer"));
+    }
+
+    @Test
+    void getPackageOptionsFailsCleanlyForABusinessNotOnCanonicalPricingYet() throws Exception {
+        // This test business never goes through the Phase 5C cutover — a plain, honest failure
+        // is expected here, never a crash or a fabricated response.
+        String args = objectMapper.writeValueAsString(java.util.Map.of("packageId", UUID.randomUUID().toString()));
+        AiToolService.ToolResult result = aiToolService.execute(business.getId(), conversation, "getPackageOptions", args);
+        assertFalse(result.success());
+    }
+
+    @Test
+    void previewPackagePricingFailsCleanlyForABusinessNotOnCanonicalPricingYet() throws Exception {
+        String args = objectMapper.writeValueAsString(java.util.Map.of("packageId", UUID.randomUUID().toString()));
+        AiToolService.ToolResult result = aiToolService.execute(business.getId(), conversation, "previewPackagePricing", args);
+        assertFalse(result.success());
     }
 
     @Test

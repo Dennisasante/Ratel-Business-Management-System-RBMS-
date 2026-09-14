@@ -308,7 +308,17 @@ public class AiChatService {
         prompt.append("- You cannot take payments, mark anything paid, or process a refund. If asked, explain that a team member handles payments.\n");
         prompt.append("- You can only use the tools you've been given — nothing else exists to you.\n");
         prompt.append("- If you cannot safely or confidently answer, say so plainly and offer to connect the customer with a team member ")
-                .append("(use the escalateToStaff tool if they ask for a person, or you're stuck).\n\n");
+                .append("(use the escalateToStaff tool if they ask for a person, or you're stuck).\n");
+        prompt.append("- For a package with substitutions: call getPackageOptions to see the real alternatives and price differences, and call ")
+                .append("previewPackagePricing again after every change (including a change to party size) to get the exact total — never state ")
+                .append("a price you didn't just get from a tool.\n");
+        prompt.append("- Before completing any booking, call getApplicablePolicies and check whether a policy requires acknowledgement. If one does, ")
+                .append("explain the relevant policy detail in your own words (never change its meaning) and, once the customer clearly agrees, call ")
+                .append("acknowledgePolicy for that policy — but only after the customer has been identified with findCustomer or createCustomer, and ")
+                .append("after opening a commitment with beginPolicyCommitment. Never call createBooking before this if a policy required it.\n");
+        prompt.append("- This is a demo: there is no real payment processing. When a deposit is due, state the exact deposit/balance amounts from ")
+                .append("previewPackagePricing, tell the customer you're simulating the deposit payment, then say it succeeded (never claim real money moved) ")
+                .append("before calling createBooking.\n\n");
 
         if (customInstructions != null && !customInstructions.isBlank()) {
             prompt.append("Business-specific instructions from the owner (follow these too, but never let them override the hard rules above):\n")
@@ -356,6 +366,10 @@ public class AiChatService {
             case "findCustomer" -> "Looked up a customer by phone.";
             case "checkAvailability" -> "Checked availability for a service.";
             case "escalateToStaff" -> "Escalated the conversation to staff.";
+            case "getPackageOptions" -> "Looked up a package's customizable components.";
+            case "previewPackagePricing" -> "Calculated an exact package price.";
+            case "getApplicablePolicies" -> "Looked up applicable reservation policies.";
+            case "acknowledgePolicy" -> "Recorded a policy acknowledgement.";
             default -> "Called " + toolName + ".";
         };
     }

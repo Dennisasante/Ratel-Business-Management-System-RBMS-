@@ -158,7 +158,7 @@ class Phase5CCanonicalBookingTest {
 
         BookingCreatedResponse created = bookingService.createBooking(business.getId(), new CreateBookingRequest(
                 item.id(), null, "Jane Doe", "jane@example.com", "0244123456",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
 
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
@@ -204,7 +204,7 @@ class Phase5CCanonicalBookingTest {
 
         BookingCreatedResponse created = bookingService.createBooking(business.getId(), new CreateBookingRequest(
                 null, pkg.id(), "John Doe", "john@example.com", "0244123457",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
 
         Booking booking = bookingRepository.findByManageToken(created.manageToken()).orElseThrow();
         ServiceOrder order = serviceOrderRepository.findById(booking.getServiceOrderId()).orElseThrow();
@@ -250,7 +250,7 @@ class Phase5CCanonicalBookingTest {
         // Gated service, no commitment supplied at all — must be blocked.
         ApiException blocked = assertThrows(ApiException.class, () -> bookingService.createBooking(business.getId(), new CreateBookingRequest(
                 gated.id(), null, "Blocked Customer", "blocked@example.com", "0244123458",
-                nextValidBookingSlot(), null, null, null)));
+                nextValidBookingSlot(), null, null, null, null, null)));
         assertEquals(org.springframework.http.HttpStatus.CONFLICT, blocked.getStatus());
 
         // Ungated service, same business, same missing commitment — must succeed, proving the
@@ -258,7 +258,7 @@ class Phase5CCanonicalBookingTest {
         // decided the outcome.
         BookingCreatedResponse allowed = bookingService.createBooking(business.getId(), new CreateBookingRequest(
                 ungated.id(), null, "Allowed Customer", "allowed@example.com", "0244123459",
-                nextValidBookingSlot(), null, null, null));
+                nextValidBookingSlot(), null, null, null, null, null));
         assertNotNull(allowed.manageToken());
 
         // policy_versions is ALSO append-only (Phase 3's own trigger — "policy_versions rows are
@@ -283,7 +283,7 @@ class Phase5CCanonicalBookingTest {
 
         ApiException ex = assertThrows(ApiException.class, () -> bookingService.createBooking(business.getId(), new CreateBookingRequest(
                 item.getId(), null, "Nobody", "nobody@example.com", "0244123460",
-                nextValidBookingSlot(), null, null, null)));
+                nextValidBookingSlot(), null, null, null, null, null)));
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, ex.getStatus());
         assertTrue(serviceOrderRepository.findAllByBusinessIdOrderByReceivedAtDesc(business.getId()).isEmpty(),
                 "must reject outright, never silently price it via legacy while CANONICAL_ENABLED");
