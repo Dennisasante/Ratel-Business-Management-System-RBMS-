@@ -807,7 +807,7 @@ public class MockAiProvider implements AiProvider {
         // A weekday name alone is no longer enough; an actual hours-shaped word must be present
         // too (still matches "are you open on Saturday", never a bare day mention on its own).
         if (containsAny(t, "open", "hour", "close", "opening", "closing")
-                && !toolResults.containsKey("getBusinessHours") && bestKnowledgeMatch(facts, fullUserText) == null) {
+                && !toolResults.containsKey("getBusinessHours") && bestKnowledgeMatch(facts, fullUserText, 5) == null) {
             return toolCallResult("getBusinessHours", Map.of());
         }
         if (toolResults.containsKey("getBusinessHours")) {
@@ -815,7 +815,7 @@ public class MockAiProvider implements AiProvider {
         }
 
         if (containsAny(t, "located", "location", "where are you", "address", "contact", "phone number", "email address")
-                && !toolResults.containsKey("getBusinessInfo") && bestKnowledgeMatch(facts, fullUserText) == null) {
+                && !toolResults.containsKey("getBusinessInfo") && bestKnowledgeMatch(facts, fullUserText, 5) == null) {
             return toolCallResult("getBusinessInfo", Map.of());
         }
         if (toolResults.containsKey("getBusinessInfo")) {
@@ -1127,6 +1127,22 @@ public class MockAiProvider implements AiProvider {
             "would", "could", "should", "please", "just", "also", "some", "here", "come", "give");
 
     private KnowledgeEntry bestKnowledgeMatch(SystemPromptFacts facts, String text) {
+        return bestKnowledgeMatch(facts, text, 1);
+    }
+
+    // Real bug found via live browser testing, minutes before a client demo — a SECOND, deeper
+    // layer of the same "opening hours" failure, found only after the stopword fix above: even
+    // with "your" excluded, the query word "hours" still legitimately word-stems onto "hour"
+    // inside "Policy — Event duration"'s own body text ("...scheduled in 4-hour blocks..."),
+    // scoring 1 point via an incidental BODY match — just enough to make bestKnowledgeMatch
+    // non-null and still suppress the real getBusinessHours tool call below, so the wrong entry
+    // was returned a second time with a different wrong answer. A dedicated tool exists
+    // specifically to answer this question correctly; a weak, incidental body-only match must
+    // never be allowed to preempt it — only a genuine, specific TITLE match should. `minScore`
+    // lets each caller decide how confident a match needs to be before it's trusted: 1 (any
+    // match at all) for the general catch-all below, 5 (title-match-or-better) for the
+    // hours/location guards, which only need to step aside for a truly on-topic entry.
+    private KnowledgeEntry bestKnowledgeMatch(SystemPromptFacts facts, String text, int minScore) {
         String stripped = NEGATED_MENTION.matcher(text).replaceAll(" ");
         List<String> queryWords = List.of(stripped.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"));
         KnowledgeEntry best = null;
@@ -1157,7 +1173,7 @@ public class MockAiProvider implements AiProvider {
                 best = entry;
             }
         }
-        return bestScore > 0 ? best : null;
+        return bestScore >= minScore ? best : null;
     }
 
     // Parses the same real "Name — GH₵Price[ — Description]" lines this class already uses
