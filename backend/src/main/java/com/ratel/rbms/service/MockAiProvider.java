@@ -564,10 +564,27 @@ public class MockAiProvider implements AiProvider {
 
     private JsonNode matchPackageByName(String fullUserText, List<JsonNode> packages) {
         String lower = fullUserText.toLowerCase(Locale.ROOT);
+
+        // Real bug found via live browser testing: a customer who named one package, got asked
+        // a follow-up question, then switched ("I'll take the Seafood Experience instead") kept
+        // being told about their FIRST choice — because this scanned `packages` in a fixed list
+        // order and returned on the first one whose full name appeared ANYWHERE in the
+        // accumulated text, regardless of which was said most recently. Both names are present
+        // once a customer changes their mind, so recency — not list order — must decide, exactly
+        // like resolveSelections()/lastGenuineIndexOf() already do for substitutions below.
+        JsonNode mostRecentFullNameMatch = null;
+        int mostRecentIndex = -1;
         for (JsonNode p : packages) {
             String name = p.path("serviceName").asText("").toLowerCase(Locale.ROOT);
-            if (!name.isBlank() && lower.contains(name)) return p; // full name mentioned — unambiguous, wins outright
+            if (name.isBlank()) continue;
+            int idx = lower.lastIndexOf(name);
+            if (idx > mostRecentIndex) {
+                mostRecentIndex = idx;
+                mostRecentFullNameMatch = p;
+            }
         }
+        if (mostRecentFullNameMatch != null) return mostRecentFullNameMatch;
+
         JsonNode best = null;
         int bestScore = 0;
         for (JsonNode p : packages) {
