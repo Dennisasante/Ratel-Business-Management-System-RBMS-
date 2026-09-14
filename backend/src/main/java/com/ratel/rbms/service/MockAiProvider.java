@@ -187,37 +187,41 @@ public class MockAiProvider implements AiProvider {
         return mentionsPackageGenuinely(priorLower) || containsAny(priorLower, "dinner for", "table for");
     }
 
-    // A bare digit reply with no unit word at all ("10") — matched ONLY against the customer's
-    // LATEST message, never the whole accumulated text, so an unrelated bare number from an
-    // earlier turn (there isn't a realistic one today, but nothing rules one out later) can never
-    // be picked up as a party size just because no later turn happened to repeat a unit word.
+    // A bare digit reply with no unit word at all ("10") — only ever meaningful as an ENTIRE
+    // turn's content (a direct answer to "how many guests?"), never as a fragment of a longer
+    // message, where a lone number is too ambiguous to trust (a time, a phone-number fragment, a
+    // price).
     private static final Pattern BARE_NUMBER_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s*[.!]?\\s*$");
 
-    // Last (rightmost) match wins across the WHOLE accumulated conversation, so a later "make it
-    // 12" correctly overrides an earlier "8 people" rather than the two being ambiguous.
+    // Real bug found via live browser testing, in two parts. First: after being asked "For how
+    // many guests?", a customer who naturally replies with just "10" — no "guests"/"people"/"pax"
+    // at all — was never recognised, so the same question kept repeating forever;
+    // PARTY_SIZE_PATTERN alone requires a unit word. Second, discovered fixing the first: an
+    // earlier fix that only special-cased the LATEST turn worked for that one reply, but the
+    // moment any further turn followed — e.g. switching packages ("Actually, I'll take the
+    // Seafood Experience instead") — the bare "10" was no longer `latest` and, having no unit
+    // word, was invisible to the whole-text scan too, so the question came back a second time.
     //
-    // Real bug found via live browser testing: after being asked "For how many guests?", a
-    // customer who naturally replies with just "10" — no "guests"/"people"/"pax" at all — was
-    // never recognised, so the same question kept repeating forever. PARTY_SIZE_PATTERN alone
-    // requires a unit word; `latest` is checked as a fallback ONLY when it is nothing but a bare
-    // number, which is unambiguous exactly because it's a direct reply to that specific question.
-    private Integer extractPartySize(String fullUserText, String latest) {
-        // Checked FIRST, not as a fallback: when the latest turn is a bare number, it is by
-        // definition the newest answer given (it's the very last user turn folded into
-        // fullUserText), so it must win even over an older unit-worded mention from earlier in
-        // the conversation — otherwise a stale "8 people" from three turns ago would keep
-        // outranking the customer's actual latest answer of "10" forever. A latest turn that DOES
-        // carry its own unit word (e.g. "10 guests") simply fails this narrower pattern and falls
-        // through to the full-text scan below, which finds that same value anyway since it's the
-        // rightmost match there too.
-        if (latest != null) {
-            Matcher bare = BARE_NUMBER_PATTERN.matcher(latest);
-            if (bare.matches()) return Integer.parseInt(bare.group(1));
-        }
-        Matcher m = PARTY_SIZE_PATTERN.matcher(fullUserText);
+    // Fixed properly by walking every USER turn in true chronological order, applying BOTH
+    // patterns to each turn individually, and keeping whichever turn supplied a number most
+    // recently — exactly like resolveSelections()/lastGenuineIndexOf() already do for
+    // substitutions: recency decided turn-by-turn, not by whether a value happens to still be the
+    // very latest message or still contains a matchable unit word by the time of a later turn.
+    private Integer extractPartySize(List<AiProviderMessage> conversation) {
         Integer last = null;
-        while (m.find()) {
-            last = Integer.parseInt(m.group(1));
+        for (AiProviderMessage m : conversation) {
+            if (!"user".equals(m.role())) continue;
+            String turn = m.content();
+            if (turn == null) continue;
+            Matcher bare = BARE_NUMBER_PATTERN.matcher(turn);
+            if (bare.matches()) {
+                last = Integer.parseInt(bare.group(1));
+                continue;
+            }
+            Matcher unit = PARTY_SIZE_PATTERN.matcher(turn);
+            while (unit.find()) {
+                last = Integer.parseInt(unit.group(1));
+            }
         }
         return last;
     }
@@ -318,9 +322,31 @@ public class MockAiProvider implements AiProvider {
         }
 
         Map<String, String> selections = resolveSelections(options, fullUserText);
-        Integer partySize = extractPartySize(fullUserText, latest);
+        Integer partySize = extractPartySize(conversation);
         Instant scheduledAt = resolveDateTime(fullUserText);
         String phone = extractPhone(fullUserText);
+
+        // Real bug found via live browser testing: once inside this slot-filling flow, ANY
+        // message that isn't recognised as answering the currently-pending slot — even a totally
+        // reasonable tangent like "What's on the menu?" — just got the exact same reprompt
+        // repeated verbatim, silently ignoring what the customer actually asked. This state
+        // machine has no general reasoning to fall back on (it's a fixed set of slots, not a real
+        // model), so it can't answer an arbitrary interruption — but a menu/what's-included
+        // question is common enough, and answerable purely from `options` (already fetched
+        // above), to be worth handling explicitly rather than leaving the conversation feeling
+        // broken. Checked before the missing-slot prompts below so it can still fall through to
+        // whichever one is genuinely still pending, right after actually answering.
+        if (looksLikeMenuQuestion(latest)) {
+            StringBuilder sb = new StringBuilder(describePackageComponents(chosenPackage, options));
+            if (partySize == null) {
+                sb.append("For how many guests?");
+            } else if (scheduledAt == null) {
+                sb.append("What date and time would you like this reservation for?");
+            } else if (phone == null) {
+                sb.append("Could I get your name and best contact number?");
+            }
+            return textResult(sb.toString());
+        }
 
         // ---- Batch: availability + customer lookup, whichever are independently fetchable now ----
         List<AiToolCall> batchA = new ArrayList<>();
@@ -585,6 +611,36 @@ public class MockAiProvider implements AiProvider {
     // a real customer naming even part of a package's own distinctive name ("the Classic", "the
     // Seafood one") still matches correctly.
     private static final Set<String> GENERIC_PACKAGE_WORDS = Set.of("dinner", "package", "packages", "menu", "guest", "guests");
+
+    // Deliberately narrow — only the shapes an actual "what am I getting" question takes, never a
+    // bare "menu" (which would also match a substitution reply that happens to mention a food
+    // item, or the GENERIC_PACKAGE_WORDS-guarded "menu" that already means something else above).
+    private static final Pattern MENU_QUESTION_PATTERN = Pattern.compile(
+            "what'?s?\\s+on\\s+the\\s+menu|what\\s+comes?\\s+with|what'?s?\\s+included|what\\s+do\\s+i\\s+get"
+                    + "|what'?s?\\s+in\\s+(?:it|the|this)\\b",
+            Pattern.CASE_INSENSITIVE);
+
+    private boolean looksLikeMenuQuestion(String latest) {
+        return latest != null && MENU_QUESTION_PATTERN.matcher(latest).find();
+    }
+
+    private String describePackageComponents(JsonNode chosenPackage, JsonNode options) {
+        StringBuilder sb = new StringBuilder("The ").append(chosenPackage.path("serviceName").asText())
+                .append(" includes, per guest:\n");
+        for (JsonNode component : options.path("components")) {
+            sb.append("- ").append(component.path("slotName").asText()).append(": ")
+                    .append(component.path("defaultLabel").asText());
+            List<String> altNames = new ArrayList<>();
+            for (JsonNode alt : component.path("alternatives")) {
+                altNames.add(alt.path("label").asText());
+            }
+            if (!altNames.isEmpty()) {
+                sb.append(" (or ").append(String.join(", ", altNames)).append(")");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
 
     private JsonNode matchPackageByName(String fullUserText, List<JsonNode> packages) {
         String lower = fullUserText.toLowerCase(Locale.ROOT);
