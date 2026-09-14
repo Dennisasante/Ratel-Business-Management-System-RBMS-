@@ -1291,17 +1291,41 @@ public class MockAiProvider implements AiProvider {
 
     private static final Pattern PHONE_PATTERN = Pattern.compile("(?:\\+?233|0)[\\d][\\d\\s-]{7,11}\\d");
 
+    // Real bug found via live browser testing, DURING the actual client demo: whichever
+    // date/time phrase the customer said FIRST kept being used forever no matter what they said
+    // afterward — every retry ("7pm", "Saturday at 09", "Saturday at 7pm") was rejected as
+    // outside business hours, because both the weekday lookup (broke on the first found key) and
+    // the time lookup (matched only the first regex hit in the WHOLE accumulated text) ignored
+    // where in the conversation each phrase actually occurred, always re-using a stale earlier
+    // mention. Fixed the same way as matchPackageByName/extractPartySize earlier this session:
+    // whichever mention is RIGHTMOST in the text wins, for both the date and the time-of-day.
     private Instant resolveDateTime(String text) {
         String t = text.toLowerCase(Locale.ROOT);
+
         DayOfWeek target = null;
+        int dateIndex = -1;
         for (Map.Entry<String, DayOfWeek> e : WEEKDAYS.entrySet()) {
-            if (t.contains(e.getKey())) {
+            int idx = t.lastIndexOf(e.getKey());
+            if (idx > dateIndex) {
+                dateIndex = idx;
                 target = e.getValue();
-                break;
             }
         }
-        boolean tomorrow = t.contains("tomorrow");
-        boolean today = t.contains("today");
+        boolean tomorrow = false;
+        boolean today = false;
+        int idx = t.lastIndexOf("tomorrow");
+        if (idx > dateIndex) {
+            dateIndex = idx;
+            target = null;
+            tomorrow = true;
+        }
+        idx = t.lastIndexOf("today");
+        if (idx > dateIndex) {
+            dateIndex = idx;
+            target = null;
+            tomorrow = false;
+            today = true;
+        }
         if (target == null && !tomorrow && !today) return null;
 
         ZonedDateTime base = ZonedDateTime.now(ZoneOffset.UTC).withMinute(0).withSecond(0).withNano(0);
@@ -1312,7 +1336,7 @@ public class MockAiProvider implements AiProvider {
         int hour = 14;
         int minute = 0;
         Matcher m = TIME_PATTERN.matcher(t);
-        if (m.find()) {
+        while (m.find()) {
             String hourStr = m.group(1) != null ? m.group(1) : m.group(4);
             String minuteStr = m.group(2) != null ? m.group(2) : m.group(5);
             String ampm = m.group(3) != null ? m.group(3) : m.group(6);
