@@ -822,6 +822,32 @@ public class MockAiProvider implements AiProvider {
             return textResult(describeBusinessInfo(toolResults.get("getBusinessInfo")));
         }
 
+        // Real bug found via live browser testing, minutes before a client demo: a plain "What's
+        // on the menu?" was answered with the "Policy — Menu" knowledge entry (rules about
+        // finalising selections, swapping items, outside cakes) instead of the actual food menu —
+        // because "menu" is literally in that policy entry's own title, which scores far higher
+        // than any single MENU-category entry (titled by category name, e.g. "Mains", never
+        // literally "menu"). Checked only for the GENERIC "what do you have" shape, never for a
+        // specific category ("what sandwiches do you have" still reaches the normal matcher
+        // below and correctly finds the dedicated Sandwiches entry) or anything already
+        // policy-shaped (mentioning cake/outside/swap/substitut/finalis/extra cost), so a
+        // genuine menu-policy question still reaches the real policy text.
+        boolean genericMenuRequest = containsAny(t, "what's on the menu", "whats on the menu",
+                "what is on the menu", "what do you have", "what food do you have", "show me the menu",
+                "what can i order", "see the menu", "full menu")
+                && !containsAny(t, "cake", "outside", "swap", "substitut", "finalis", "finaliz", "extra cost", "dietary", "allerg");
+        if (genericMenuRequest) {
+            List<String> categories = new ArrayList<>();
+            for (KnowledgeEntry entry : facts.knowledge) {
+                if ("MENU".equals(entry.category())) categories.add(entry.title);
+            }
+            if (!categories.isEmpty()) {
+                return textResult("Here's what we offer: " + String.join(", ", categories)
+                        + ". We also have 4 dinner packages if you're booking for a group — just ask about any "
+                        + "category or package and I'll give you the full list with prices.");
+            }
+        }
+
         // "What's your cheapest side?" — compute the real minimum from the matched category's own
         // real price lines rather than dumping the whole category and leaving the customer to
         // find it themselves.
@@ -1088,6 +1114,18 @@ public class MockAiProvider implements AiProvider {
             "(?:don'?t want|do not want|not|without|skip|no)\\s+(?:a\\s+|the\\s+|an\\s+)?\\w+",
             Pattern.CASE_INSENSITIVE);
 
+    // Real bug found via live browser testing, minutes before a client demo: "What are your
+    // opening hours?" was answered with an unrelated "Build-your-own meal" knowledge entry —
+    // because the filler word "your" (4 letters, so not excluded by the length<=3 check below)
+    // happens to appear verbatim in that entry's own title, scoring a full title-match (5 points)
+    // before "opening"/"hours" were ever weighed against a better entry. Generic English filler
+    // words carry no real topical signal and must never be allowed to win a title match just
+    // because they coincidentally appear in some unrelated entry's title.
+    private static final Set<String> KNOWLEDGE_STOPWORDS = Set.of(
+            "what", "your", "does", "have", "with", "this", "that", "about", "tell", "know",
+            "much", "many", "there", "their", "they", "them", "when", "where", "which", "will",
+            "would", "could", "should", "please", "just", "also", "some", "here", "come", "give");
+
     private KnowledgeEntry bestKnowledgeMatch(SystemPromptFacts facts, String text) {
         String stripped = NEGATED_MENTION.matcher(text).replaceAll(" ");
         List<String> queryWords = List.of(stripped.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"));
@@ -1098,7 +1136,7 @@ public class MockAiProvider implements AiProvider {
             Set<String> bodyWords = new HashSet<>(List.of(entry.content.toLowerCase(Locale.ROOT).split("[^a-z0-9]+")));
             int score = 0;
             for (String qw : queryWords) {
-                if (qw.length() <= 3) continue;
+                if (qw.length() <= 3 || KNOWLEDGE_STOPWORDS.contains(qw)) continue;
                 // Word-stem match in either direction ("open" <-> "opening", "hour" <-> "hours")
                 // rather than requiring the query to literally contain the whole knowledge word
                 // verbatim. A title match counts far more than a content-only match — real bug
