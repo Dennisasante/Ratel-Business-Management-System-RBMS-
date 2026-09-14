@@ -139,8 +139,13 @@ docker compose -p ratel-demo -f docker-compose.demo.yml up -d --build frontend
 
 ```bash
 docker compose -p ratel-demo -f docker-compose.demo.yml ps
-docker stats --no-stream ratel-demo-postgres-1 ratel-demo-backend-1 ratel-demo-frontend-1
+docker stats --no-stream $(docker compose -p ratel-demo -f docker-compose.demo.yml ps -q)
 ```
+
+(Deliberately not hardcoding container names like `ratel-demo-backend-1` here
+— that's Compose's default pattern but confirming it live via `ps -q`
+avoids a stale assumption if it ever differs. Names only get hardcoded later,
+in Step 11c, and that step already says to confirm rather than assume.)
 
 All three should show `Up`/`healthy`. Confirm memory is tracking near the
 limits set in `docker-compose.demo.yml` (512m/1g/384m), not against them.
@@ -158,16 +163,27 @@ see the Architecture section above), so run this
 directly — `docker compose exec` reaches it over the container's own
 loopback regardless:
 
+**Uses `wget`, not `curl`** — verified directly against the actual runtime
+image (`eclipse-temurin:17-jre-alpine`) rather than assumed: that image has
+no `curl` binary at all (`which curl` returns nothing), only BusyBox's
+`wget`. A `curl`-based version of this command would fail outright with
+"curl: not found" the moment you ran it:
+
 ```bash
 docker compose -p ratel-demo -f docker-compose.demo.yml exec backend sh -c '
-  TOKEN=$(curl -s -X POST http://localhost:8090/api/platform/auth/login \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"<SUPER_ADMIN_EMAIL>\",\"password\":\"<SUPER_ADMIN_PASSWORD>\"}" \
+  TOKEN=$(wget -qO- \
+    --header="Content-Type: application/json" \
+    --post-data="{\"email\":\"<SUPER_ADMIN_EMAIL>\",\"password\":\"<SUPER_ADMIN_PASSWORD>\"}" \
+    http://localhost:8090/api/platform/auth/login \
     | grep -o "\"token\":\"[^\"]*" | cut -d\" -f4) &&
-  curl -s -X POST http://localhost:8090/api/platform/demo/seed-cafe-bar-noir \
-    -H "Authorization: Bearer $TOKEN"
+  wget -qO- \
+    --header="Authorization: Bearer $TOKEN" \
+    --post-data="" \
+    http://localhost:8090/api/platform/demo/seed-cafe-bar-noir
 '
 ```
+
+(`grep`/`cut` were also confirmed present in the image, not assumed.)
 
 Expect a JSON response with `"created":true` (or `false` with the same
 `businessId` if it already existed — reconciliation, not duplication, per
@@ -287,9 +303,11 @@ See the full checklist in "Phase 12" below — run it against
 
 ```bash
 docker compose -p ratel-demo -f docker-compose.demo.yml exec postgres \
-  psql -U <DB_USERNAME> -d cafe_bar_noir_demo -c \
+  psql -U <DB_USERNAME> -d <DB_NAME> -c \
   "select id, booking_number, payment_status, customer_whatsapp from bookings order by created_at desc limit 5;"
 ```
+
+(Column names verified directly against `Booking.java`'s own `@Column` mappings, not assumed.)
 
 ---
 
