@@ -187,10 +187,34 @@ public class MockAiProvider implements AiProvider {
         return mentionsPackageGenuinely(priorLower) || containsAny(priorLower, "dinner for", "table for");
     }
 
+    // A bare digit reply with no unit word at all ("10") — matched ONLY against the customer's
+    // LATEST message, never the whole accumulated text, so an unrelated bare number from an
+    // earlier turn (there isn't a realistic one today, but nothing rules one out later) can never
+    // be picked up as a party size just because no later turn happened to repeat a unit word.
+    private static final Pattern BARE_NUMBER_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s*[.!]?\\s*$");
+
     // Last (rightmost) match wins across the WHOLE accumulated conversation, so a later "make it
     // 12" correctly overrides an earlier "8 people" rather than the two being ambiguous.
-    private Integer extractPartySize(String text) {
-        Matcher m = PARTY_SIZE_PATTERN.matcher(text);
+    //
+    // Real bug found via live browser testing: after being asked "For how many guests?", a
+    // customer who naturally replies with just "10" — no "guests"/"people"/"pax" at all — was
+    // never recognised, so the same question kept repeating forever. PARTY_SIZE_PATTERN alone
+    // requires a unit word; `latest` is checked as a fallback ONLY when it is nothing but a bare
+    // number, which is unambiguous exactly because it's a direct reply to that specific question.
+    private Integer extractPartySize(String fullUserText, String latest) {
+        // Checked FIRST, not as a fallback: when the latest turn is a bare number, it is by
+        // definition the newest answer given (it's the very last user turn folded into
+        // fullUserText), so it must win even over an older unit-worded mention from earlier in
+        // the conversation — otherwise a stale "8 people" from three turns ago would keep
+        // outranking the customer's actual latest answer of "10" forever. A latest turn that DOES
+        // carry its own unit word (e.g. "10 guests") simply fails this narrower pattern and falls
+        // through to the full-text scan below, which finds that same value anyway since it's the
+        // rightmost match there too.
+        if (latest != null) {
+            Matcher bare = BARE_NUMBER_PATTERN.matcher(latest);
+            if (bare.matches()) return Integer.parseInt(bare.group(1));
+        }
+        Matcher m = PARTY_SIZE_PATTERN.matcher(fullUserText);
         Integer last = null;
         while (m.find()) {
             last = Integer.parseInt(m.group(1));
@@ -294,7 +318,7 @@ public class MockAiProvider implements AiProvider {
         }
 
         Map<String, String> selections = resolveSelections(options, fullUserText);
-        Integer partySize = extractPartySize(fullUserText);
+        Integer partySize = extractPartySize(fullUserText, latest);
         Instant scheduledAt = resolveDateTime(fullUserText);
         String phone = extractPhone(fullUserText);
 
