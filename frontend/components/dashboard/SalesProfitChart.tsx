@@ -15,6 +15,17 @@ const METRICS: { key: Metric; label: string; barClass: string; format: (v: numbe
 
 const CHART_HEIGHT = 200;
 
+// Real bug found live: the SVG viewBox is sized at 40 units per point, then
+// stretched to fill the card's full width via preserveAspectRatio="none".
+// That ratio holds up fine with many points (bars stay reasonably thin with
+// visible gaps) but breaks down completely for very few points — "Today"
+// (or any narrow custom range) returns exactly ONE chart point, so a single
+// bar occupying 60% of a 1-slot viewBox gets stretched into one giant solid
+// block that no longer reads as a chart at all. Reserving a minimum number
+// of slots regardless of the real point count keeps the bar-to-empty-space
+// ratio sane even when there's only one (or a few) real data points.
+const MIN_CHART_SLOTS = 7;
+
 /** Section 2 — a single switchable bar chart, deliberately the only chart on the page (spec: avoid excessive charts). */
 export default function SalesProfitChart({ chart }: { chart: DashboardChart | null }) {
   const [metric, setMetric] = useState<Metric>("revenue");
@@ -33,6 +44,14 @@ export default function SalesProfitChart({ chart }: { chart: DashboardChart | nu
     if (points.length <= 20) return 2;
     return Math.ceil(points.length / 10);
   }, [points.length]);
+
+  // See MIN_CHART_SLOTS above — reserve at least that many slots, split evenly
+  // as empty padding before/after the real bars, so a 1-point ("Today") chart
+  // gets one reasonably-sized, centered bar instead of a stretched block.
+  const slotCount = Math.max(points.length, MIN_CHART_SLOTS);
+  const emptySlots = slotCount - points.length;
+  const slotsBefore = Math.floor(emptySlots / 2);
+  const slotsAfter = emptySlots - slotsBefore;
 
   return (
     <Card className="p-5">
@@ -66,12 +85,12 @@ export default function SalesProfitChart({ chart }: { chart: DashboardChart | nu
         </div>
       ) : (
         <div className="mt-4">
-          <svg viewBox={`0 0 ${points.length * 40} ${CHART_HEIGHT}`} className="h-[200px] w-full" preserveAspectRatio="none">
+          <svg viewBox={`0 0 ${slotCount * 40} ${CHART_HEIGHT}`} className="h-[200px] w-full" preserveAspectRatio="none">
             {points.map((p, i) => {
               const value = p[metric];
               const barHeight = Math.max(2, (value / max) * (CHART_HEIGHT - 24));
               const barWidth = 24;
-              const x = i * 40 + (40 - barWidth) / 2;
+              const x = (i + slotsBefore) * 40 + (40 - barWidth) / 2;
               const y = CHART_HEIGHT - 24 - barHeight;
               return (
                 <g key={p.bucketStart}>
@@ -82,11 +101,13 @@ export default function SalesProfitChart({ chart }: { chart: DashboardChart | nu
             })}
           </svg>
           <div className="mt-1 flex text-[10px] text-ink-500" style={{ fontVariantNumeric: "tabular-nums" }}>
+            {slotsBefore > 0 && <div className="flex-1" style={{ flexGrow: slotsBefore }} />}
             {points.map((p, i) => (
               <div key={p.bucketStart} className="flex-1 text-center">
                 {i % labelStride === 0 ? p.label : ""}
               </div>
             ))}
+            {slotsAfter > 0 && <div className="flex-1" style={{ flexGrow: slotsAfter }} />}
           </div>
         </div>
       )}
