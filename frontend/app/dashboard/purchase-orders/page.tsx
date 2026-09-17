@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, X, ClipboardList, Search } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, ApiError, Product, ProductCategory, PurchaseOrder, Supplier } from "@/lib/api";
+import { api, ApiError, Product, ProductCategory, PurchaseOrder, sortCategoriesHierarchically, Supplier } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -208,9 +208,9 @@ export default function PurchaseOrdersPage() {
                     className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                   >
                     <option value="">All categories</option>
-                    {categories.map((c) => (
+                    {sortCategoriesHierarchically(categories).map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {c.parentId ? `— ${c.name}` : c.name}
                       </option>
                     ))}
                   </select>

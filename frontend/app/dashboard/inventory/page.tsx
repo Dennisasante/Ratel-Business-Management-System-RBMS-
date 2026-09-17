@@ -12,6 +12,7 @@ import {
   ProductCategory,
   ProductCategoryPayload,
   ProductPayload,
+  sortCategoriesHierarchically,
   StockAdjustmentPayload,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
@@ -228,9 +229,9 @@ export default function InventoryPage() {
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All categories</option>
-          {categories.map((c) => (
+          {sortCategoriesHierarchically(categories).map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {c.parentId ? `— ${c.name}` : c.name}
             </option>
           ))}
         </select>

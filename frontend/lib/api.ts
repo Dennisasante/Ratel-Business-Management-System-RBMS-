@@ -905,12 +905,40 @@ export interface ServiceOrderReport {
 export interface ProductCategory {
   id: string;
   name: string;
+  parentId: string | null;
   productCount: number;
+  subcategoryCount: number;
   createdAt: string;
 }
 
 export interface ProductCategoryPayload {
   name: string;
+  parentId?: string;
+}
+
+// Top-level categories first (alphabetically), each immediately followed by its own
+// subcategories (also alphabetically) — a flat, ordered list any plain <select> or list
+// UI can render with subcategories visually indented, without needing <optgroup> markup.
+export function sortCategoriesHierarchically(categories: ProductCategory[]): ProductCategory[] {
+  const byParent = new Map<string, ProductCategory[]>();
+  const topLevel: ProductCategory[] = [];
+  for (const c of categories) {
+    if (c.parentId) {
+      const siblings = byParent.get(c.parentId) ?? [];
+      siblings.push(c);
+      byParent.set(c.parentId, siblings);
+    } else {
+      topLevel.push(c);
+    }
+  }
+  const result: ProductCategory[] = [];
+  for (const parent of topLevel) {
+    result.push(parent);
+    for (const child of byParent.get(parent.id) ?? []) {
+      result.push(child);
+    }
+  }
+  return result;
 }
 
 export interface BusinessUpdatePayload {
