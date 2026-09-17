@@ -11,6 +11,7 @@ public record ImportRow(
         int rowNumber,
         String name,
         String category,
+        String subcategory,
         String sku,
         BigDecimal costPrice,
         BigDecimal sellingPrice,

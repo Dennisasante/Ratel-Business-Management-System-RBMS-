@@ -43,7 +43,7 @@ public class ProductImportService {
 
     private static final int MAX_ROWS = 2000;
     private static final List<String> EXPECTED_HEADERS = List.of(
-            "name", "category", "sku", "costprice", "sellingprice", "quantity", "lowstockthreshold", "suppliername"
+            "name", "category", "subcategory", "sku", "costprice", "sellingprice", "quantity", "lowstockthreshold", "suppliername"
     );
 
     private final ProductRepository productRepository;
@@ -61,8 +61,9 @@ public class ProductImportService {
     }
 
     public byte[] template() {
-        String csv = "name,category,sku,costPrice,sellingPrice,quantity,lowStockThreshold,supplierName\n"
-                + "613 Blonde Bundle,Wigs,SKU-001,80.00,150.00,10,5,Acme Hair Supplies\n";
+        String csv = "name,category,subcategory,sku,costPrice,sellingPrice,quantity,lowStockThreshold,supplierName\n"
+                + "613 Blonde Bundle,Wigs,Synthetic Wigs,SKU-001,80.00,150.00,10,5,Acme Hair Supplies\n"
+                + "Butterfly Control Clips,Hair Products,,SKU-002,20.00,50.00,40,5,Acme Hair Supplies\n";
         return csv.getBytes(StandardCharsets.UTF_8);
     }
 
@@ -94,6 +95,7 @@ public class ProductImportService {
 
         int nameCol = header.indexOf("name");
         int categoryCol = header.indexOf("category");
+        int subcategoryCol = header.indexOf("subcategory");
         int skuCol = header.indexOf("sku");
         int costCol = header.indexOf("costprice");
         int sellCol = header.indexOf("sellingprice");
@@ -109,6 +111,7 @@ public class ProductImportService {
             List<String> cells = rawRows.get(i);
             String name = cellAt(cells, nameCol);
             String category = cellAt(cells, categoryCol);
+            String subcategory = cellAt(cells, subcategoryCol);
             String sku = cellAt(cells, skuCol);
             String supplierName = cellAt(cells, supplierCol);
 
@@ -134,7 +137,7 @@ public class ProductImportService {
             if (valid) validCount++;
 
             rows.add(new ImportRow(
-                    i, name, blankToNull(category), blankToNull(sku),
+                    i, name, blankToNull(category), blankToNull(subcategory), blankToNull(sku),
                     costPrice, sellingPrice, quantity, lowStockThreshold, blankToNull(supplierName),
                     valid, errors
             ));
@@ -156,7 +159,7 @@ public class ProductImportService {
                 continue;
             }
 
-            UUID categoryId = row.category() != null ? resolveCategory(businessId, row.category()) : null;
+            UUID categoryId = resolveCategory(businessId, row.category(), row.subcategory());
             productService.create(new ProductRequest(
                     row.name(), null, categoryId, row.sku(),
                     row.costPrice() != null ? row.costPrice() : BigDecimal.ZERO,
@@ -186,11 +189,46 @@ public class ProductImportService {
         return null;
     }
 
-    private UUID resolveCategory(UUID businessId, String categoryName) {
-        return productCategoryRepository.findByBusinessIdAndNameIgnoreCase(businessId, categoryName)
+    // Resolves (and auto-creates, if missing) BOTH levels in one pass — a row can name just a
+    // category, just a subcategory, or both. Every branch respects the single-level nesting rule
+    // enforced elsewhere (ProductCategoryService): a subcategory is never itself used as a
+    // parent, so a row can never accidentally build a two-level chain via import, and no row
+    // ever fails outright over a naming conflict — it always falls back to the closest sensible
+    // existing category rather than blocking the whole import.
+    private UUID resolveCategory(UUID businessId, String categoryName, String subcategoryName) {
+        boolean hasCategory = categoryName != null && !categoryName.isBlank();
+        boolean hasSubcategory = subcategoryName != null && !subcategoryName.isBlank();
+        if (!hasCategory && !hasSubcategory) return null;
+
+        if (!hasCategory) {
+            // Subcategory given alone — nothing to nest it under, so it becomes its own
+            // top-level category rather than the row being rejected.
+            return resolveByName(businessId, subcategoryName, null);
+        }
+
+        ProductCategory existingCategory = productCategoryRepository
+                .findByBusinessIdAndNameIgnoreCase(businessId, categoryName).orElse(null);
+        UUID categoryId = existingCategory != null
+                ? existingCategory.getId()
+                : productCategoryRepository.save(ProductCategory.builder().businessId(businessId).name(categoryName).build()).getId();
+
+        if (!hasSubcategory) return categoryId;
+
+        // Category names are unique per business regardless of level, so if this name already
+        // belongs to an existing SUBcategory, it can never be used as a parent — fall back to
+        // that existing entry directly (dropping the subcategory column for this row) rather
+        // than attempting an invalid two-level nest.
+        if (existingCategory != null && existingCategory.getParentId() != null) {
+            return categoryId;
+        }
+        return resolveByName(businessId, subcategoryName, categoryId);
+    }
+
+    private UUID resolveByName(UUID businessId, String name, UUID parentId) {
+        return productCategoryRepository.findByBusinessIdAndNameIgnoreCase(businessId, name)
                 .map(ProductCategory::getId)
                 .orElseGet(() -> productCategoryRepository.save(
-                        ProductCategory.builder().businessId(businessId).name(categoryName).build()
+                        ProductCategory.builder().businessId(businessId).name(name).parentId(parentId).build()
                 ).getId());
     }
 

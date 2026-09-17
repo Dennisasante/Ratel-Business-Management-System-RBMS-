@@ -172,6 +172,7 @@ export interface ImportRow {
   rowNumber: number;
   name: string | null;
   category: string | null;
+  subcategory: string | null;
   sku: string | null;
   costPrice: number | null;
   sellingPrice: number | null;

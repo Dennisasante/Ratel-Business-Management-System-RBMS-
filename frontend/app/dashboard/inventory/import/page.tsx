@@ -104,14 +104,16 @@ export default function InventoryImportPage() {
             <div className="rounded-lg border border-border bg-canvas p-4 text-sm text-ink-700">
               <p className="mb-2 font-medium text-ink-900">Before you upload</p>
               <p>
-                Your file needs these exact column headers: <code className="text-xs">name, category, sku, costPrice, sellingPrice,
-                quantity, lowStockThreshold, supplierName</code>. Only <code className="text-xs">name</code> is required — everything
-                else can be left blank.
+                Your file needs these exact column headers: <code className="text-xs">name, category, subcategory, sku, costPrice,
+                sellingPrice, quantity, lowStockThreshold, supplierName</code>. Only <code className="text-xs">name</code> is
+                required — everything else can be left blank.
               </p>
               <p className="mt-2">
-                <code className="text-xs">category</code> matches by exact name, including subcategories — but if the name doesn&apos;t
-                already exist, it creates a new top-level category, never a subcategory. To import into a subcategory, create it first
-                under Categories, then use its exact name here.
+                Fill in both <code className="text-xs">category</code> and <code className="text-xs">subcategory</code> to file a
+                product under a subcategory — neither has to already exist, both get created automatically if needed (subcategory
+                nested under that category). Leave <code className="text-xs">subcategory</code> blank to use a plain top-level
+                category instead. Either column matches an existing category or subcategory by exact name first, so reuse the same
+                spelling across rows to avoid creating duplicates.
               </p>
               <button
                 type="button"
@@ -174,7 +176,11 @@ export default function InventoryImportPage() {
                       </Td>
                       <Td className="tabular text-ink-500">{row.rowNumber}</Td>
                       <Td className="font-medium">{row.name ?? "—"}</Td>
-                      <Td className="text-ink-500">{row.category ?? "—"}</Td>
+                      <Td className="text-ink-500">
+                        {row.category && row.subcategory
+                          ? `${row.category} → ${row.subcategory}`
+                          : row.category ?? row.subcategory ?? "—"}
+                      </Td>
                       <Td className="text-ink-500">{row.sku ?? "—"}</Td>
                       <Td className="tabular text-right text-ink-500">{row.costPrice != null ? row.costPrice.toFixed(2) : "—"}</Td>
                       <Td className="tabular text-right text-ink-500">{row.sellingPrice != null ? row.sellingPrice.toFixed(2) : "—"}</Td>
