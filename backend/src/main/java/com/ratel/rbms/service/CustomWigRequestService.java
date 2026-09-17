@@ -6,6 +6,7 @@ import com.ratel.rbms.dto.CreateStaffCustomWigRequestRequest;
 import com.ratel.rbms.dto.CustomItemAttributeResponse;
 import com.ratel.rbms.dto.CustomWigRequestCreatedResponse;
 import com.ratel.rbms.dto.CustomWigRequestDetailResponse;
+import com.ratel.rbms.dto.CustomWigRequestItemResponse;
 import com.ratel.rbms.dto.CustomWigRequestResponse;
 import com.ratel.rbms.dto.CustomWigSelectionInput;
 import com.ratel.rbms.dto.CustomWigSelectionResponse;
@@ -14,6 +15,7 @@ import com.ratel.rbms.dto.MobileMoneyChargeResponse;
 import com.ratel.rbms.dto.PublicCustomWigConfigResponse;
 import com.ratel.rbms.dto.RecordPaymentRequest;
 import com.ratel.rbms.dto.RefundRequest;
+import com.ratel.rbms.dto.StaffWigItemInput;
 import com.ratel.rbms.dto.SubmitCustomWigRequestRequest;
 import com.ratel.rbms.dto.UpdateFinalPriceRequest;
 import com.ratel.rbms.entity.Business;
@@ -22,6 +24,7 @@ import com.ratel.rbms.entity.CustomItemAttribute;
 import com.ratel.rbms.entity.CustomItemAttributeOption;
 import com.ratel.rbms.entity.Customer;
 import com.ratel.rbms.entity.CustomWigRequest;
+import com.ratel.rbms.entity.CustomWigRequestItem;
 import com.ratel.rbms.entity.PaymentTransaction;
 import com.ratel.rbms.entity.PendingApproval;
 import com.ratel.rbms.exception.ApiException;
@@ -30,6 +33,7 @@ import com.ratel.rbms.repository.BusinessIntegrationsRepository;
 import com.ratel.rbms.repository.BusinessRepository;
 import com.ratel.rbms.repository.CustomItemAttributeOptionRepository;
 import com.ratel.rbms.repository.CustomItemAttributeRepository;
+import com.ratel.rbms.repository.CustomWigRequestItemRepository;
 import com.ratel.rbms.repository.CustomWigRequestRepository;
 import com.ratel.rbms.repository.CustomerRepository;
 import com.ratel.rbms.repository.PaymentTransactionRepository;
@@ -69,6 +73,7 @@ public class CustomWigRequestService {
     private static final Set<String> ALLOWED_PHOTO_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
 
     private final CustomWigRequestRepository customWigRequestRepository;
+    private final CustomWigRequestItemRepository customWigRequestItemRepository;
     private final CustomItemAttributeRepository attributeRepository;
     private final CustomItemAttributeOptionRepository optionRepository;
     private final BusinessRepository businessRepository;
@@ -90,6 +95,7 @@ public class CustomWigRequestService {
 
     public CustomWigRequestService(
             CustomWigRequestRepository customWigRequestRepository,
+            CustomWigRequestItemRepository customWigRequestItemRepository,
             CustomItemAttributeRepository attributeRepository,
             CustomItemAttributeOptionRepository optionRepository,
             BusinessRepository businessRepository,
@@ -110,6 +116,7 @@ public class CustomWigRequestService {
             CustomerRepository customerRepository
     ) {
         this.customWigRequestRepository = customWigRequestRepository;
+        this.customWigRequestItemRepository = customWigRequestItemRepository;
         this.attributeRepository = attributeRepository;
         this.optionRepository = optionRepository;
         this.businessRepository = businessRepository;
@@ -300,7 +307,8 @@ public class CustomWigRequestService {
                 .orElse(null);
         return new CustomWigRequestDetailResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
-                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), request.getEstimatedPrice(),
+                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), itemsFor(request.getId()),
+                request.getEstimatedPrice(),
                 request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
                 request.getOwnerMessage(), request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
                 paymentMethod, whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
@@ -317,11 +325,18 @@ public class CustomWigRequestService {
                 .orElse(null);
         return new CustomWigRequestDetailResponse(
                 request.getId(), request.getRequestNumber(), request.getCustomerName(), request.getCustomerEmail(),
-                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), request.getEstimatedPrice(),
+                request.getCustomerWhatsapp(), readSelections(request.getSelections()), request.getDescription(), itemsFor(request.getId()),
+                request.getEstimatedPrice(),
                 request.getInspirationPhotoUrl(), request.getNotes(), request.getStatus(), request.getFinalPrice(),
                 request.getOwnerMessage(), request.getPaymentStatus(), request.getAmountPaid(), balanceDue(request),
                 paymentMethod, whatsappLinkFor(request), request.getSource(), request.getCreatedAt()
         );
+    }
+
+    private List<CustomWigRequestItemResponse> itemsFor(UUID requestId) {
+        return customWigRequestItemRepository.findAllByRequestIdOrderByDisplayOrderAsc(requestId).stream()
+                .map(CustomWigRequestItemResponse::from)
+                .toList();
     }
 
     // Staff logging a request that arrived through an informal channel
@@ -347,12 +362,25 @@ public class CustomWigRequestService {
         if (req.customerName() == null || req.customerName().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Customer name is required.");
         }
-        if (req.description() == null || req.description().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Describe what the customer wants.");
+        if (req.items() == null || req.items().isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Describe at least one wig the customer wants.");
         }
-        if (req.price() == null || req.price().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a price greater than zero.");
+        for (StaffWigItemInput item : req.items()) {
+            if (item.description() == null || item.description().isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Describe what the customer wants for every wig.");
+            }
+            if (item.price() == null || item.price().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Enter a price greater than zero for every wig.");
+            }
         }
+
+        BigDecimal totalPrice = req.items().stream().map(StaffWigItemInput::price).reduce(BigDecimal.ZERO, BigDecimal::add);
+        // The parent's own description/estimatedPrice stay populated (a join of every item's
+        // description, and the summed total) purely so the list view, payment pipeline, and
+        // every pre-existing consumer of those two fields need no changes at all — see V62's
+        // own migration comment. The real per-wig breakdown lives in items, read by the detail
+        // view only when present.
+        String combinedDescription = req.items().stream().map(i -> i.description().trim()).reduce((a, b) -> a + "; " + b).orElse("");
 
         String photoUrl = photo != null && !photo.isEmpty() ? savePhoto(businessId, photo) : null;
         UUID customerId = resolveCustomerId(businessId, req.customerName(), req.customerWhatsapp(), req.customerEmail());
@@ -365,9 +393,9 @@ public class CustomWigRequestService {
                 .customerWhatsapp(blankToNull(req.customerWhatsapp()))
                 .source(blankToNull(req.source()))
                 .selections(writeSelections(List.of()))
-                .description(req.description().trim())
-                .estimatedPrice(req.price())
-                .finalPrice(req.price())
+                .description(combinedDescription)
+                .estimatedPrice(totalPrice)
+                .finalPrice(totalPrice)
                 .status("ACCEPTED")
                 .inspirationPhotoUrl(photoUrl)
                 .notes(req.notes())
@@ -376,13 +404,27 @@ public class CustomWigRequestService {
         request = customWigRequestRepository.save(request);
         customWigRequestRepository.flush(); // so request_number is readable below
 
+        UUID requestId = request.getId();
+        int[] order = {0};
+        List<CustomWigRequestItem> items = req.items().stream()
+                .map(i -> CustomWigRequestItem.builder()
+                        .requestId(requestId)
+                        .businessId(businessId)
+                        .description(i.description().trim())
+                        .price(i.price())
+                        .displayOrder(order[0]++)
+                        .build())
+                .toList();
+        customWigRequestItemRepository.saveAll(items);
+
         activityLogService.log(
-                "Logged a custom wig request" + (request.getSource() != null ? " (" + request.getSource() + ")" : ""),
+                "Logged a custom wig request (" + items.size() + " wig" + (items.size() == 1 ? "" : "s") + ")"
+                        + (request.getSource() != null ? " (" + request.getSource() + ")" : ""),
                 "CUSTOM_WIG_REQUEST", request.getId()
         );
 
         Business business = businessRepository.findById(businessId).orElse(null);
-        String estimateLabel = (business != null ? business.getCurrency() : "GHS") + " " + req.price().toPlainString();
+        String estimateLabel = (business != null ? business.getCurrency() : "GHS") + " " + totalPrice.toPlainString();
         notificationService.create(businessId, "NEW_CUSTOM_WIG_REQUEST", "New custom wig request from " + request.getCustomerName(),
                 estimateLabel + " estimate", "CUSTOM_WIG_REQUEST", request.getId());
 

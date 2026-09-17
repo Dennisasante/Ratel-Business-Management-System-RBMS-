@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, MessageCircle, Settings, CheckCircle2, Plus, Move, ChevronRight } from "lucide-react";
+import { Sparkles, MessageCircle, Settings, CheckCircle2, Plus, Move, ChevronRight, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
@@ -12,6 +12,7 @@ import {
   CustomWigRequest,
   CustomWigRequestDetail,
   CustomWigRequestStatus,
+  StaffWigItemInput,
   isPendingApproval,
 } from "@/lib/api";
 import Modal from "@/components/Modal";
@@ -519,11 +520,27 @@ function RequestDetailModal({
           {detail.source && <p className="text-xs text-ink-400">via {detail.source}</p>}
         </div>
 
-        {detail.description && (
+        {detail.items.length > 0 ? (
           <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
-            <p className="text-sm text-ink-700">{detail.description}</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">
+              {detail.items.length} wig{detail.items.length === 1 ? "" : "s"} in this order
+            </p>
+            <div className="flex flex-col gap-2">
+              {detail.items.map((item) => (
+                <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5 text-sm">
+                  <span className="text-ink-700">{item.description}</span>
+                  <span className="tabular shrink-0 font-medium text-ink-900">GHS {item.price.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
           </div>
+        ) : (
+          detail.description && (
+            <div>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
+              <p className="text-sm text-ink-700">{detail.description}</p>
+            </div>
+          )
         )}
 
         <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
@@ -702,12 +719,28 @@ function NewRequestModal({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerWhatsapp, setCustomerWhatsapp] = useState("");
   const [source, setSource] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
+  // One client can want more than one wig — real gap found live: there was
+  // no way to log that as a single order, only as separate unrelated
+  // requests. Always at least one row; "Add another wig" appends more.
+  const [items, setItems] = useState<{ description: string; price: string }[]>([{ description: "", price: "" }]);
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function updateItem(index: number, patch: Partial<{ description: string; price: string }>) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  function addItem() {
+    setItems((prev) => [...prev, { description: "", price: "" }]);
+  }
+
+  function removeItem(index: number) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const total = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -717,14 +750,18 @@ function NewRequestModal({
       setError("Customer name is required.");
       return;
     }
-    if (!description.trim()) {
-      setError("Describe what the customer wants.");
-      return;
-    }
-    const parsedPrice = Number(price);
-    if (!parsedPrice || parsedPrice <= 0) {
-      setError("Enter a price greater than zero.");
-      return;
+    const parsedItems: StaffWigItemInput[] = [];
+    for (const item of items) {
+      if (!item.description.trim()) {
+        setError("Describe what the customer wants for every wig.");
+        return;
+      }
+      const parsedPrice = Number(item.price);
+      if (!parsedPrice || parsedPrice <= 0) {
+        setError("Enter a price greater than zero for every wig.");
+        return;
+      }
+      parsedItems.push({ description: item.description.trim(), price: parsedPrice });
     }
 
     setBusy(true);
@@ -735,8 +772,7 @@ function NewRequestModal({
           customerEmail: customerEmail.trim() || undefined,
           customerWhatsapp: customerWhatsapp.trim() || undefined,
           source: source.trim() || undefined,
-          description: description.trim(),
-          price: parsedPrice,
+          items: parsedItems,
           notes: notes.trim() || undefined,
         },
         photo
@@ -791,29 +827,55 @@ function NewRequestModal({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">What do they want? *</label>
-          <textarea
-            required
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder='e.g. "24 inches HD lace wig, bone straight, natural black"'
-            className="min-h-20 rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-ink-700">Price *</label>
-          <input
-            required
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="0.00"
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
+        <div className="flex flex-col gap-3">
+          <label className="text-sm font-medium text-ink-700">Wig{items.length > 1 ? "s" : ""} *</label>
+          {items.map((item, i) => (
+            <div key={i} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wide text-ink-500">Wig {i + 1}</span>
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    className="rounded-md p-1 text-danger hover:bg-danger-soft"
+                    aria-label={`Remove wig ${i + 1}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              <textarea
+                required
+                value={item.description}
+                onChange={(e) => updateItem(i, { description: e.target.value })}
+                placeholder='e.g. "24 inches HD lace wig, bone straight, natural black"'
+                className="min-h-16 rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+              <input
+                required
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={item.price}
+                onChange={(e) => updateItem(i, { price: e.target.value })}
+                placeholder="Price (0.00)"
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addItem}
+            className="flex items-center gap-1.5 self-start text-sm font-medium text-accent-hover hover:underline"
+          >
+            <Plus size={14} /> Add another wig
+          </button>
+          {items.length > 1 && (
+            <div className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm font-semibold">
+              <span>Total ({items.length} wigs)</span>
+              <span className="tabular">GHS {total.toFixed(2)}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">

@@ -1204,11 +1204,27 @@ function CustomWigRequestDetailView({ request }: { request: CustomWigRequestDeta
         {request.customerWhatsapp && <p className="text-ink-500">{request.customerWhatsapp}</p>}
         {request.source && <p className="text-xs text-ink-400">via {request.source}</p>}
       </div>
-      {request.description && (
+      {request.items.length > 0 ? (
         <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
-          <p className="text-sm text-ink-700">{request.description}</p>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-500">
+            {request.items.length} wig{request.items.length === 1 ? "" : "s"} in this order
+          </p>
+          <div className="flex flex-col gap-2">
+            {request.items.map((item) => (
+              <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5 text-sm">
+                <span className="text-ink-700">{item.description}</span>
+                <span className="tabular shrink-0 font-medium text-ink-900">GHS {item.price.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
         </div>
+      ) : (
+        request.description && (
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">What they want</p>
+            <p className="text-sm text-ink-700">{request.description}</p>
+          </div>
+        )
       )}
       <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
         {request.selections.map((sel, i) => (

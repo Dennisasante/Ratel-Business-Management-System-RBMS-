@@ -1328,6 +1328,13 @@ export interface CustomWigSelection {
   requiresManualQuote: boolean;
 }
 
+// One wig within a staff-logged multi-item order — see CustomWigRequestDetail.items.
+export interface CustomWigRequestItem {
+  id: string;
+  description: string;
+  price: number;
+}
+
 // Public/hosted-page side — submission input, distinct from the owner-facing
 // snapshot shape above (CustomWigSelection).
 export interface CustomWigSelectionInput {
@@ -1335,15 +1342,21 @@ export interface CustomWigSelectionInput {
   optionId: string;
 }
 
-// Always free text + a staff-entered price — never the public widget's
-// attribute/option picker. See CreateStaffCustomWigRequestRequest.java.
+// One wig within a staff-logged order — always free text + a staff-entered
+// price, never the public widget's attribute/option picker.
+export interface StaffWigItemInput {
+  description: string;
+  price: number;
+}
+
+// A real order — one client can want more than one wig, so items is always
+// at least one entry. See CreateStaffCustomWigRequestRequest.java.
 export interface CreateStaffCustomWigRequestPayload {
   customerName: string;
   customerEmail?: string;
   customerWhatsapp?: string;
   source?: string;
-  description: string;
-  price: number;
+  items: StaffWigItemInput[];
   notes?: string;
 }
 
@@ -1383,6 +1396,10 @@ export interface CustomWigRequestDetail {
   customerWhatsapp: string | null;
   selections: CustomWigSelection[];
   description: string | null;
+  // Non-empty ONLY for a staff-logged multi-item order — empty for a
+  // public-widget submission and any pre-existing single-item staff
+  // request, which keep using `description`/`estimatedPrice` above.
+  items: CustomWigRequestItem[];
   estimatedPrice: number;
   inspirationPhotoUrl: string | null;
   notes: string | null;
