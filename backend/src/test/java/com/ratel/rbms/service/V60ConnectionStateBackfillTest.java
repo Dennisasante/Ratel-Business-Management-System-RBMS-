@@ -78,7 +78,7 @@ class V60ConnectionStateBackfillTest {
                     .load();
             var latestResult = toLatest.migrate();
             assertTrue(latestResult.success, "V60 must apply cleanly on top of real pre-existing V59 data");
-            assertEquals("60", latestResult.targetSchemaVersion);
+            assertEquals("61", latestResult.targetSchemaVersion);
 
             try (Connection conn = DriverManager.getConnection(freshUrl, USER, PASSWORD);
                  Statement stmt = conn.createStatement()) {

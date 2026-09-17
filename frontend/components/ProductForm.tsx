@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Globe, Upload } from "lucide-react";
-import { ApiError, Product, ProductCategory, ProductPayload } from "@/lib/api";
+import { ApiError, Product, ProductCategory, ProductPayload, sortCategoriesHierarchically } from "@/lib/api";
 import FormField from "@/components/FormField";
 import Button from "@/components/ui/Button";
 
@@ -86,9 +86,9 @@ export default function ProductForm({ initial, categories, submitLabel, onSubmit
             className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-900 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           >
             <option value="">Uncategorized</option>
-            {categories.map((c) => (
+            {sortCategoriesHierarchically(categories).map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.parentId ? `— ${c.name}` : c.name}
               </option>
             ))}
           </select>

@@ -8,10 +8,13 @@ import java.util.UUID;
 public record ProductCategoryResponse(
         UUID id,
         String name,
+        UUID parentId,
         long productCount,
+        long subcategoryCount,
         Instant createdAt
 ) {
-    public static ProductCategoryResponse from(ProductCategory category, long productCount) {
-        return new ProductCategoryResponse(category.getId(), category.getName(), productCount, category.getCreatedAt());
+    public static ProductCategoryResponse from(ProductCategory category, long productCount, long subcategoryCount) {
+        return new ProductCategoryResponse(
+                category.getId(), category.getName(), category.getParentId(), productCount, subcategoryCount, category.getCreatedAt());
     }
 }

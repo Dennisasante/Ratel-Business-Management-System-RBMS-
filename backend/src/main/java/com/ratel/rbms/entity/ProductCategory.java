@@ -32,6 +32,11 @@ public class ProductCategory {
     @Column(nullable = false, length = 100)
     private String name;
 
+    // Null for a top-level category; set for a subcategory. Never itself points at a row
+    // that also has a parentId — single-level nesting only, enforced in ProductCategoryService.
+    @Column(name = "parent_id")
+    private UUID parentId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

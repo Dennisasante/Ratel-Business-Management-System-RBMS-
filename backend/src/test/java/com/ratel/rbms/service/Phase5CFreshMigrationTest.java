@@ -51,7 +51,7 @@ class Phase5CFreshMigrationTest {
 
             var result = flyway.migrate();
             assertTrue(result.success, "full migration chain must apply cleanly to an empty database");
-            assertEquals("60", result.targetSchemaVersion, "must end at V60 (Phase 5D Stage 0)");
+            assertEquals("61", result.targetSchemaVersion, "must end at V61 (product category subcategories)");
 
             try (Connection conn = DriverManager.getConnection(freshUrl, USER, PASSWORD);
                  Statement stmt = conn.createStatement()) {
