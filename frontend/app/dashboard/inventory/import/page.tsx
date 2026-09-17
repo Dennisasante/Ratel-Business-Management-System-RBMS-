@@ -108,6 +108,11 @@ export default function InventoryImportPage() {
                 quantity, lowStockThreshold, supplierName</code>. Only <code className="text-xs">name</code> is required — everything
                 else can be left blank.
               </p>
+              <p className="mt-2">
+                <code className="text-xs">category</code> matches by exact name, including subcategories — but if the name doesn&apos;t
+                already exist, it creates a new top-level category, never a subcategory. To import into a subcategory, create it first
+                under Categories, then use its exact name here.
+              </p>
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
