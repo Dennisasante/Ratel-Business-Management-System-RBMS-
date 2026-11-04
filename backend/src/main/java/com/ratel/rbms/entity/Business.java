@@ -52,6 +52,15 @@ public class Business {
     @Column(name = "signature_url", length = 500)
     private String signatureUrl;
 
+    public static final String LOGO_STYLE_HEADER = "HEADER";
+    public static final String LOGO_STYLE_WATERMARK = "WATERMARK";
+
+    // Where the logo goes on generated invoice PDFs: HEADER (beside the business
+    // name, the default) or WATERMARK (a large faded copy behind the whole page).
+    @Column(name = "invoice_logo_style", nullable = false, length = 20)
+    @Builder.Default
+    private String invoiceLogoStyle = LOGO_STYLE_HEADER;
+
     // GRA TIN/VAT registration number or equivalent — shown on generated
     // invoices next to the business's own contact details. Free text (not a
     // format-validated field) since requirements vary by country/business type.

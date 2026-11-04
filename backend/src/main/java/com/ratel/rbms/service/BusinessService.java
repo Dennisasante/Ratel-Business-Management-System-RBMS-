@@ -2,6 +2,7 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.BusinessResponse;
 import com.ratel.rbms.dto.BusinessUpdateRequest;
+import com.ratel.rbms.dto.InvoiceLogoStyleRequest;
 import com.ratel.rbms.dto.UpdateSlugRequest;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.exception.ApiException;
@@ -29,23 +30,43 @@ public class BusinessService {
     private final BusinessRepository businessRepository;
     private final ActivityLogService activityLogService;
     private final PlanFeatureService planFeatureService;
+    private final InvoicePdfService invoicePdfService;
     private final String uploadDir;
 
     public BusinessService(
             BusinessRepository businessRepository,
             ActivityLogService activityLogService,
             PlanFeatureService planFeatureService,
+            InvoicePdfService invoicePdfService,
             @Value("${app.upload-dir}") String uploadDir
     ) {
         this.businessRepository = businessRepository;
         this.activityLogService = activityLogService;
         this.planFeatureService = planFeatureService;
+        this.invoicePdfService = invoicePdfService;
         this.uploadDir = uploadDir;
     }
 
     public BusinessResponse getMine() {
         Business business = getOwned();
         return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
+    }
+
+    public BusinessResponse updateInvoiceLogoStyle(InvoiceLogoStyleRequest req) {
+        Business business = getOwned();
+        business.setInvoiceLogoStyle(req.style());
+        business = businessRepository.save(business);
+        activityLogService.log("Changed the invoice logo style to " + req.style().toLowerCase(), "BUSINESS", business.getId());
+        return BusinessResponse.from(business, planFeatureService.listFeatures(business.getId()));
+    }
+
+    // A sample invoice in the given style — what the Business Profile page
+    // shows so the owner can choose by looking, before saving anything.
+    public byte[] previewInvoicePdf(String style) {
+        if (!Business.LOGO_STYLE_HEADER.equals(style) && !Business.LOGO_STYLE_WATERMARK.equals(style)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Logo style must be HEADER or WATERMARK.");
+        }
+        return invoicePdfService.generateSample(getOwned(), style);
     }
 
     public BusinessResponse updateProfile(BusinessUpdateRequest req) {

@@ -42,11 +42,16 @@ export interface BusinessSummary {
   enabledModules: string[];
   logoUrl: string | null;
   signatureUrl: string | null;
+  invoiceLogoStyle: InvoiceLogoStyle;
   taxId: string | null;
   defaultTermsAndConditions: string | null;
   billingStatus: "TRIALING" | "ACTIVE" | "GRACE" | "READ_ONLY";
   planFeatures: PlanFeature[];
 }
+
+// Where the business logo goes on invoice PDFs: beside the business name, or
+// as a large faded background behind the whole page.
+export type InvoiceLogoStyle = "HEADER" | "WATERMARK";
 
 export interface UserSummary {
   id: string;
@@ -1744,6 +1749,25 @@ export const api = {
       { method: "PUT", body: JSON.stringify(payload) },
       token
     ),
+
+  updateInvoiceLogoStyle: (token: string, style: InvoiceLogoStyle) =>
+    request<BusinessSummary>(
+      "/api/business/me/invoice-logo-style",
+      { method: "PATCH", body: JSON.stringify({ style }) },
+      token
+    ),
+
+  // A sample invoice in the given style, drawn with the business's own logo —
+  // caller owns the returned object URL and must URL.revokeObjectURL it.
+  getInvoiceStylePreviewBlobUrl: async (_token: string, style: InvoiceLogoStyle): Promise<string> => {
+    const res = await fetch(`/api/business/me/invoice-preview?style=${style}`, { credentials: "same-origin" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error || "Couldn't load the preview");
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
 
   updateBusinessSlug: (token: string, slug: string) =>
     request<BusinessSummary>(

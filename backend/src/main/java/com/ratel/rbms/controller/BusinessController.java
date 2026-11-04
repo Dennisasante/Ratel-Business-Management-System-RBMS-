@@ -2,9 +2,13 @@ package com.ratel.rbms.controller;
 
 import com.ratel.rbms.dto.BusinessResponse;
 import com.ratel.rbms.dto.BusinessUpdateRequest;
+import com.ratel.rbms.dto.InvoiceLogoStyleRequest;
 import com.ratel.rbms.dto.UpdateSlugRequest;
 import com.ratel.rbms.service.BusinessService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -41,6 +45,21 @@ public class BusinessController {
     @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
     public BusinessResponse updateSlug(@Valid @RequestBody UpdateSlugRequest request) {
         return businessService.updateSlug(request);
+    }
+
+    @PatchMapping("/me/invoice-logo-style")
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
+    public BusinessResponse updateInvoiceLogoStyle(@Valid @RequestBody InvoiceLogoStyleRequest request) {
+        return businessService.updateInvoiceLogoStyle(request);
+    }
+
+    @GetMapping("/me/invoice-preview")
+    @PreAuthorize("hasAnyRole('OWNER','MANAGER')")
+    public ResponseEntity<byte[]> invoicePreview(@RequestParam("style") String style) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=invoice-preview.pdf")
+                .body(businessService.previewInvoicePdf(style));
     }
 
     @PostMapping("/logo")

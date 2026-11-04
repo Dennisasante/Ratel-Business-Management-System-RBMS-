@@ -18,6 +18,7 @@ public record BusinessResponse(
         List<String> enabledModules,
         String logoUrl,
         String signatureUrl,
+        String invoiceLogoStyle,
         String taxId,
         String defaultTermsAndConditions,
         // Every business-scoped user (not just Owners) needs to know this, so
@@ -44,6 +45,7 @@ public record BusinessResponse(
                 b.getEnabledModules(),
                 b.getLogoUrl(),
                 b.getSignatureUrl(),
+                b.getInvoiceLogoStyle(),
                 b.getTaxId(),
                 b.getDefaultTermsAndConditions(),
                 b.getBillingStatus().name(),

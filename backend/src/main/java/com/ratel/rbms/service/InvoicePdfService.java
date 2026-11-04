@@ -10,6 +10,7 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfContentByte;
+import com.lowagie.text.pdf.PdfGState;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
@@ -17,16 +18,21 @@ import com.lowagie.text.pdf.PdfWriter;
 import com.ratel.rbms.entity.Business;
 import com.ratel.rbms.entity.Invoice;
 import com.ratel.rbms.entity.InvoiceItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.imageio.ImageIO;
 import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -37,6 +43,12 @@ import java.util.Locale;
 // not an internal till slip. Same OpenPDF library, no new dependency.
 @Service
 public class InvoicePdfService {
+
+    private static final Logger log = LoggerFactory.getLogger(InvoicePdfService.class);
+
+    // How strong the faded background logo is (0 = invisible, 1 = solid). Low
+    // enough that every line of invoice text on top stays fully readable.
+    private static final float WATERMARK_OPACITY = 0.10f;
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy");
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a").withZone(ZoneOffset.UTC);
@@ -53,6 +65,17 @@ public class InvoicePdfService {
             "OVERDUE", new Color(185, 28, 28)
     );
 
+    // Background fills for one render. In the watermark style the light panels
+    // and the white/striped rows are left unfilled (null = transparent), because
+    // an opaque fill would paint right over the faded logo behind the table.
+    private record Fills(Color panel, Color rowPlain, Color rowAlt, Color totalRow) {
+        static Fills forStyle(boolean watermark) {
+            return watermark
+                    ? new Fills(null, null, null, null)
+                    : new Fills(ROW_ALT_COLOR, Color.WHITE, ROW_ALT_COLOR, TOTAL_ROW_COLOR);
+        }
+    }
+
     private final String uploadDir;
 
     public InvoicePdfService(@Value("${app.upload-dir}") String uploadDir) {
@@ -60,6 +83,45 @@ public class InvoicePdfService {
     }
 
     public byte[] generate(Business business, Invoice invoice, List<InvoiceItem> items) {
+        return render(business, invoice, items, business.getInvoiceLogoStyle());
+    }
+
+    // A made-up invoice laid out exactly like a real one, in the requested logo
+    // style — used by the Business Profile page so an owner can compare the two
+    // styles with their own logo before choosing. Nothing here is saved.
+    public byte[] generateSample(Business business, String logoStyle) {
+        Invoice invoice = Invoice.builder()
+                .invoiceNumber(1042L)
+                .customerName("Ama Serwaa")
+                .customerEmail("ama@example.com")
+                .customerPhone("024 123 4567")
+                .issueDate(LocalDate.now())
+                .dueDate(LocalDate.now().plusDays(14))
+                .status("PAID")
+                .subtotal(new BigDecimal("790.00"))
+                .discountAmount(new BigDecimal("20.00"))
+                .totalAmount(new BigDecimal("770.00"))
+                .notes("Thank you for your business!")
+                .build();
+        List<InvoiceItem> items = List.of(
+                InvoiceItem.builder().description("Sample item one\nWith a second line of detail").quantity(1)
+                        .unitPrice(new BigDecimal("450.00")).discountAmount(BigDecimal.ZERO).subtotal(new BigDecimal("450.00")).build(),
+                InvoiceItem.builder().description("Sample item two").quantity(1)
+                        .unitPrice(new BigDecimal("180.00")).discountAmount(new BigDecimal("20.00")).subtotal(new BigDecimal("160.00")).build(),
+                InvoiceItem.builder().description("Sample item three").quantity(2)
+                        .unitPrice(new BigDecimal("90.00")).discountAmount(BigDecimal.ZERO).subtotal(new BigDecimal("180.00")).build());
+        return render(business, invoice, items, logoStyle);
+    }
+
+    private byte[] render(Business business, Invoice invoice, List<InvoiceItem> items, String logoStyle) {
+        boolean watermark = Business.LOGO_STYLE_WATERMARK.equals(logoStyle);
+        Image logo = loadImage(business.getLogoUrl());
+        if (business.getLogoUrl() != null && !business.getLogoUrl().isBlank() && logo == null) {
+            log.warn("Business {} has a logo ({}) that couldn't be read for the invoice PDF",
+                    business.getId(), business.getLogoUrl().replaceFirst("\\?.*$", ""));
+        }
+
+        Fills fills = Fills.forStyle(watermark);
         Document document = new Document(PageSize.A4, 40, 40, 40, 40);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
@@ -69,7 +131,7 @@ public class InvoicePdfService {
             // content precedes it — without this, a short invoice (one line
             // item, no notes) left a large blank gap below the totals box
             // that read as unfinished/"isolated" rather than a designed page.
-            writer.setPageEvent(new BottomBarEvent());
+            writer.setPageEvent(new PageDecorationEvent(watermark ? logo : null));
             document.open();
 
             Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, BRAND_DARK);
@@ -82,14 +144,14 @@ public class InvoicePdfService {
             Font totalFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, BRAND_DARK);
             Font statusFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
 
-            document.add(buildHeader(business, invoice, brandFont, businessFont, normalFont, labelFont, statusFont));
+            document.add(buildHeader(business, invoice, watermark ? null : logo, fills, brandFont, businessFont, normalFont, labelFont, statusFont));
             document.add(ruleBelow());
             document.add(spacer(14));
-            document.add(buildBillTo(invoice, labelFont, boldFont, normalFont));
+            document.add(buildBillTo(invoice, fills, labelFont, boldFont, normalFont));
             document.add(spacer(16));
-            document.add(buildItemsTable(items, business.getCurrency(), tableHeaderFont, normalFont));
+            document.add(buildItemsTable(items, business.getCurrency(), fills, tableHeaderFont, normalFont));
             document.add(spacer(10));
-            document.add(buildTotals(invoice, business.getCurrency(), normalFont, boldFont, totalFont));
+            document.add(buildTotals(invoice, business.getCurrency(), fills, normalFont, boldFont, totalFont));
 
             if (invoice.getNotes() != null && !invoice.getNotes().isBlank()) {
                 document.add(spacer(18));
@@ -206,8 +268,10 @@ public class InvoicePdfService {
         return rule;
     }
 
+    // headerLogo is null in the watermark style (the logo is drawn behind the
+    // page instead) and when the business has no readable logo.
     private PdfPTable buildHeader(
-            Business business, Invoice invoice, Font brandFont, Font businessFont, Font normalFont, Font labelFont, Font statusFont
+            Business business, Invoice invoice, Image headerLogo, Fills fills, Font brandFont, Font businessFont, Font normalFont, Font labelFont, Font statusFont
     ) throws Exception {
         PdfPTable header = new PdfPTable(2);
         header.setWidthPercentage(100);
@@ -215,13 +279,27 @@ public class InvoicePdfService {
 
         PdfPCell left = new PdfPCell();
         left.setBorder(0);
-        Image logo = loadImage(business.getLogoUrl());
-        if (logo != null) {
-            logo.scaleToFit(85, 85);
-            left.addElement(logo);
-            left.addElement(new Paragraph(" "));
+        Font nameFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, headerLogo != null ? 15 : 13);
+        if (headerLogo != null) {
+            // Logo and business name side by side, so the brand reads as one block.
+            headerLogo.scaleToFit(80, 80);
+            PdfPTable brand = new PdfPTable(2);
+            brand.setWidthPercentage(100);
+            brand.setWidths(new float[]{1, 2.2f});
+            PdfPCell logoCell = new PdfPCell(headerLogo, false);
+            logoCell.setBorder(0);
+            logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            logoCell.setPaddingRight(10);
+            brand.addCell(logoCell);
+            PdfPCell nameCell = new PdfPCell(new Phrase(business.getName(), nameFont));
+            nameCell.setBorder(0);
+            nameCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            brand.addCell(nameCell);
+            left.addElement(brand);
+            left.addElement(new Paragraph(" ", FontFactory.getFont(FontFactory.HELVETICA, 4)));
+        } else {
+            left.addElement(new Paragraph(business.getName(), nameFont));
         }
-        left.addElement(new Paragraph(business.getName(), businessFont));
         if (business.getLocation() != null) {
             left.addElement(new Paragraph(business.getLocation(), normalFont));
         }
@@ -238,7 +316,11 @@ public class InvoicePdfService {
 
         PdfPCell right = new PdfPCell();
         right.setBorder(0);
-        right.setBackgroundColor(ROW_ALT_COLOR);
+        right.setBackgroundColor(fills.panel());
+        if (fills.panel() == null) {
+            right.setBorder(Rectangle.BOX);
+            right.setBorderColor(BORDER_COLOR);
+        }
         right.setPadding(12);
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
         Paragraph invoiceTitle = new Paragraph("INVOICE", brandFont);
@@ -284,7 +366,7 @@ public class InvoicePdfService {
         return p;
     }
 
-    private PdfPTable buildBillTo(Invoice invoice, Font labelFont, Font boldFont, Font normalFont) {
+    private PdfPTable buildBillTo(Invoice invoice, Fills fills, Font labelFont, Font boldFont, Font normalFont) {
         PdfPTable table = new PdfPTable(1);
         table.setWidthPercentage(100);
         PdfPCell cell = new PdfPCell();
@@ -292,7 +374,7 @@ public class InvoicePdfService {
         cell.setBorderColor(BRAND_COLOR);
         cell.setBorderWidth(2.5f);
         cell.setPadding(10);
-        cell.setBackgroundColor(ROW_ALT_COLOR);
+        cell.setBackgroundColor(fills.panel());
         cell.addElement(new Paragraph("BILL TO", labelFont));
         cell.addElement(new Paragraph(invoice.getCustomerName() != null ? invoice.getCustomerName() : "—", boldFont));
         if (invoice.getCustomerAddress() != null && !invoice.getCustomerAddress().isBlank()) {
@@ -308,7 +390,7 @@ public class InvoicePdfService {
         return table;
     }
 
-    private PdfPTable buildItemsTable(List<InvoiceItem> items, String currency, Font headerFont, Font normalFont) {
+    private PdfPTable buildItemsTable(List<InvoiceItem> items, String currency, Fills fills, Font headerFont, Font normalFont) {
         PdfPTable table = new PdfPTable(5);
         table.setWidthPercentage(100);
         table.setWidths(new float[]{3.2f, 0.8f, 1.2f, 1, 1.2f});
@@ -321,7 +403,7 @@ public class InvoicePdfService {
 
         boolean shaded = false;
         for (InvoiceItem item : items) {
-            Color rowColor = shaded ? ROW_ALT_COLOR : Color.WHITE;
+            Color rowColor = shaded ? fills.rowAlt() : fills.rowPlain();
             table.addCell(descriptionCell(item.getDescription(), normalFont, rowColor));
             table.addCell(bodyCell(String.valueOf(item.getQuantity()), normalFont, Element.ALIGN_CENTER, rowColor));
             table.addCell(bodyCell(currency + " " + item.getUnitPrice(), normalFont, Element.ALIGN_RIGHT, rowColor));
@@ -370,30 +452,30 @@ public class InvoicePdfService {
         table.addCell(cell);
     }
 
-    private PdfPTable buildTotals(Invoice invoice, String currency, Font normalFont, Font boldFont, Font totalFont) {
+    private PdfPTable buildTotals(Invoice invoice, String currency, Fills fills, Font normalFont, Font boldFont, Font totalFont) {
         PdfPTable table = new PdfPTable(2);
         table.setWidthPercentage(48);
         table.setHorizontalAlignment(Element.ALIGN_RIGHT);
         table.setWidths(new float[]{1, 1});
 
-        addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont, false);
-        addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont, false);
+        addTotalRow(table, "Subtotal", currency + " " + invoice.getSubtotal(), normalFont, normalFont, false, fills);
+        addTotalRow(table, "Discount", currency + " " + invoice.getDiscountAmount(), normalFont, normalFont, false, fills);
         // Hidden entirely (not shown as 0%) when the invoice never had a VAT
         // rate set at all — the common case for a business that doesn't
         // charge VAT shouldn't see a clutter row for it.
         if (invoice.getTaxRate() != null) {
             String label = "VAT (" + invoice.getTaxRate().stripTrailingZeros().toPlainString() + "%)";
-            addTotalRow(table, label, currency + " " + invoice.getTaxAmount(), normalFont, normalFont, false);
+            addTotalRow(table, label, currency + " " + invoice.getTaxAmount(), normalFont, normalFont, false, fills);
         }
         if (invoice.getShippingAmount() != null && invoice.getShippingAmount().compareTo(BigDecimal.ZERO) > 0) {
-            addTotalRow(table, "Shipping", currency + " " + invoice.getShippingAmount(), normalFont, normalFont, false);
+            addTotalRow(table, "Shipping", currency + " " + invoice.getShippingAmount(), normalFont, normalFont, false, fills);
         }
-        addTotalRow(table, "Total due", currency + " " + invoice.getTotalAmount(), boldFont, totalFont, true);
+        addTotalRow(table, "Total due", currency + " " + invoice.getTotalAmount(), boldFont, totalFont, true, fills);
         return table;
     }
 
-    private void addTotalRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont, boolean highlight) {
-        Color background = highlight ? TOTAL_ROW_COLOR : Color.WHITE;
+    private void addTotalRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont, boolean highlight, Fills fills) {
+        Color background = highlight ? fills.totalRow() : fills.rowPlain();
 
         PdfPCell labelCell = new PdfPCell(new Phrase(label, labelFont));
         labelCell.setBorder(highlight ? Rectangle.TOP : 0);
@@ -428,21 +510,61 @@ public class InvoicePdfService {
             if (!Files.exists(path)) {
                 return null;
             }
-            return Image.getInstance(Files.readAllBytes(path));
+            byte[] bytes = Files.readAllBytes(path);
+            try {
+                return Image.getInstance(bytes);
+            } catch (Exception unsupported) {
+                // OpenPDF reads PNG/JPEG/GIF/BMP/TIFF itself; anything the JDK can
+                // decode but it can't gets re-encoded as PNG. (WebP can't be read by
+                // either — see the logo-upload conversion on the profile page.)
+                BufferedImage decoded = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+                if (decoded == null) {
+                    return null;
+                }
+                ByteArrayOutputStream png = new ByteArrayOutputStream();
+                ImageIO.write(decoded, "png", png);
+                return Image.getInstance(png.toByteArray());
+            }
         } catch (Exception e) {
             return null; // a missing/corrupt image shouldn't block invoice generation
         }
     }
 
-    // Fixed-position accent bar drawn directly onto every page's content
-    // stream, independent of how much flowed content precedes it — a page
-    // with just one line item and no notes would otherwise end with a large
-    // blank gap under the totals box, reading as unfinished rather than a
-    // deliberately designed (if short) document.
-    private static class BottomBarEvent extends PdfPageEventHelper {
+    // Drawn directly onto every page's content stream, independent of how much
+    // flowed content precedes it: the fixed accent bar at the foot (a page with
+    // just one line item and no notes would otherwise end with a large blank gap
+    // under the totals box, reading as unfinished), and — in the watermark
+    // style — one large, faded copy of the logo centred behind everything. It
+    // goes in the "under" layer so every piece of text stays on top of it.
+    private static class PageDecorationEvent extends PdfPageEventHelper {
+        private final Image watermark;
+
+        PageDecorationEvent(Image watermark) {
+            this.watermark = watermark;
+        }
+
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
             PdfContentByte canvas = writer.getDirectContentUnder();
+
+            if (watermark != null) {
+                Rectangle page = document.getPageSize();
+                try {
+                    Image copy = Image.getInstance(watermark);
+                    copy.scaleToFit(page.getWidth() * 0.72f, page.getHeight() * 0.5f);
+                    float w = copy.getScaledWidth();
+                    float h = copy.getScaledHeight();
+                    PdfGState faded = new PdfGState();
+                    faded.setFillOpacity(WATERMARK_OPACITY);
+                    canvas.saveState();
+                    canvas.setGState(faded);
+                    canvas.addImage(copy, w, 0, 0, h, (page.getWidth() - w) / 2, (page.getHeight() - h) / 2 + 20);
+                    canvas.restoreState();
+                } catch (Exception e) {
+                    log.warn("Couldn't draw the invoice watermark ({})", e.getClass().getSimpleName());
+                }
+            }
+
             float barHeight = 4f;
             float y = document.bottom() - 18;
             canvas.saveState();

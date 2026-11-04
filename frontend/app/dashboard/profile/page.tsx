@@ -14,6 +14,8 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import BusinessProfileForm from "@/components/BusinessProfileForm";
 import PushNotificationToggle from "@/components/PushNotificationToggle";
+import InvoiceLogoStyleCard from "@/components/InvoiceLogoStyleCard";
+import { isWebp, webpToPng } from "@/lib/imageConvert";
 
 export default function ProfilePage() {
   const { session, business, loading, refreshBusiness } = useAuth();
@@ -44,7 +46,8 @@ export default function ProfilePage() {
     setUploadError(null);
     setUploading(true);
     try {
-      await api.uploadBusinessLogo(session.token, file);
+      // Invoice PDFs can't embed WebP, so it's stored as PNG instead.
+      await api.uploadBusinessLogo(session.token, isWebp(file) ? await webpToPng(file) : file);
       await refreshBusiness();
     } catch (err) {
       setUploadError(err instanceof ApiError ? err.message : "Couldn't upload that image.");
@@ -60,7 +63,7 @@ export default function ProfilePage() {
     setSignatureError(null);
     setUploadingSignature(true);
     try {
-      await api.uploadBusinessSignature(session.token, file);
+      await api.uploadBusinessSignature(session.token, isWebp(file) ? await webpToPng(file) : file);
       await refreshBusiness();
     } catch (err) {
       setSignatureError(err instanceof ApiError ? err.message : "Couldn't upload that image.");
@@ -241,6 +244,8 @@ export default function ProfilePage() {
           </div>
         )}
       </Card>
+
+      {canEdit && business && <InvoiceLogoStyleCard token={session.token} business={business} onSaved={refreshBusiness} />}
 
       <Card className="max-w-2xl p-5">
         <div className="flex items-center gap-2">
