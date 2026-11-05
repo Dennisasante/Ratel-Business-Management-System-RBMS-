@@ -54,6 +54,7 @@ export default function PlatformShell({ children }: { children: React.ReactNode 
             <InstallAppButton className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white" />
             <Link
               href="/platform/change-password"
+              prefetch={false}
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/80 hover:bg-white/10 hover:text-white"
             >
               <KeyRound size={15} />
@@ -76,6 +77,10 @@ export default function PlatformShell({ children }: { children: React.ReactNode 
               <Link
                 key={item.href}
                 href={item.href}
+                // No background prefetch: it fired nine extra requests every time the
+                // Super Admin opened, and any dropped connection showed as red errors
+                // for pages nobody had opened.
+                prefetch={false}
                 className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
                   active
                     ? "border-white text-white"

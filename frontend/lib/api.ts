@@ -1836,6 +1836,8 @@ class ApiError extends Error {
   }
 }
 
+const NETWORK_ERROR_MESSAGE = "Can't reach the server right now. Check your connection and try again.";
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -1846,14 +1848,32 @@ async function request<T>(
   // cookie automatically on this same-origin request.
   _token?: string | null
 ): Promise<T> {
-  const res = await fetch(path, {
+  const init: RequestInit = {
     ...options,
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
     },
-  });
+  };
+
+  // A dropped connection (fetch rejects with a TypeError, no HTTP status) is retried once
+  // for requests that are safe to repeat — reads and "set this value" saves. Anything that
+  // creates something (POST) is never retried automatically, so nothing can be done twice.
+  const method = (options.method ?? "GET").toUpperCase();
+  const safeToRepeat = method === "GET" || method === "HEAD" || method === "PUT";
+  let res: Response;
+  try {
+    res = await fetch(path, init);
+  } catch (networkError) {
+    if (!safeToRepeat) throw new ApiError(0, NETWORK_ERROR_MESSAGE);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    try {
+      res = await fetch(path, init);
+    } catch {
+      throw new ApiError(0, NETWORK_ERROR_MESSAGE);
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
