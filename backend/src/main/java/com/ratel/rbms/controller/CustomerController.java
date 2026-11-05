@@ -31,6 +31,11 @@ public class CustomerController {
         return customerService.get(id);
     }
 
+    @PutMapping("/{id}")
+    public CustomerResponse update(@PathVariable UUID id, @Valid @RequestBody CustomerRequest request) {
+        return customerService.update(id, request);
+    }
+
     @PostMapping
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(customerService.create(request));

@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   FileText,
   Bot,
+  MessageSquare,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -81,6 +82,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: "/dashboard/customers", label: "Customers", icon: Users },
       { href: "/dashboard/invoices", label: "Invoices", icon: FileText },
       { href: "/dashboard/ai", label: "Tallia AI", icon: Bot, moduleCode: "AI" },
+      { href: "/dashboard/sms", label: "SMS", icon: MessageSquare, moduleCode: "SMS" },
       { href: "/dashboard/payments", label: "Payments", icon: Wallet },
       { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
       { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },

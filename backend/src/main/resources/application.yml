@@ -120,6 +120,17 @@ app:
     # crashes startup, just can't actually answer until configured.
     openai-api-key: ${OPENAI_API_KEY:}
     openai-model: ${OPENAI_MODEL:gpt-4o-mini}
+  sms:
+    # "mnotify" (the real provider, the default) or "mock" (logs instead of
+    # sending — local dev only, see MockSmsGateway). Deliberately defaults to
+    # the REAL provider, never the mock: with no key set, sends are refused
+    # rather than silently pretending to succeed.
+    provider: ${SMS_PROVIDER:mnotify}
+    # Tallia's ONE mNotify account — businesses never see or hold this; they
+    # buy credits from Tallia instead. Blank means SMS is structurally present
+    # but every send is refused, never a startup failure.
+    mnotify-api-key: ${MNOTIFY_API_KEY:}
+    mnotify-base-url: ${MNOTIFY_BASE_URL:https://api.mnotify.com/api}
   demo:
     # Gates POST /api/platform/demo/seed-resort — off by default everywhere,
     # including production, unless explicitly turned on. This is in ADDITION

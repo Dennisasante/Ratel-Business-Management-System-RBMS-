@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShoppingCart, Plus, X, Receipt, Search, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShoppingCart, Plus, X, Receipt, Search, ChevronDown, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   api,
   ApiError,
   PaymentMethod,
+  SmsReceiptMode,
+  SmsReceiptStatus,
   Product,
   ProductCategory,
   Sale,
@@ -109,6 +111,13 @@ export default function SalesPage() {
   // Integrations → Receipt Printer) — gates both showing the "Print" link
   // per row and auto-opening the print dialog right after checkout below.
   const [printerEnabled, setPrinterEnabled] = useState(false);
+  // PAPER / SMS / BOTH. "SMS" = the customer is texted instead of a paper
+  // receipt auto-printing (the per-row Print link is still there on demand).
+  const [smsReceiptMode, setSmsReceiptMode] = useState<SmsReceiptMode>("PAPER");
+  // What happened to the text receipt for the sale just completed.
+  const [smsNotice, setSmsNotice] = useState<{ saleId: string; status: SmsReceiptStatus } | null>(null);
+  const [sendingSms, setSendingSms] = useState(false);
+  const smsWatchRef = useRef(0);
   // Any sale currently open in the "Collect payment" modal — set right after
   // checkout for a CARD/MOBILE_MONEY sale, or by clicking "Collect payment"
   // on an older still-unpaid row. Either way, payment never requires leaving
@@ -131,6 +140,7 @@ export default function SalesPage() {
     setServiceTypes(svcTypes);
     setPaystackConfigured(gw.paystackConfigured);
     setPrinterEnabled(gw.receiptPrinterEnabled);
+    setSmsReceiptMode(gw.smsReceiptMode ?? "PAPER");
     setStaffMembers(users);
   }, [session]);
 
@@ -140,8 +150,51 @@ export default function SalesPage() {
   // confirmed PAID; it's a no-op (still just opens the receipt tab) if the
   // setting happens to be off.
   function openReceiptForPrint(saleId: string) {
-    if (!printerEnabled) return;
+    if (!printerEnabled || smsReceiptMode === "SMS") return;
     window.open(`/receipt/sale/${saleId}?autoprint=1`, "_blank");
+  }
+
+  // The text receipt goes out in the background right after a sale is paid, so
+  // the first answer is usually "being sent" — look a few times until it settles.
+  // A newer sale cancels an older sale's watch.
+  async function watchSmsReceipt(saleId: string) {
+    if (!session || smsReceiptMode === "PAPER") return;
+    const watchId = ++smsWatchRef.current;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const status = await api.getSmsReceiptStatus(session.token, saleId);
+        if (watchId !== smsWatchRef.current) return;
+        setSmsNotice({ saleId, status });
+        if (status.status !== "PENDING") return;
+      } catch {
+        return; // a text receipt is a bonus — never get in the cashier's way
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+    // Still not settled after a few looks: stop saying "being sent" and offer the button.
+    if (watchId === smsWatchRef.current) {
+      setSmsNotice((current) =>
+        current && current.status.status === "PENDING"
+          ? { saleId, status: { status: "PENDING", detail: "The SMS receipt hasn't gone out yet.", canSend: true } }
+          : current
+      );
+    }
+  }
+
+  async function handleSendSmsReceipt() {
+    if (!session || !smsNotice) return;
+    setSendingSms(true);
+    try {
+      const status = await api.sendSmsReceipt(session.token, smsNotice.saleId);
+      setSmsNotice({ saleId: smsNotice.saleId, status });
+    } catch (err) {
+      setSmsNotice({
+        saleId: smsNotice.saleId,
+        status: { status: "FAILED", detail: err instanceof ApiError ? err.message : "Couldn't send the SMS receipt.", canSend: true },
+      });
+    } finally {
+      setSendingSms(false);
+    }
   }
 
   // Server-side date + staff filter, refetched on its own whenever either
@@ -294,6 +347,7 @@ export default function SalesPage() {
       } else {
         // Cash/direct mobile money are PAID the instant they're rung up.
         openReceiptForPrint(sale.id);
+        void watchSmsReceipt(sale.id);
       }
       // loadAll() refreshes stock quantities; loadSales() picks up the new
       // sale itself — but only if it actually falls inside the currently
@@ -317,7 +371,10 @@ export default function SalesPage() {
     setSales((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     if (updated.paymentStatus === "PAID") {
       setCollectingPaymentSale(null);
-      if (justPaid) openReceiptForPrint(updated.id);
+      if (justPaid) {
+        openReceiptForPrint(updated.id);
+        void watchSmsReceipt(updated.id);
+      }
     }
   }
 
@@ -627,6 +684,32 @@ export default function SalesPage() {
             </div>
 
             {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+
+            {smsNotice && smsNotice.status.status !== "OFF" && (
+              <div
+                className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                  smsNotice.status.status === "SENT" ? "bg-success-soft text-success" : smsNotice.status.status === "PENDING" ? "bg-canvas text-ink-700" : "bg-canvas text-ink-700"
+                }`}
+              >
+                <MessageSquare size={14} className="mt-0.5 shrink-0" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <span>{smsNotice.status.detail}</span>
+                  {smsNotice.status.canSend && (
+                    <button
+                      type="button"
+                      onClick={handleSendSmsReceipt}
+                      disabled={sendingSms}
+                      className="self-start font-medium text-accent-hover hover:underline disabled:opacity-60"
+                    >
+                      {sendingSms ? "Sending..." : "Send SMS receipt now"}
+                    </button>
+                  )}
+                </div>
+                <button type="button" onClick={() => setSmsNotice(null)} aria-label="Dismiss" className="text-ink-400 hover:text-ink-700">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
 
             <Button onClick={completeSale} disabled={cart.length === 0 || !customerId || submitting} className="mt-4 w-full">
               {submitting ? "Completing sale..." : "Complete sale"}

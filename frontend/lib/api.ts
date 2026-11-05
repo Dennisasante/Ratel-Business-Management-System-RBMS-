@@ -1039,6 +1039,111 @@ export interface CheckoutResponse {
   reference: string;
 }
 
+export type SmsSenderStatus = "NONE" | "PENDING" | "APPROVED";
+
+export type SmsReceiptMode = "PAPER" | "SMS" | "BOTH";
+
+export interface SmsReceiptStatus {
+  status: "OFF" | "UNPAID" | "NO_CUSTOMER" | "NO_PHONE" | "NOT_READY" | "NO_CREDITS" | "PENDING" | "SENT" | "FAILED";
+  detail: string;
+  // True when a "Send SMS receipt" button would work right now.
+  canSend: boolean;
+}
+
+export interface SmsReceiptPreview {
+  message: string;
+  segments: number;
+  length: number;
+  unicode: boolean;
+}
+
+export interface SmsAccount {
+  senderId: string | null;
+  senderStatus: SmsSenderStatus;
+  senderApproved: boolean;
+  creditBalance: number;
+  lowBalanceThreshold: number;
+  lowBalance: boolean;
+  // False when Tallia's SMS provider has no credentials — nothing can be sent or bought.
+  providerConfigured: boolean;
+  receiptMode: SmsReceiptMode;
+}
+
+export interface SmsBundle {
+  id: string;
+  name: string;
+  credits: number;
+  price: number;
+  active: boolean;
+  sortOrder: number;
+  pricePerCredit: number;
+}
+
+// The Super Admin's view of a bundle: the same plus what Tallia earns on it
+// (null until the provider cost per credit has been entered).
+export interface PlatformSmsBundle extends SmsBundle {
+  profitPerCredit: number | null;
+  profitPerBundle: number | null;
+}
+
+export interface SmsBundlePayload {
+  name: string;
+  credits: number;
+  price: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface SmsMessage {
+  id: string;
+  recipient: string;
+  message: string;
+  kind: "TEST" | "TRANSACTIONAL" | "LOYALTY" | "CAMPAIGN";
+  segments: number;
+  creditsUsed: number;
+  status: "QUEUED" | "SENT" | "FAILED";
+  createdAt: string;
+}
+
+export interface SmsLedgerEntry {
+  delta: number;
+  balanceAfter: number;
+  type: "PURCHASE" | "SEND" | "REFUND" | "ADJUSTMENT";
+  description: string | null;
+  createdAt: string;
+}
+
+export interface SmsEstimate {
+  segments: number;
+  unicode: boolean;
+  length: number;
+}
+
+export interface SmsPurchaseVerifyResult {
+  success: boolean;
+  creditBalance: number;
+  message: string;
+}
+
+export interface PlatformSmsOverview {
+  provider: string;
+  providerConfigured: boolean;
+  providerBalance: number | null;
+  providerBonus: number | null;
+  outstandingClientCredits: number;
+  providerCostPerCredit: number | null;
+}
+
+export interface PlatformSmsAccount {
+  businessId: string;
+  businessName: string;
+  senderId: string | null;
+  senderStatus: SmsSenderStatus;
+  creditBalance: number;
+  // What the provider said when the sender name was just checked.
+  note: string | null;
+}
+
 export interface PaymentTransaction {
   id: string;
   direction: "INCOMING" | "OUTGOING";
@@ -1145,6 +1250,8 @@ export interface PaymentGatewayStatus {
   paystackConfigured: boolean;
   receiptPrinterEnabled: boolean;
   receiptPrinterPaperWidth: "58" | "80";
+  // PAPER / SMS / BOTH — "SMS" means customers are texted instead of a paper receipt auto-printing.
+  smsReceiptMode: SmsReceiptMode;
 }
 
 export interface BlackoutDate {
@@ -2050,6 +2157,9 @@ export const api = {
       token
     ),
 
+  updateCustomer: (token: string, id: string, payload: CustomerPayload) =>
+    request<Customer>(`/api/customers/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
   listSales: (token: string, filters?: { cashierId?: string; from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (filters?.cashierId) params.set("cashierId", filters.cashierId);
@@ -2297,6 +2407,73 @@ export const api = {
 
   removeSavedCard: (token: string) =>
     request<void>("/api/billing/saved-card", { method: "DELETE" }, token),
+
+  // --- SMS (Owner/Manager; buying credits is Owner only) ---
+
+  getSmsAccount: (token: string) => request<SmsAccount>("/api/sms/account", {}, token),
+
+  listSmsMessages: (token: string) => request<SmsMessage[]>("/api/sms/messages", {}, token),
+
+  listSmsLedger: (token: string) => request<SmsLedgerEntry[]>("/api/sms/ledger", {}, token),
+
+  estimateSms: (token: string, message: string) =>
+    request<SmsEstimate>("/api/sms/estimate", { method: "POST", body: JSON.stringify({ message }) }, token),
+
+  sendTestSms: (token: string, phone: string, message: string) =>
+    request<SmsMessage>("/api/sms/test-send", { method: "POST", body: JSON.stringify({ phone, message }) }, token),
+
+  setSmsReceiptMode: (token: string, mode: SmsReceiptMode) =>
+    request<SmsAccount>("/api/sms/receipt-mode", { method: "PATCH", body: JSON.stringify({ mode }) }, token),
+
+  getSmsReceiptPreview: (token: string) => request<SmsReceiptPreview>("/api/sms/receipt-preview", {}, token),
+
+  // For the screen right after "complete order" — open to cashiers.
+  getSmsReceiptStatus: (token: string, saleId: string) => request<SmsReceiptStatus>(`/api/sms/receipts/${saleId}`, {}, token),
+
+  sendSmsReceipt: (token: string, saleId: string) =>
+    request<SmsReceiptStatus>(`/api/sms/receipts/${saleId}`, { method: "POST" }, token),
+
+  listSmsBundles: (token: string) => request<SmsBundle[]>("/api/sms/bundles", {}, token),
+
+  startSmsPurchase: (token: string, bundleId: string) =>
+    request<CheckoutResponse>("/api/sms/purchase/checkout", { method: "POST", body: JSON.stringify({ bundleId }) }, token),
+
+  verifySmsPurchase: (token: string, reference: string) =>
+    request<SmsPurchaseVerifyResult>("/api/sms/purchase/verify", { method: "POST", body: JSON.stringify({ reference }) }, token),
+
+  // --- SMS (Super Admin) ---
+
+  getPlatformSmsOverview: (token: string) => request<PlatformSmsOverview>("/api/platform/sms/overview", {}, token),
+
+  listPlatformSmsBundles: (token: string) => request<PlatformSmsBundle[]>("/api/platform/sms/bundles", {}, token),
+
+  createPlatformSmsBundle: (token: string, payload: SmsBundlePayload) =>
+    request<PlatformSmsBundle>("/api/platform/sms/bundles", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  updatePlatformSmsBundle: (token: string, id: string, payload: SmsBundlePayload) =>
+    request<PlatformSmsBundle>(`/api/platform/sms/bundles/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  updatePlatformSmsSettings: (token: string, providerCostPerCredit: number | null) =>
+    request<PlatformSmsOverview>("/api/platform/sms/settings", { method: "PUT", body: JSON.stringify({ providerCostPerCredit }) }, token),
+
+  verifyPlatformSmsSender: (token: string, businessId: string) =>
+    request<PlatformSmsAccount>(`/api/platform/sms/accounts/${businessId}/verify-sender`, { method: "POST" }, token),
+
+  listPlatformSmsAccounts: (token: string) => request<PlatformSmsAccount[]>("/api/platform/sms/accounts", {}, token),
+
+  updatePlatformSmsSender: (token: string, businessId: string, senderId: string, senderStatus: SmsSenderStatus) =>
+    request<PlatformSmsAccount>(
+      `/api/platform/sms/accounts/${businessId}/sender`,
+      { method: "PUT", body: JSON.stringify({ senderId: senderId.trim() === "" ? null : senderId.trim(), senderStatus }) },
+      token
+    ),
+
+  adjustPlatformSmsCredits: (token: string, businessId: string, credits: number, reason: string) =>
+    request<PlatformSmsAccount>(
+      `/api/platform/sms/accounts/${businessId}/adjust`,
+      { method: "POST", body: JSON.stringify({ credits, reason }) },
+      token
+    ),
 
   // --- Business Integrations (Owner only — client's own Paystack/WooCommerce keys) ---
 

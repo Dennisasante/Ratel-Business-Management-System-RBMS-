@@ -33,6 +33,7 @@ import com.ratel.rbms.repository.SaleRepository;
 import com.ratel.rbms.repository.ServiceCatalogItemRepository;
 import com.ratel.rbms.repository.UserRepository;
 import com.ratel.rbms.tenant.TenantContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,7 @@ public class SaleService {
     private final PaymentTransactionService paymentTransactionService;
     private final NotificationService notificationService;
     private final ApprovalGateService approvalGateService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public SaleService(
             SaleRepository saleRepository,
@@ -74,7 +76,8 @@ public class SaleService {
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
             NotificationService notificationService,
-            ApprovalGateService approvalGateService
+            ApprovalGateService approvalGateService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
@@ -89,6 +92,14 @@ public class SaleService {
         this.paymentTransactionService = paymentTransactionService;
         this.notificationService = notificationService;
         this.approvalGateService = approvalGateService;
+        this.eventPublisher = eventPublisher;
+    }
+
+    // A sale becoming fully paid is the moment its customer's SMS receipt is due.
+    // The listener runs after the surrounding transaction commits and off this
+    // thread, so it can never slow down or undo the sale.
+    private void announcePaid(Sale sale) {
+        eventPublisher.publishEvent(new SaleCompletedEvent(sale.getId(), sale.getBusinessId()));
     }
 
     @Transactional
@@ -222,6 +233,10 @@ public class SaleService {
             );
         }
 
+        if (collectedInPerson) {
+            announcePaid(sale);
+        }
+
         activityLogService.log(
                 "Recorded sale #" + sale.getSaleNumber() + " for GH₵" + runningTotal
                         + (customer != null ? " (" + customer.getFullName() + ")" : " (walk-in)"),
@@ -306,6 +321,9 @@ public class SaleService {
             activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
         }
         saleRepository.save(sale);
+        if (result.success()) {
+            announcePaid(sale);
+        }
 
         // An outright rejection (Paystack never even started a charge attempt —
         // see PaystackService.chargeMobileMoney()'s javadoc) is logged as
@@ -343,6 +361,7 @@ public class SaleService {
             sale = saleRepository.save(sale);
             activityLogService.log("Charged mobile money for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
             paymentTransactionService.updateStatusByReference(sale.getBusinessId(), reference, "SUCCESS");
+            announcePaid(sale);
             return toResponseWithItems(sale);
         }
 
@@ -388,6 +407,7 @@ public class SaleService {
 
         if (verify.success()) {
             activityLogService.log("Confirmed payment for sale #" + sale.getSaleNumber(), "SALE", sale.getId());
+            announcePaid(sale);
         }
 
         paymentTransactionService.record(
@@ -429,6 +449,10 @@ public class SaleService {
         sale.setAmountPaid(newAmountPaid);
         sale.setPaymentStatus(derivePaymentStatus(newAmountPaid, sale.getTotalAmount()));
         sale = saleRepository.save(sale);
+
+        if ("PAID".equals(sale.getPaymentStatus())) {
+            announcePaid(sale);
+        }
 
         activityLogService.log(
                 "Recorded a GH₵" + req.amount() + " payment on sale #" + sale.getSaleNumber(), "SALE", sale.getId());

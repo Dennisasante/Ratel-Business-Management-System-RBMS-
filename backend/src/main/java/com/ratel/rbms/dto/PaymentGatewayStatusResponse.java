@@ -9,6 +9,9 @@ package com.ratel.rbms.dto;
 public record PaymentGatewayStatusResponse(
         boolean paystackConfigured,
         boolean receiptPrinterEnabled,
-        String receiptPrinterPaperWidth
+        String receiptPrinterPaperWidth,
+        // PAPER / SMS / BOTH. "SMS" means the customer is texted instead of a paper receipt
+        // being auto-printed. Always PAPER for a business without the SMS module.
+        String smsReceiptMode
 ) {
 }

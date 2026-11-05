@@ -3,10 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ShoppingCart, Wrench, Wallet } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Wrench, Wallet, Pencil } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, Customer, Sale, ServiceOrder } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
+import Button from "@/components/ui/Button";
+import Modal from "@/components/Modal";
+import CustomerForm from "@/components/CustomerForm";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import StatCard from "@/components/ui/StatCard";
@@ -31,6 +34,7 @@ export default function CustomerDetailPage() {
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -76,7 +80,15 @@ export default function CustomerDetailPage() {
         <CardSkeleton count={3} />
       ) : customer ? (
         <>
-          <PageHeader title={customer.fullName} subtitle={customer.phone ?? customer.email ?? "No contact on file"} />
+          <PageHeader
+            title={customer.fullName}
+            subtitle={customer.phone ?? customer.email ?? "No contact on file"}
+            actions={
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                <Pencil size={14} /> Edit
+              </Button>
+            }
+          />
 
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="Total spent" value={`GH₵${customer.totalSpent.toFixed(2)}`} icon={Wallet} tone="success" />
@@ -156,6 +168,20 @@ export default function CustomerDetailPage() {
               </div>
             )}
           </Card>
+
+          {editing && (
+            <Modal title="Edit customer" onClose={() => setEditing(false)}>
+              <CustomerForm
+                initial={customer}
+                submitLabel="Save changes"
+                onSubmit={async (payload) => {
+                  await api.updateCustomer(session.token, customer.id, payload);
+                  setEditing(false);
+                  await load();
+                }}
+              />
+            </Modal>
+          )}
         </>
       ) : (
         <p className="text-sm text-ink-500">Customer not found.</p>

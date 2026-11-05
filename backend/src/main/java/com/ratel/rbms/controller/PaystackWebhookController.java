@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ratel.rbms.service.BillingService;
 import com.ratel.rbms.service.PaystackService;
+import com.ratel.rbms.service.SmsCreditService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -28,11 +29,14 @@ public class PaystackWebhookController {
 
     private final PaystackService paystackService;
     private final BillingService billingService;
+    private final SmsCreditService smsCreditService;
     private final ObjectMapper objectMapper;
 
-    public PaystackWebhookController(PaystackService paystackService, BillingService billingService, ObjectMapper objectMapper) {
+    public PaystackWebhookController(PaystackService paystackService, BillingService billingService,
+                                     SmsCreditService smsCreditService, ObjectMapper objectMapper) {
         this.paystackService = paystackService;
         this.billingService = billingService;
+        this.smsCreditService = smsCreditService;
         this.objectMapper = objectMapper;
     }
 
@@ -49,7 +53,12 @@ public class PaystackWebhookController {
             if ("charge.success".equals(event)) {
                 String reference = root.path("data").path("reference").asText(null);
                 if (reference != null) {
-                    billingService.verifyPayment(reference);
+                    // SMS credit purchases share this webhook with subscription payments.
+                    if (smsCreditService.isSmsReference(reference)) {
+                        smsCreditService.verifyPurchase(reference);
+                    } else {
+                        billingService.verifyPayment(reference);
+                    }
                 }
             }
         } catch (Exception e) {

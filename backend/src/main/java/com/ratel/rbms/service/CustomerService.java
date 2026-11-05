@@ -99,6 +99,33 @@ public class CustomerService {
         return toResponse(customer, customer.getBusinessId());
     }
 
+    // Customers could be added but never corrected — which left anyone saved without a
+    // phone number permanently unreachable (e.g. for an SMS receipt). The same duplicate-phone
+    // rule as create() applies, ignoring the customer's own current number.
+    public CustomerResponse update(UUID id, CustomerRequest req) {
+        Customer customer = getOwned(id);
+        if (req.phone() != null && !req.phone().isBlank()) {
+            customerRepository.findFirstByBusinessIdAndPhoneNormalized(customer.getBusinessId(), PhoneUtils.normalize(req.phone()))
+                    .filter(existing -> !existing.getId().equals(customer.getId()))
+                    .ifPresent(existing -> {
+                        throw new ApiException(HttpStatus.CONFLICT,
+                                "A customer named \"" + existing.getFullName() + "\" already uses this phone number.");
+                    });
+        }
+        customer.setFullName(req.fullName());
+        customer.setPhone(blankToNull(req.phone()));
+        customer.setEmail(blankToNull(req.email()));
+        customer.setNotes(blankToNull(req.notes()));
+        customer.setSource(blankToNull(req.source()));
+        Customer saved = customerRepository.save(customer);
+        activityLogService.log("Updated customer \"" + saved.getFullName() + "\"", "CUSTOMER", saved.getId());
+        return toResponse(saved, saved.getBusinessId());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     // Added for Tallia AI's findCustomer tool — read-only lookup, never
     // creates. Returns empty rather than throwing when nothing matches or
     // the phone doesn't parse, since "not found" is an ordinary answer here,

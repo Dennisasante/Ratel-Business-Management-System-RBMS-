@@ -3,6 +3,7 @@ package com.ratel.rbms.config;
 import com.ratel.rbms.entity.SubscriptionPayment;
 import com.ratel.rbms.service.ActivityLogService;
 import com.ratel.rbms.service.BillingService;
+import com.ratel.rbms.service.SmsCreditService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,15 +49,18 @@ public class PaymentReconciliationScheduler {
     private static final Logger log = LoggerFactory.getLogger(PaymentReconciliationScheduler.class);
 
     private final BillingService billingService;
+    private final SmsCreditService smsCreditService;
     private final ActivityLogService activityLogService;
     private final int staleAfterMinutes;
 
     public PaymentReconciliationScheduler(
             BillingService billingService,
+            SmsCreditService smsCreditService,
             ActivityLogService activityLogService,
             @Value("${app.billing.reconciliation-stale-after-minutes:10}") int staleAfterMinutes
     ) {
         this.billingService = billingService;
+        this.smsCreditService = smsCreditService;
         this.activityLogService = activityLogService;
         this.staleAfterMinutes = staleAfterMinutes;
     }
@@ -85,6 +89,17 @@ public class PaymentReconciliationScheduler {
                         "Automatic payment reconciliation check failed for reference " + payment.getPaystackReference()
                                 + " — will retry on the next sweep",
                         "BUSINESS", payment.getBusinessId());
+            }
+        }
+
+        // SMS credit purchases get the same safety net: a paid-but-unconfirmed
+        // purchase must still end up as credits without anyone lifting a finger.
+        for (String reference : smsCreditService.findStalePendingReferences(olderThan)) {
+            try {
+                smsCreditService.verifyPurchase(reference);
+            } catch (Exception e) {
+                log.warn("Payment reconciliation sweep: SMS purchase verify failed for reference {} ({}) — will retry next sweep",
+                        reference, e.getMessage());
             }
         }
     }

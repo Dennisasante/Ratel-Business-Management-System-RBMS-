@@ -9,10 +9,19 @@ const CUSTOMER_SOURCES = ["Walk-in", "Instagram", "WhatsApp", "Facebook", "Refer
 
 interface CustomerFormProps {
   onSubmit: (payload: CustomerPayload) => Promise<void>;
+  // Pre-fills the form when editing an existing customer.
+  initial?: { fullName: string; phone?: string | null; email?: string | null; notes?: string | null; source?: string | null };
+  submitLabel?: string;
 }
 
-export default function CustomerForm({ onSubmit }: CustomerFormProps) {
-  const [form, setForm] = useState({ fullName: "", phone: "", email: "", notes: "", source: "" });
+export default function CustomerForm({ onSubmit, initial, submitLabel = "Add customer" }: CustomerFormProps) {
+  const [form, setForm] = useState({
+    fullName: initial?.fullName ?? "",
+    phone: initial?.phone ?? "",
+    email: initial?.email ?? "",
+    notes: initial?.notes ?? "",
+    source: initial?.source ?? "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,7 +77,7 @@ export default function CustomerForm({ onSubmit }: CustomerFormProps) {
       {error && <p className="text-sm text-danger">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="mt-1 w-full">
-        {submitting ? "Saving..." : "Add customer"}
+        {submitting ? "Saving..." : submitLabel}
       </Button>
     </form>
   );

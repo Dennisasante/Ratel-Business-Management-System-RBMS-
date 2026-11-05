@@ -5,7 +5,9 @@ import com.ratel.rbms.dto.BusinessIntegrationsResponse;
 import com.ratel.rbms.dto.PaymentGatewayStatusResponse;
 import com.ratel.rbms.dto.TestConnectionResponse;
 import com.ratel.rbms.entity.BusinessIntegrations;
+import com.ratel.rbms.entity.BusinessSmsAccount;
 import com.ratel.rbms.repository.BusinessIntegrationsRepository;
+import com.ratel.rbms.repository.SmsAccountRepository;
 import com.ratel.rbms.tenant.TenantContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
@@ -28,17 +30,23 @@ public class BusinessIntegrationsService {
     private final BusinessIntegrationsRepository businessIntegrationsRepository;
     private final WooCommerceClient wooCommerceClient;
     private final PlanFeatureService planFeatureService;
+    private final SmsAccountRepository smsAccountRepository;
+    private final ModuleAccessService moduleAccessService;
     private final String backendUrl;
 
     public BusinessIntegrationsService(
             BusinessIntegrationsRepository businessIntegrationsRepository,
             WooCommerceClient wooCommerceClient,
             PlanFeatureService planFeatureService,
+            SmsAccountRepository smsAccountRepository,
+            ModuleAccessService moduleAccessService,
             @org.springframework.beans.factory.annotation.Value("${app.backend-url}") String backendUrl
     ) {
         this.businessIntegrationsRepository = businessIntegrationsRepository;
         this.wooCommerceClient = wooCommerceClient;
         this.planFeatureService = planFeatureService;
+        this.smsAccountRepository = smsAccountRepository;
+        this.moduleAccessService = moduleAccessService;
         this.backendUrl = backendUrl;
     }
 
@@ -51,8 +59,12 @@ public class BusinessIntegrationsService {
     public PaymentGatewayStatusResponse getPaymentGatewayStatus() {
         BusinessIntegrations integrations = getOrCreate();
         boolean configured = integrations.getPaystackSecretKey() != null && !integrations.getPaystackSecretKey().isBlank();
+        UUID businessId = TenantContext.getBusinessId();
+        String smsReceiptMode = moduleAccessService.hasModule(businessId, "SMS")
+                ? smsAccountRepository.findById(businessId).map(BusinessSmsAccount::getReceiptMode).orElse(BusinessSmsAccount.RECEIPT_PAPER)
+                : BusinessSmsAccount.RECEIPT_PAPER;
         return new PaymentGatewayStatusResponse(
-                configured, integrations.isReceiptPrinterEnabled(), integrations.getReceiptPrinterPaperWidth());
+                configured, integrations.isReceiptPrinterEnabled(), integrations.getReceiptPrinterPaperWidth(), smsReceiptMode);
     }
 
     @Transactional
