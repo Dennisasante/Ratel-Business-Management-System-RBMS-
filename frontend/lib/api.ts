@@ -233,9 +233,12 @@ export interface Customer {
   totalSpent: number;
   purchaseCount: number;
   createdAt: string;
+  // Has asked not to get promotional texts (SMS campaigns skip them; receipts still go out).
+  smsOptOut: boolean;
 }
 
 export interface CustomerPayload {
+  smsOptOut?: boolean;
   fullName: string;
   phone?: string;
   email?: string;
@@ -1045,6 +1048,66 @@ export interface CheckoutResponse {
 export type SmsSenderStatus = "NONE" | "PENDING" | "APPROVED";
 
 export type SmsReceiptMode = "PAPER" | "SMS" | "BOTH";
+
+export interface SmsAudienceRow {
+  id: string;
+  name: string;
+  phone: string | null;
+  optedOut: boolean;
+  // Has a usable phone number and hasn't opted out — would actually receive a campaign.
+  reachable: boolean;
+}
+
+export interface SmsCampaignPayload {
+  name?: string;
+  message: string;
+  audience: "ALL" | "SELECTED";
+  customerIds?: string[];
+  includeOptOutFooter: boolean;
+  // Chosen when the confirm screen opens: sending the same key twice makes only one campaign.
+  requestKey?: string;
+}
+
+export interface SmsCampaignPreview {
+  recipients: number;
+  skippedNoPhone: number;
+  skippedOptedOut: number;
+  skippedDuplicate: number;
+  creditsNeeded: number;
+  creditsAvailable: number;
+  enoughCredits: boolean;
+  minCreditsPerText: number;
+  maxCreditsPerText: number;
+  sampleMessage: string | null;
+}
+
+export interface SmsCampaignSummary {
+  id: string;
+  name: string | null;
+  status: "SENDING" | "DONE" | "CANCELLED";
+  message: string;
+  recipients: number;
+  sent: number;
+  failed: number;
+  waiting: number;
+  cancelled: number;
+  creditsReserved: number;
+  creditsRefunded: number;
+  creditsUsed: number;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface SmsCampaignDetail {
+  campaign: SmsCampaignSummary;
+  recipients: {
+    customerId: string | null;
+    customerName: string | null;
+    phone: string;
+    status: "PENDING" | "SENDING" | "SENT" | "FAILED" | "CANCELLED";
+    error: string | null;
+  }[];
+}
 
 export interface LoyaltyProgram {
   enabled: boolean;
@@ -2489,6 +2552,23 @@ export const api = {
 
   // The customer's own page — open to anyone with the link, no login.
   getPublicLoyalty: (loyaltyToken: string) => request<PublicLoyalty>(`/api/public/loyalty/${loyaltyToken}`),
+
+  // --- SMS campaigns (Owner/Manager) ---
+
+  listSmsCampaigns: (token: string) => request<SmsCampaignSummary[]>("/api/sms/campaigns", {}, token),
+
+  listSmsAudience: (token: string) => request<SmsAudienceRow[]>("/api/sms/campaigns/audience", {}, token),
+
+  previewSmsCampaign: (token: string, payload: SmsCampaignPayload) =>
+    request<SmsCampaignPreview>("/api/sms/campaigns/preview", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  createSmsCampaign: (token: string, payload: SmsCampaignPayload) =>
+    request<SmsCampaignSummary>("/api/sms/campaigns", { method: "POST", body: JSON.stringify(payload) }, token),
+
+  getSmsCampaign: (token: string, id: string) => request<SmsCampaignDetail>(`/api/sms/campaigns/${id}`, {}, token),
+
+  cancelSmsCampaign: (token: string, id: string) =>
+    request<SmsCampaignSummary>(`/api/sms/campaigns/${id}/cancel`, { method: "POST" }, token),
 
   setSmsReceiptMode: (token: string, mode: SmsReceiptMode) =>
     request<SmsAccount>("/api/sms/receipt-mode", { method: "PATCH", body: JSON.stringify({ mode }) }, token),

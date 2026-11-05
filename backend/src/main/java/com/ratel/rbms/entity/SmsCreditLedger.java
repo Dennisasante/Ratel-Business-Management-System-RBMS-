@@ -25,6 +25,7 @@ public class SmsCreditLedger {
     public static final String SEND = "SEND";
     public static final String REFUND = "REFUND";
     public static final String ADJUSTMENT = "ADJUSTMENT";
+    public static final String CAMPAIGN = "CAMPAIGN";
 
     @Id
     @GeneratedValue

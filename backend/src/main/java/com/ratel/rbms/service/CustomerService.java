@@ -93,6 +93,7 @@ public class CustomerService {
                 .email(req.email())
                 .notes(req.notes())
                 .source(req.source())
+                .smsOptOut(Boolean.TRUE.equals(req.smsOptOut()))
                 .build();
         customer = customerRepository.save(customer);
         activityLogService.log("Added customer \"" + customer.getFullName() + "\"", "CUSTOMER", customer.getId());
@@ -117,6 +118,7 @@ public class CustomerService {
         customer.setEmail(blankToNull(req.email()));
         customer.setNotes(blankToNull(req.notes()));
         customer.setSource(blankToNull(req.source()));
+        if (req.smsOptOut() != null) customer.setSmsOptOut(req.smsOptOut());
         Customer saved = customerRepository.save(customer);
         activityLogService.log("Updated customer \"" + saved.getFullName() + "\"", "CUSTOMER", saved.getId());
         return toResponse(saved, saved.getBusinessId());

@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, History, MessageSquare, Receipt, Send, ShoppingBag, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, Megaphone, MessageSquare, Receipt, Send, ShoppingBag, Wallet } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, SmsAccount, SmsBundle, SmsEstimate, SmsLedgerEntry, SmsMessage, SmsReceiptMode } from "@/lib/api";
 import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
 import SmsReceiptCard from "@/components/SmsReceiptCard";
+import SmsCampaignsPanel from "@/components/SmsCampaignsPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -55,7 +56,7 @@ const RECEIPT_MODE_LABELS: Record<SmsReceiptMode, string> = {
   BOTH: "Paper and SMS",
 };
 
-type TabId = "send" | "receipts" | "buy" | "messages" | "credits";
+type TabId = "send" | "campaigns" | "receipts" | "buy" | "messages" | "credits";
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -88,6 +89,7 @@ export default function SmsPage() {
   const tabs: TabItem[] = useMemo(
     () => [
       { id: "send", label: "Send a message", icon: Send },
+      { id: "campaigns", label: "Campaigns", icon: Megaphone },
       { id: "receipts", label: "Receipts", icon: Receipt },
       ...(isOwner ? [{ id: "buy", label: "Buy credits", icon: ShoppingBag }] : []),
       { id: "messages", label: "Messages", icon: MessageSquare },
@@ -315,6 +317,12 @@ export default function SmsPage() {
                     </Button>
                   </form>
                 </Card>
+              </div>
+            )}
+
+            {tab === "campaigns" && (
+              <div role="tabpanel" id={tabPanelId("campaigns")} aria-labelledby={tabButtonId("campaigns")}>
+                <SmsCampaignsPanel token={session.token} account={account} onChanged={load} />
               </div>
             )}
 

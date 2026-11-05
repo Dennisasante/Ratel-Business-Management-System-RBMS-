@@ -53,6 +53,11 @@ public class Customer {
     @Column(length = 30)
     private String source;
 
+    // Has asked not to receive promotional texts (campaigns skip them). Receipts are not promotional and still go out.
+    @Column(name = "sms_opt_out", nullable = false)
+    @Builder.Default
+    private boolean smsOptOut = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

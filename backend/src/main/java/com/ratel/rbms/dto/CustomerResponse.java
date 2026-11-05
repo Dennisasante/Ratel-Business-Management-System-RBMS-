@@ -15,7 +15,8 @@ public record CustomerResponse(
         String source,
         BigDecimal totalSpent,
         int purchaseCount,
-        Instant createdAt
+        Instant createdAt,
+        boolean smsOptOut
 ) {
     public static CustomerResponse from(Customer c, BigDecimal totalSpent, int purchaseCount) {
         return new CustomerResponse(
@@ -27,7 +28,8 @@ public record CustomerResponse(
                 c.getSource(),
                 totalSpent,
                 purchaseCount,
-                c.getCreatedAt()
+                c.getCreatedAt(),
+                c.isSmsOptOut()
         );
     }
 }

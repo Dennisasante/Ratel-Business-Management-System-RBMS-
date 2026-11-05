@@ -10,7 +10,14 @@ const CUSTOMER_SOURCES = ["Walk-in", "Instagram", "WhatsApp", "Facebook", "Refer
 interface CustomerFormProps {
   onSubmit: (payload: CustomerPayload) => Promise<void>;
   // Pre-fills the form when editing an existing customer.
-  initial?: { fullName: string; phone?: string | null; email?: string | null; notes?: string | null; source?: string | null };
+  initial?: {
+    fullName: string;
+    phone?: string | null;
+    email?: string | null;
+    notes?: string | null;
+    source?: string | null;
+    smsOptOut?: boolean;
+  };
   submitLabel?: string;
 }
 
@@ -22,6 +29,7 @@ export default function CustomerForm({ onSubmit, initial, submitLabel = "Add cus
     notes: initial?.notes ?? "",
     source: initial?.source ?? "",
   });
+  const [smsOptOut, setSmsOptOut] = useState(initial?.smsOptOut ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,6 +48,7 @@ export default function CustomerForm({ onSubmit, initial, submitLabel = "Add cus
         email: form.email || undefined,
         notes: form.notes || undefined,
         source: form.source || undefined,
+        smsOptOut,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -73,6 +82,19 @@ export default function CustomerForm({ onSubmit, initial, submitLabel = "Add cus
           ))}
         </select>
       </div>
+
+      <label className="flex items-start gap-2 rounded-lg bg-canvas px-3 py-2 text-sm text-ink-700">
+        <input
+          type="checkbox"
+          checked={smsOptOut}
+          onChange={(e) => setSmsOptOut(e.target.checked)}
+          className="mt-0.5 rounded border-border text-accent focus:ring-accent/20"
+        />
+        <span>
+          Doesn&apos;t want promotional texts
+          <span className="block text-xs text-ink-500">Campaigns skip them. Receipts still go out.</span>
+        </span>
+      </label>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
