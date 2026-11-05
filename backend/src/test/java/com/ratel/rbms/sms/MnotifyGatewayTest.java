@@ -148,4 +148,33 @@ class MnotifyGatewayTest {
         assertEquals(SmsGateway.SenderState.UNKNOWN, check.state());
         assertFalse(check.detail().contains("TEST-KEY"));
     }
+
+    @Test
+    void aKeyRotatedWhileRunningIsUsedByTheVeryNextCall() {
+        java.util.concurrent.atomic.AtomicReference<String> key = new java.util.concurrent.atomic.AtomicReference<>("OLD-KEY");
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://mnotify.test/api");
+        MockRestServiceServer rotating = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
+        MnotifyGateway g = new MnotifyGateway(key::get, builder.build());
+        rotating.expect(requestTo("https://mnotify.test/api/balance/sms?key=OLD-KEY"))
+                .andRespond(withSuccess("{\"balance\":1,\"bonus\":0}", MediaType.APPLICATION_JSON));
+        rotating.expect(requestTo("https://mnotify.test/api/balance/sms?key=NEW-KEY"))
+                .andRespond(withSuccess("{\"balance\":2,\"bonus\":0}", MediaType.APPLICATION_JSON));
+
+        assertEquals(0, g.balance().orElseThrow().balance().compareTo(new BigDecimal("1")));
+        key.set("NEW-KEY");
+        assertEquals(0, g.balance().orElseThrow().balance().compareTo(new BigDecimal("2")));
+
+        rotating.verify();
+    }
+
+    @Test
+    void aGatewayWhoseKeyIsRemovedBecomesUnconfiguredAtOnce() {
+        java.util.concurrent.atomic.AtomicReference<String> key = new java.util.concurrent.atomic.AtomicReference<>("SOME-KEY");
+        MnotifyGateway g = new MnotifyGateway(key::get, RestClient.builder().baseUrl("https://mnotify.test/api").build());
+        assertTrue(g.isConfigured());
+
+        key.set("");
+
+        assertFalse(g.isConfigured());
+    }
 }

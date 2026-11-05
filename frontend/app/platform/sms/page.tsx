@@ -70,6 +70,84 @@ export default function PlatformSmsPage() {
   );
 }
 
+// The mNotify connection: paste the API key here (it is stored encrypted and never shown again — only
+// its last four characters), and see straight away whether it works.
+function ProviderKeyForm({ token, overview, onChanged }: { token: string; overview: PlatformSmsOverview; onChanged: () => Promise<void> }) {
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const connected = overview.providerConfigured && overview.providerBalance != null;
+  const isMock = overview.provider === "mock";
+
+  async function save(value: string) {
+    setSaving(true);
+    setResult(null);
+    try {
+      const updated = await api.updatePlatformSmsProviderKey(token, value);
+      setApiKey("");
+      if (value.trim() === "") {
+        setResult({ ok: true, text: updated.keySource === "SERVER" ? "Removed. The server's own key is being used again." : "Removed." });
+      } else if (updated.providerBalance != null) {
+        setResult({ ok: true, text: `Saved — connected to ${updated.provider}. Balance: ${updated.providerBalance.toLocaleString()} credits.` });
+      } else {
+        setResult({
+          ok: false,
+          text: "Saved, but we couldn't connect with that key. Check it in your mNotify dashboard (API section) and paste it again.",
+        });
+      }
+      await onChanged();
+    } catch (err) {
+      setResult({ ok: false, text: err instanceof ApiError ? err.message : "Couldn't save that. Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="sm:col-span-3 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">mNotify connection</p>
+        <Badge tone={isMock ? "info" : connected ? "success" : "danger"}>
+          {isMock ? "Test mode (nothing is really sent)" : connected ? "Connected" : "Not connected"}
+        </Badge>
+      </div>
+      <p className="mt-1 text-xs text-ink-500">
+        {overview.keySource === "SETTINGS" && `Using the key saved here (${overview.keyHint}).`}
+        {overview.keySource === "SERVER" && `Using the key from the server's settings (${overview.keyHint}). Save one here to override it.`}
+        {overview.keySource === "NONE" && "No API key yet — paste yours below to start sending texts."}
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (apiKey.trim()) void save(apiKey);
+        }}
+        className="mt-2 flex flex-wrap items-center gap-2"
+      >
+        <input
+          type="password"
+          autoComplete="off"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="Paste your mNotify API key"
+          aria-label="mNotify API key"
+          className={`${INPUT_CLASS} w-full sm:w-80`}
+        />
+        <Button type="submit" disabled={saving || apiKey.trim() === ""}>
+          {saving ? "Saving..." : "Save key"}
+        </Button>
+        {overview.keySource === "SETTINGS" && (
+          <Button type="button" variant="ghost" disabled={saving} onClick={() => save("")}>
+            Remove saved key
+          </Button>
+        )}
+      </form>
+      <p className="mt-1 text-xs text-ink-500">Stored encrypted. It is never shown again after you save it, and clients can never see it.</p>
+      {result && <p className={`mt-1 text-xs ${result.ok ? "text-success" : "text-danger"}`}>{result.text}</p>}
+    </div>
+  );
+}
+
 function OverviewCard({ token, overview, onChanged }: { token: string; overview: PlatformSmsOverview; onChanged: () => Promise<void> }) {
   const short =
     overview.providerBalance != null && overview.outstandingClientCredits > overview.providerBalance;
@@ -93,6 +171,7 @@ function OverviewCard({ token, overview, onChanged }: { token: string; overview:
 
   return (
     <Card className="grid gap-4 p-5 sm:grid-cols-3">
+      <ProviderKeyForm token={token} overview={overview} onChanged={onChanged} />
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Provider</p>
         <p className="flex items-center gap-2 text-sm font-medium text-ink-900">

@@ -14,6 +14,10 @@ public record SmsPlatformOverviewResponse(
         // Tallia can't actually deliver, so the page flags it.
         long outstandingClientCredits,
         // What the provider charges Tallia per credit (Super-Admin-entered); null if not entered yet.
-        BigDecimal providerCostPerCredit
+        BigDecimal providerCostPerCredit,
+        // Where the provider key in use comes from: SETTINGS (saved on this page), SERVER (.env) or NONE.
+        String keySource,
+        // The key in use with all but its last four characters hidden; null when there is none.
+        String keyHint
 ) {
 }

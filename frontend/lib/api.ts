@@ -1144,7 +1144,7 @@ export interface SmsMessage {
   id: string;
   recipient: string;
   message: string;
-  kind: "TEST" | "TRANSACTIONAL" | "LOYALTY" | "CAMPAIGN";
+  kind: "TEST" | "RECEIPT" | "TRANSACTIONAL" | "LOYALTY" | "CAMPAIGN";
   segments: number;
   creditsUsed: number;
   status: "QUEUED" | "SENT" | "FAILED";
@@ -1178,6 +1178,10 @@ export interface PlatformSmsOverview {
   providerBonus: number | null;
   outstandingClientCredits: number;
   providerCostPerCredit: number | null;
+  // Where the provider key in use comes from: saved on this page, the server's own settings, or none yet.
+  keySource: "SETTINGS" | "SERVER" | "NONE";
+  // The key in use with all but its last four characters hidden. Null when there is none.
+  keyHint: string | null;
 }
 
 export interface PlatformSmsAccount {
@@ -2516,6 +2520,10 @@ export const api = {
 
   updatePlatformSmsBundle: (token: string, id: string, payload: SmsBundlePayload) =>
     request<PlatformSmsBundle>(`/api/platform/sms/bundles/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  // A blank key removes the saved one (the server's own key, if any, is used again).
+  updatePlatformSmsProviderKey: (token: string, apiKey: string) =>
+    request<PlatformSmsOverview>("/api/platform/sms/provider-key", { method: "PUT", body: JSON.stringify({ apiKey }) }, token),
 
   updatePlatformSmsSettings: (token: string, providerCostPerCredit: number | null) =>
     request<PlatformSmsOverview>("/api/platform/sms/settings", { method: "PUT", body: JSON.stringify({ providerCostPerCredit }) }, token),

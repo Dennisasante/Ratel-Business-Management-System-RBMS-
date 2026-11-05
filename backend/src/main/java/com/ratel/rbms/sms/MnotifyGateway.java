@@ -35,17 +35,31 @@ public class MnotifyGateway implements SmsGateway {
 
     private static final Logger log = LoggerFactory.getLogger(MnotifyGateway.class);
 
-    private final String apiKey;
+    // Asked for on every call, so a key saved while the app is running takes effect at once.
+    private final java.util.function.Supplier<String> apiKeySource;
     private final RestClient client;
 
+    public MnotifyGateway(java.util.function.Supplier<String> apiKeySource, String baseUrl) {
+        this(apiKeySource, buildClient(baseUrl));
+    }
+
     public MnotifyGateway(String apiKey, String baseUrl) {
-        this(apiKey, buildClient(baseUrl));
+        this(() -> apiKey, buildClient(baseUrl));
     }
 
     // For tests: lets a MockRestServiceServer be bound to the client.
     MnotifyGateway(String apiKey, RestClient client) {
-        this.apiKey = apiKey == null ? "" : apiKey.trim();
+        this(() -> apiKey, client);
+    }
+
+    MnotifyGateway(java.util.function.Supplier<String> apiKeySource, RestClient client) {
+        this.apiKeySource = apiKeySource;
         this.client = client;
+    }
+
+    private String apiKey() {
+        String key = apiKeySource.get();
+        return key == null ? "" : key.trim();
     }
 
     private static RestClient buildClient(String baseUrl) {
@@ -57,7 +71,7 @@ public class MnotifyGateway implements SmsGateway {
 
     @Override
     public boolean isConfigured() {
-        return !apiKey.isBlank();
+        return !apiKey().isBlank();
     }
 
     @Override
@@ -79,10 +93,11 @@ public class MnotifyGateway implements SmsGateway {
                 "schedule_date", ""
         );
 
+        final String key = apiKey();
         JsonNode response;
         try {
             response = client.post()
-                    .uri(u -> u.path("/sms/quick").queryParam("key", apiKey).build())
+                    .uri(u -> u.path("/sms/quick").queryParam("key", key).build())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
@@ -125,10 +140,11 @@ public class MnotifyGateway implements SmsGateway {
         if (!isConfigured()) {
             return new SenderCheck(SenderState.UNKNOWN, "SMS provider isn't configured.");
         }
+        final String key = apiKey();
         JsonNode response;
         try {
             response = client.post()
-                    .uri(u -> u.path("/senderid/status").queryParam("key", apiKey).build())
+                    .uri(u -> u.path("/senderid/status").queryParam("key", key).build())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("sender_name", senderId, "sender_id", senderId))
                     .retrieve()
@@ -161,9 +177,10 @@ public class MnotifyGateway implements SmsGateway {
     @Override
     public Optional<ProviderBalance> balance() {
         if (!isConfigured()) return Optional.empty();
+        final String key = apiKey();
         try {
             JsonNode response = client.get()
-                    .uri(u -> u.path("/balance/sms").queryParam("key", apiKey).build())
+                    .uri(u -> u.path("/balance/sms").queryParam("key", key).build())
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (req, res) -> {})
                     .body(JsonNode.class);

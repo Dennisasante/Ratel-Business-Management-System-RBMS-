@@ -1,6 +1,8 @@
 package com.ratel.rbms.entity;
 
+import com.ratel.rbms.security.EncryptedStringConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -30,6 +32,12 @@ public class SmsPlatformSettings {
     // What the SMS provider charges Tallia per credit. Null until the Super Admin enters it.
     @Column(name = "provider_cost_per_credit", precision = 10, scale = 4)
     private BigDecimal providerCostPerCredit;
+
+    // The provider's API key, saved from the Super Admin SMS page. Encrypted at rest; never sent back to the browser.
+    // Takes priority over the server's MNOTIFY_API_KEY, which remains as the fallback.
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "mnotify_api_key")
+    private String mnotifyApiKey;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

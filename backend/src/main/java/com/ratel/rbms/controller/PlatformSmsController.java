@@ -3,6 +3,7 @@ package com.ratel.rbms.controller;
 import com.ratel.rbms.dto.SmsBundleRequest;
 import com.ratel.rbms.dto.SmsPlatformBundleResponse;
 import com.ratel.rbms.dto.SmsPlatformSettingsRequest;
+import com.ratel.rbms.dto.SmsProviderKeyRequest;
 import com.ratel.rbms.dto.SmsCreditAdjustRequest;
 import com.ratel.rbms.dto.SmsPlatformAccountResponse;
 import com.ratel.rbms.dto.SmsPlatformOverviewResponse;
@@ -40,6 +41,12 @@ public class PlatformSmsController {
     @PutMapping("/settings")
     public SmsPlatformOverviewResponse updateSettings(@Valid @RequestBody SmsPlatformSettingsRequest request) {
         smsPlatformService.updateSettings(currentAdminId(), request);
+        return smsPlatformService.overview();
+    }
+
+    @PutMapping("/provider-key")
+    public SmsPlatformOverviewResponse updateProviderKey(@Valid @RequestBody SmsProviderKeyRequest request) {
+        smsPlatformService.updateProviderKey(currentAdminId(), request.apiKey());
         return smsPlatformService.overview();
     }
 

@@ -18,6 +18,7 @@ import com.ratel.rbms.repository.SmsAccountRepository;
 import com.ratel.rbms.repository.SmsBundleRepository;
 import com.ratel.rbms.repository.SmsPlatformSettingsRepository;
 import com.ratel.rbms.sms.SmsGateway;
+import com.ratel.rbms.sms.SmsProviderKeyService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -32,6 +33,7 @@ import java.util.UUID;
 public class SmsPlatformService {
 
     private final SmsGateway gateway;
+    private final SmsProviderKeyService providerKeyService;
     private final SmsBundleRepository bundleRepository;
     private final SmsPlatformSettingsRepository settingsRepository;
     private final SmsAccountRepository accountRepository;
@@ -42,6 +44,7 @@ public class SmsPlatformService {
 
     public SmsPlatformService(
             SmsGateway gateway,
+            SmsProviderKeyService providerKeyService,
             SmsBundleRepository bundleRepository,
             SmsPlatformSettingsRepository settingsRepository,
             SmsAccountRepository accountRepository,
@@ -51,6 +54,7 @@ public class SmsPlatformService {
             PlatformTransactionManager transactionManager
     ) {
         this.gateway = gateway;
+        this.providerKeyService = providerKeyService;
         this.bundleRepository = bundleRepository;
         this.settingsRepository = settingsRepository;
         this.accountRepository = accountRepository;
@@ -62,13 +66,38 @@ public class SmsPlatformService {
 
     public SmsPlatformOverviewResponse overview() {
         var balance = gateway.balance();
+        SmsProviderKeyService.Description key = providerKeyService.describe();
         return new SmsPlatformOverviewResponse(
                 gateway.name(),
                 gateway.isConfigured(),
                 balance.map(SmsGateway.ProviderBalance::balance).orElse(null),
                 balance.map(SmsGateway.ProviderBalance::bonus).orElse(null),
                 accountRepository.totalOutstandingCredits(),
-                providerCost());
+                providerCost(),
+                key.source().name(),
+                key.hint());
+    }
+
+    /** Saves (or, if blank, removes) the provider API key. The key itself is never logged or sent back. */
+    public void updateProviderKey(UUID adminId, String apiKey) {
+        String key = apiKey == null ? "" : apiKey.trim();
+        if (!key.isEmpty() && key.length() < 8) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That doesn't look like a full API key — paste the whole thing.");
+        }
+        SmsPlatformSettings settings = settingsRepository.findById(SmsPlatformSettings.ROW_ID).orElseGet(SmsPlatformSettings::new);
+        settings.setMnotifyApiKey(key.isEmpty() ? null : key);
+        try {
+            settingsRepository.save(settings);
+        } catch (RuntimeException e) {
+            // Secrets are only ever stored encrypted: with no ENCRYPTION_KEY on the server the save is refused.
+            if (String.valueOf(rootMessage(e)).contains("ENCRYPTION_KEY")) {
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "This server has no ENCRYPTION_KEY set, so it can't store the key safely. Set one on the server, "
+                                + "or put MNOTIFY_API_KEY in the server's .env instead.");
+            }
+            throw e;
+        }
+        auditLogService.log(adminId, key.isEmpty() ? "SMS provider API key removed" : "SMS provider API key updated", null, null, null);
     }
 
     private BigDecimal providerCost() {
@@ -215,6 +244,14 @@ public class SmsPlatformService {
         auditLogService.log(adminId, "SMS credits adjusted by " + delta + ": " + req.reason().trim(),
                 businessId, business.getName(), null);
         return accountResponse(business, null);
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage();
     }
 
     private Business findBusiness(UUID businessId) {

@@ -22,13 +22,13 @@ public class SmsGatewayConfig {
     @Bean
     public SmsGateway smsGateway(
             @Value("${app.sms.provider:mnotify}") String provider,
-            @Value("${app.sms.mnotify-api-key:}") String apiKey,
+            SmsProviderKeyService providerKey,
             @Value("${app.sms.mnotify-base-url:" + DEFAULT_MNOTIFY_URL + "}") String baseUrl
     ) {
         if ("mock".equalsIgnoreCase(provider == null ? "" : provider.trim())) {
             return new MockSmsGateway();
         }
         String url = baseUrl == null || baseUrl.isBlank() ? DEFAULT_MNOTIFY_URL : baseUrl.trim();
-        return new MnotifyGateway(apiKey, url);
+        return new MnotifyGateway(providerKey, url);
     }
 }
