@@ -12,6 +12,8 @@ interface ServiceCatalogManagerProps {
   serviceTypes: ServiceType[];
   onCreate: (payload: ServiceCatalogItemPayload) => Promise<void>;
   onToggleActive: (id: string, active: boolean) => Promise<void>;
+  // Only passed when the business has the loyalty module — shows a per-service "counts toward points" switch.
+  onSetCountsForLoyalty?: (id: string, counts: boolean) => Promise<void>;
   onEdit: (id: string, fields: { serviceTypeId: string; name: string; price: number }) => Promise<void>;
   onUpdateBookingSettings: (
     id: string,
@@ -37,6 +39,7 @@ export default function ServiceCatalogManager({
   serviceTypes,
   onCreate,
   onToggleActive,
+  onSetCountsForLoyalty,
   onEdit,
   onUpdateBookingSettings,
 }: ServiceCatalogManagerProps) {
@@ -206,6 +209,18 @@ export default function ServiceCatalogManager({
                     <Badge tone="accent">
                       <Calendar size={11} /> Bookable
                     </Badge>
+                  )}
+                  {onSetCountsForLoyalty && (
+                    <button
+                      type="button"
+                      onClick={() => onSetCountsForLoyalty(item.id, !item.countsForLoyalty)}
+                      title={item.countsForLoyalty ? "Counts as a visit toward loyalty points — click to stop" : "Doesn't count toward loyalty points — click to count it"}
+                      className={`rounded-md border px-2 py-0.5 text-xs font-medium transition ${
+                        item.countsForLoyalty ? "border-transparent bg-accent-soft text-accent-hover" : "border-border text-ink-500 hover:bg-canvas"
+                      }`}
+                    >
+                      {item.countsForLoyalty ? "Earns points" : "No points"}
+                    </button>
                   )}
                   <button
                     onClick={() =>

@@ -12,7 +12,7 @@ class SmsReceiptComposerTest {
 
     private static SmsReceiptComposer.Input input(String business, String name, String saved, String points, String link) {
         return new SmsReceiptComposer.Input(business, name, 1042, "GHS", new BigDecimal("770"),
-                saved == null ? null : new BigDecimal(saved), points, link);
+                saved == null ? null : new BigDecimal(saved), points, link, null);
     }
 
     @Test
@@ -74,6 +74,15 @@ class SmsReceiptComposerTest {
         String text = SmsReceiptComposer.compose(input("A".repeat(150), "Ama", "20", null, null));
 
         assertTrue(text.contains("#1042 GHS 770.00 (saved 20.00)"), "information is never dropped to save a credit");
+    }
+
+    @Test
+    void aPointsLineThatAlreadyEndsInPunctuationIsNotGivenASecondOne() {
+        String due = SmsReceiptComposer.compose(input("Glow Salon", "Ama", null, "Reward due!", null));
+        String counting = SmsReceiptComposer.compose(input("Glow Salon", "Ama", null, "Points 7/10", null));
+
+        assertTrue(due.contains("Reward due!") && !due.contains("!."), due);
+        assertTrue(counting.contains("Points 7/10."), counting);
     }
 
     @Test

@@ -166,6 +166,27 @@ class WhatsAppBindingServiceTest {
                 .sendTextMessage(anyString(), anyString(), anyString(), anyString());
     }
 
+    @Test
+    void findIsEmptyNotAnErrorWhenABusinessHasNoBindingYet() {
+        Business business = businessRepository.save(newBusiness());
+
+        assertTrue(whatsAppBindingService.find(business.getId()).isEmpty());
+    }
+
+    @Test
+    void findReturnsTheBindingOnceItExists() {
+        Business business = businessRepository.save(newBusiness());
+        whatsAppBindingService.create(adminId, business.getId(), new WhatsAppBindingCreateRequest(
+                "waba-1", "phone-" + UUID.randomUUID(), "Front Desk", "token", true));
+
+        assertTrue(whatsAppBindingService.find(business.getId()).isPresent());
+    }
+
+    @Test
+    void findStillReportsAMissingBusiness() {
+        assertThrows(ApiException.class, () -> whatsAppBindingService.find(UUID.randomUUID()));
+    }
+
     private Business newBusiness() {
         String unique = UUID.randomUUID().toString().substring(0, 8);
         return Business.builder()

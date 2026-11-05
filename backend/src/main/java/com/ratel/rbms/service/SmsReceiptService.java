@@ -65,6 +65,7 @@ public class SmsReceiptService {
     private final SmsMessageRepository messageRepository;
     private final SmsService smsService;
     private final ModuleAccessService moduleAccessService;
+    private final LoyaltyService loyaltyService;
     private final SmsGateway gateway;
     private final String frontendUrl;
 
@@ -76,6 +77,7 @@ public class SmsReceiptService {
             SmsMessageRepository messageRepository,
             SmsService smsService,
             ModuleAccessService moduleAccessService,
+            LoyaltyService loyaltyService,
             SmsGateway gateway,
             @Value("${app.frontend-url}") String frontendUrl
     ) {
@@ -86,6 +88,7 @@ public class SmsReceiptService {
         this.messageRepository = messageRepository;
         this.smsService = smsService;
         this.moduleAccessService = moduleAccessService;
+        this.loyaltyService = loyaltyService;
         this.gateway = gateway;
         this.frontendUrl = frontendUrl;
     }
@@ -129,9 +132,14 @@ public class SmsReceiptService {
         moduleAccessService.requireModule(businessId, SmsService.MODULE);
         Business business = businessRepository.findById(businessId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Business not found."));
+        // With a points program on, the sample shows the points line and the personal link, as real receipts will.
+        boolean points = loyaltyService.isActive(businessId);
         String text = SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
                 business.getName(), "Ama", 1042, business.getCurrency(),
-                new BigDecimal("770.00"), new BigDecimal("20.00"), null, bookingLink(business)));
+                new BigDecimal("770.00"), new BigDecimal("20.00"),
+                points ? "Points 7/10" : null,
+                points ? frontendHost() + "/p/k3x9a2f81m" : bookingLink(business),
+                points ? "Book/points:" : null));
         SmsSegmentCalculator.Result size = SmsSegmentCalculator.calculate(text);
         return new SmsReceiptPreviewResponse(text, size.segments(), size.length(), size.unicode());
     }
@@ -159,9 +167,14 @@ public class SmsReceiptService {
 
         Business business = businessRepository.findById(businessId).orElseThrow();
         Customer customer = customerRepository.findById(sale.getCustomerId()).orElseThrow();
-        String text = SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),
-                sale.getTotalAmount(), totalSaved(sale), null, bookingLink(business)));
+        // Count today's visit BEFORE writing the text, so "Points 7/10" already includes this sale.
+        // Idempotent — the loyalty listener may well have done it already.
+        try {
+            loyaltyService.recordVisitForSale(saleId);
+        } catch (RuntimeException e) {
+            log.warn("Couldn't count the loyalty visit for sale {} ({})", saleId, e.getClass().getSimpleName());
+        }
+        String text = receiptText(sale, business, customer);
 
         try {
             SmsMessage sent = smsService.send(businessId, customer.getPhone(), text, SmsMessage.KIND_RECEIPT,
@@ -196,9 +209,7 @@ public class SmsReceiptService {
             return Optional.of(new SmsReceiptStatusResponse(NOT_READY, "SMS receipts aren't ready yet — your sender name isn't approved.", false));
         }
         Business business = businessRepository.findById(sale.getBusinessId()).orElseThrow();
-        String text = SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),
-                sale.getTotalAmount(), totalSaved(sale), null, bookingLink(business)));
+        String text = receiptText(sale, business, customer);
         if (smsService.balanceOf(sale.getBusinessId()) < SmsSegmentCalculator.calculate(text).segments()) {
             return Optional.of(noCredits());
         }
@@ -239,13 +250,30 @@ public class SmsReceiptService {
         return name.isEmpty() ? null : name.split("\\s+")[0];
     }
 
+    // The compact receipt text. With an active points program it carries the customer's points and
+    // their personal link (which leads to their points and a Book button); otherwise the booking link.
+    private String receiptText(Sale sale, Business business, Customer customer) {
+        String pointsLine = loyaltyService.receiptLine(business.getId(), customer.getId());
+        String pointsLink = loyaltyService.shortLink(business.getId(), customer.getId());
+        boolean usePoints = pointsLine != null && pointsLink != null;
+        return SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
+                business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),
+                sale.getTotalAmount(), totalSaved(sale),
+                pointsLine,
+                usePoints ? pointsLink : bookingLink(business),
+                usePoints ? "Book/points:" : null));
+    }
+
+    private String frontendHost() {
+        return frontendUrl.replaceFirst("^https?://", "").replaceFirst("/+$", "");
+    }
+
     // Written without "https://" to save 8 characters — phones still make it tappable.
     // Only included when the business actually has the booking page switched on.
     private String bookingLink(Business business) {
         if (!moduleAccessService.hasModule(business.getId(), "BOOKINGS")) {
             return null;
         }
-        String host = frontendUrl.replaceFirst("^https?://", "").replaceFirst("/+$", "");
-        return host + "/book/" + business.getSlug();
+        return frontendHost() + "/book/" + business.getSlug();
     }
 }

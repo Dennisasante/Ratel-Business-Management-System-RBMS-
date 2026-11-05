@@ -97,6 +97,9 @@ class SmsReceiptIntegrationTest {
         jdbc.update("DELETE FROM sms_credit_ledger WHERE business_id = ?", businessId);
         jdbc.update("DELETE FROM business_sms_accounts WHERE business_id = ?", businessId);
         jdbc.update("DELETE FROM notifications WHERE business_id = ?", businessId);
+        jdbc.update("DELETE FROM loyalty_visits WHERE business_id = ?", businessId);
+        jdbc.update("DELETE FROM loyalty_customers WHERE business_id = ?", businessId);
+        jdbc.update("DELETE FROM loyalty_programs WHERE business_id = ?", businessId);
         jdbc.update("DELETE FROM sale_items WHERE business_id = ?", businessId);
         jdbc.update("DELETE FROM sales WHERE business_id = ?", businessId);
         jdbc.update("DELETE FROM customers WHERE business_id = ?", businessId);
@@ -253,6 +256,35 @@ class SmsReceiptIntegrationTest {
         org.junit.jupiter.api.Assertions.assertThrows(com.ratel.rbms.exception.ApiException.class,
                 () -> receiptService.sendManually(saleId));
         assertFalse(count("SELECT count(*) FROM sms_messages WHERE business_id = ?") > 0);
+    }
+
+    @Test
+    void withAPointsProgramTheReceiptCarriesTheCustomersPointsAndPersonalLink() {
+        jdbc.update("UPDATE businesses SET enabled_modules = array_append(enabled_modules, 'LOYALTY') WHERE id = ?", businessId);
+        UUID saleId = paidSale(customerId, "770.00", "20.00");
+
+        SmsReceiptStatusResponse result = receiptService.sendAutomatically(saleId, businessId);
+
+        assertEquals(SmsReceiptService.SENT, result.status());
+        ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
+        verify(gateway).send(anyString(), anyString(), text.capture());
+        // This sale's visit is counted BEFORE the text is written, so it already shows 1/10.
+        assertTrue(text.getValue().contains("Points 1/10."), text.getValue());
+        assertTrue(text.getValue().matches(".*Book/points: \\S+/p/[a-z2-9]{10}$"), text.getValue());
+        assertFalse(text.getValue().contains("/book/"), "the personal link replaces the plain booking link");
+        assertEquals(1, com.ratel.rbms.sms.SmsSegmentCalculator.calculate(text.getValue()).segments(), "still one credit");
+    }
+
+    @Test
+    void withoutAPointsProgramTheReceiptKeepsThePlainBookingLink() {
+        UUID saleId = paidSale(customerId, "100.00", "0");
+
+        receiptService.sendAutomatically(saleId, businessId);
+
+        ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
+        verify(gateway).send(anyString(), anyString(), text.capture());
+        assertFalse(text.getValue().contains("Points"), text.getValue());
+        assertTrue(text.getValue().contains("Book: ") && text.getValue().contains("/book/shell-"), text.getValue());
     }
 
     // ---- helpers ----

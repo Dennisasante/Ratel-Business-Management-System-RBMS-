@@ -43,6 +43,12 @@ public class ServiceCatalogItem {
     @Builder.Default
     private boolean active = true;
 
+    // Whether doing this service counts as a visit toward loyalty points. On by default;
+    // the owner switches it off for things that shouldn't earn a visit.
+    @Column(name = "counts_for_loyalty", nullable = false)
+    @Builder.Default
+    private boolean countsForLoyalty = true;
+
     // Off by default — not every service a business offers is necessarily
     // meant to be publicly bookable via the embed widget.
     @Column(name = "bookable_online", nullable = false)

@@ -47,6 +47,13 @@ public class WhatsAppBindingService {
         this.whatsAppApiClient = whatsAppApiClient;
     }
 
+    /** The binding if there is one. A business with none yet is normal, so this is empty rather than an error. */
+    public java.util.Optional<WhatsAppBindingResponse> find(UUID businessId) {
+        Business business = requireBusiness(businessId);
+        return aiChannelBindingRepository.findByBusinessIdAndChannel(businessId, AiChannel.WHATSAPP)
+                .map(binding -> WhatsAppBindingResponse.from(binding, business.getName()));
+    }
+
     public WhatsAppBindingResponse get(UUID businessId) {
         Business business = requireBusiness(businessId);
         AiChannelBinding binding = aiChannelBindingRepository.findByBusinessIdAndChannel(businessId, AiChannel.WHATSAPP)

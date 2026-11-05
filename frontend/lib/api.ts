@@ -760,6 +760,8 @@ export interface ServiceCatalogItem {
   maxConcurrentBookings: number;
   requiresLocation: boolean;
   paymentPolicyOverride: "NONE" | "DEPOSIT" | "FULL" | null;
+  // Does doing this service count as a visit toward loyalty points?
+  countsForLoyalty: boolean;
   createdAt: string;
 }
 
@@ -772,6 +774,7 @@ export interface ServiceCatalogItemPayload {
   maxConcurrentBookings?: number;
   requiresLocation?: boolean;
   paymentPolicyOverride?: "NONE" | "DEPOSIT" | "FULL" | "";
+  countsForLoyalty?: boolean;
 }
 
 export interface ServicePackageItem {
@@ -1042,6 +1045,49 @@ export interface CheckoutResponse {
 export type SmsSenderStatus = "NONE" | "PENDING" | "APPROVED";
 
 export type SmsReceiptMode = "PAPER" | "SMS" | "BOTH";
+
+export interface LoyaltyProgram {
+  enabled: boolean;
+  visitsForReward: number;
+  rewardDescription: string;
+}
+
+// One customer's standing — what the till shows and the receipt text uses.
+export interface LoyaltyStatus {
+  // False when the business has no active points program.
+  active: boolean;
+  // Visits counted toward the NEXT reward (can exceed the target while rewards are waiting).
+  visits: number;
+  target: number;
+  rewardDue: boolean;
+  rewardsDue: number;
+  rewardDescription: string | null;
+  // The customer's personal points page. Null until their first visit.
+  pointsUrl: string | null;
+}
+
+export interface LoyaltyCustomerRow {
+  customerId: string;
+  customerName: string;
+  phone: string | null;
+  visits: number;
+  target: number;
+  rewardDue: boolean;
+  rewardsDue: number;
+  lifetimeVisits: number;
+}
+
+export interface PublicLoyalty {
+  businessName: string;
+  logoUrl: string | null;
+  customerFirstName: string | null;
+  visits: number;
+  target: number;
+  rewardDue: boolean;
+  rewardDescription: string;
+  // e.g. "/book/glow-salon"; null when the business has no online booking.
+  bookingPath: string | null;
+}
 
 export interface SmsReceiptStatus {
   status: "OFF" | "UNPAID" | "NO_CUSTOMER" | "NO_PHONE" | "NOT_READY" | "NO_CREDITS" | "PENDING" | "SENT" | "FAILED";
@@ -2422,6 +2468,24 @@ export const api = {
   sendTestSms: (token: string, phone: string, message: string) =>
     request<SmsMessage>("/api/sms/test-send", { method: "POST", body: JSON.stringify({ phone, message }) }, token),
 
+  // --- Loyalty points ---
+
+  getLoyaltyProgram: (token: string) => request<LoyaltyProgram>("/api/loyalty/program", {}, token),
+
+  updateLoyaltyProgram: (token: string, payload: LoyaltyProgram) =>
+    request<LoyaltyProgram>("/api/loyalty/program", { method: "PUT", body: JSON.stringify(payload) }, token),
+
+  listLoyaltyCustomers: (token: string) => request<LoyaltyCustomerRow[]>("/api/loyalty/customers", {}, token),
+
+  getLoyaltyStatus: (token: string, customerId: string) =>
+    request<LoyaltyStatus>(`/api/loyalty/customers/${customerId}`, {}, token),
+
+  redeemLoyaltyReward: (token: string, customerId: string) =>
+    request<LoyaltyStatus>(`/api/loyalty/customers/${customerId}/redeem`, { method: "POST" }, token),
+
+  // The customer's own page — open to anyone with the link, no login.
+  getPublicLoyalty: (loyaltyToken: string) => request<PublicLoyalty>(`/api/public/loyalty/${loyaltyToken}`),
+
   setSmsReceiptMode: (token: string, mode: SmsReceiptMode) =>
     request<SmsAccount>("/api/sms/receipt-mode", { method: "PATCH", body: JSON.stringify({ mode }) }, token),
 
@@ -2657,9 +2721,9 @@ export const api = {
     request<void>(`/api/platform/businesses/${id}`, { method: "DELETE" }, token),
 
   // WhatsApp channel binding — Super Admin, developer-configured (Phase 3B).
-  // A 404 from getWhatsAppBinding means "not configured yet," not an error.
+  // Resolves to undefined (a 204) when no binding is configured yet — not an error.
   getWhatsAppBinding: (token: string, businessId: string) =>
-    request<WhatsAppBinding>(`/api/platform/businesses/${businessId}/whatsapp-binding`, {}, token),
+    request<WhatsAppBinding | undefined>(`/api/platform/businesses/${businessId}/whatsapp-binding`, {}, token),
 
   createWhatsAppBinding: (token: string, businessId: string, payload: WhatsAppBindingCreatePayload) =>
     request<WhatsAppBinding>(

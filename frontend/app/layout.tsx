@@ -24,6 +24,8 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Tallia",
   },
+  // Chrome deprecated the Apple-only tag: it wants this standard one alongside it.
+  other: { "mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

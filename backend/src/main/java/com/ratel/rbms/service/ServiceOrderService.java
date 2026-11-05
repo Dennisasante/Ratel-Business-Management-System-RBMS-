@@ -74,6 +74,7 @@ public class ServiceOrderService {
             ServiceOrderStatus.CANCELLED, EnumSet.of(ServiceOrderStatus.RECEIVED)
     );
 
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final ServiceOrderRepository serviceOrderRepository;
     private final ServiceOrderItemRepository serviceOrderItemRepository;
     private final UserRepository userRepository;
@@ -109,7 +110,8 @@ public class ServiceOrderService {
             PaystackService paystackService,
             PaymentTransactionService paymentTransactionService,
             ApprovalGateService approvalGateService,
-            ModuleAccessService moduleAccessService
+            ModuleAccessService moduleAccessService,
+            org.springframework.context.ApplicationEventPublisher eventPublisher
     ) {
         this.serviceOrderRepository = serviceOrderRepository;
         this.serviceOrderItemRepository = serviceOrderItemRepository;
@@ -128,6 +130,7 @@ public class ServiceOrderService {
         this.paymentTransactionService = paymentTransactionService;
         this.approvalGateService = approvalGateService;
         this.moduleAccessService = moduleAccessService;
+        this.eventPublisher = eventPublisher;
     }
 
     // Every service on the order, resolved and validated up front — same
@@ -316,6 +319,8 @@ public class ServiceOrderService {
 
         if (newStatus == ServiceOrderStatus.COMPLETED) {
             sendReadyEmailIfPossible(order);
+            // A completed order is a visit for the customer's loyalty points (counted after commit, in the background).
+            eventPublisher.publishEvent(new ServiceOrderCompletedEvent(order.getId(), order.getBusinessId()));
         }
 
         return toResponse(order);

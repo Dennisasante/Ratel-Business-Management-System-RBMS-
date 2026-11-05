@@ -52,6 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBusiness(null);
       return;
     }
+    // Super Admin pages share this provider but have no business of their own — asking would only
+    // fail (403) and show up as an error in the browser console.
+    if (window.location.pathname.startsWith("/platform")) {
+      return;
+    }
     api.getMyBusiness(session.token).then(setBusiness).catch(() => {});
   }, [session]);
 

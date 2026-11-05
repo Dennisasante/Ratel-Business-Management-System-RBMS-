@@ -30,8 +30,9 @@ public final class SmsReceiptComposer {
             String currency,
             BigDecimal total,
             BigDecimal saved,        // null or zero -> no discount shown
-            String pointsLine,       // e.g. "Points 7/10"; null until loyalty exists
-            String link              // e.g. "app.example.com/book/glow"; null -> none
+            String pointsLine,       // e.g. "Points 7/10"; null when the business has no points program
+            String link,             // e.g. "app.example.com/p/k3x9a2f81m"; null -> none
+            String linkLabel         // what the link is for, e.g. "Book:" or "Book/points:"; null -> "Book:"
     ) {
     }
 
@@ -65,10 +66,16 @@ public final class SmsReceiptComposer {
         }
         sb.append('.');
         if (points && in.pointsLine() != null && !in.pointsLine().isBlank()) {
-            sb.append(' ').append(in.pointsLine().trim()).append('.');
+            String line = in.pointsLine().trim();
+            sb.append(' ').append(line);
+            // "Points 7/10" needs a full stop; "Reward due!" already has its own punctuation.
+            if (!line.endsWith(".") && !line.endsWith("!")) {
+                sb.append('.');
+            }
         }
         if (link && in.link() != null && !in.link().isBlank()) {
-            sb.append(" Book: ").append(in.link().trim());
+            sb.append(' ').append(in.linkLabel() == null || in.linkLabel().isBlank() ? "Book:" : in.linkLabel().trim())
+                    .append(' ').append(in.link().trim());
         }
         return sb.toString();
     }

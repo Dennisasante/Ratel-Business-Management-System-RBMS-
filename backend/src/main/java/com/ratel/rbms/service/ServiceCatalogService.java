@@ -62,6 +62,7 @@ public class ServiceCatalogService {
                 .maxConcurrentBookings(req.maxConcurrentBookings() != null ? req.maxConcurrentBookings() : 1)
                 .requiresLocation(req.requiresLocation() != null && req.requiresLocation())
                 .paymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()))
+                .countsForLoyalty(req.countsForLoyalty() == null || req.countsForLoyalty())
                 .build();
         item = serviceCatalogItemRepository.save(item);
         activityLogService.log("Added service catalog item \"" + item.getName() + "\"", "SERVICE_CATALOG", item.getId());
@@ -80,6 +81,7 @@ public class ServiceCatalogService {
         if (req.maxConcurrentBookings() != null) item.setMaxConcurrentBookings(req.maxConcurrentBookings());
         if (req.requiresLocation() != null) item.setRequiresLocation(req.requiresLocation());
         item.setPaymentPolicyOverride(normalizePolicyOverride(req.paymentPolicyOverride()));
+        if (req.countsForLoyalty() != null) item.setCountsForLoyalty(req.countsForLoyalty());
         item = serviceCatalogItemRepository.save(item);
         return ServiceCatalogItemResponse.from(item, type.getName());
     }

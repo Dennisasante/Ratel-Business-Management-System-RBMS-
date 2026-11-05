@@ -62,6 +62,7 @@ const TOGGLEABLE_MODULES: { code: string; label: string }[] = [
   { code: "SUPPLIERS_AND_PURCHASING", label: "Suppliers & Purchase Orders" },
   { code: "AI", label: "Tallia AI" },
   { code: "SMS", label: "SMS" },
+  { code: "LOYALTY", label: "Loyalty points" },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -1308,9 +1309,10 @@ function WhatsAppChannelCard({ businessId, token }: { businessId: string; token:
     setTestResult(null);
     try {
       const b = await api.getWhatsAppBinding(token, businessId);
-      setBinding(b);
-      setNotConfigured(false);
+      setBinding(b ?? null);
+      setNotConfigured(!b);
     } catch (err) {
+      // A genuine failure (not just "nothing set up yet") — leave the previous state alone.
       if (err instanceof ApiError && err.status === 404) {
         setBinding(null);
         setNotConfigured(true);

@@ -30,9 +30,13 @@ public class PlatformWhatsAppBindingController {
         this.whatsAppBindingService = whatsAppBindingService;
     }
 
+    // 204 (not 404) when nothing is set up yet — that is an ordinary state, and a 404 shows up as a red
+    // error in the browser console every time the page opens.
     @GetMapping
-    public WhatsAppBindingResponse get(@PathVariable UUID businessId) {
-        return whatsAppBindingService.get(businessId);
+    public org.springframework.http.ResponseEntity<WhatsAppBindingResponse> get(@PathVariable UUID businessId) {
+        return whatsAppBindingService.find(businessId)
+                .map(org.springframework.http.ResponseEntity::ok)
+                .orElseGet(() -> org.springframework.http.ResponseEntity.noContent().build());
     }
 
     @PostMapping

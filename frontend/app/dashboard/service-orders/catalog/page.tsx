@@ -106,6 +106,26 @@ export default function ServiceCatalogPage() {
     setCatalog((prev) => prev.map((c) => (c.id === id ? item : c)));
   }
 
+  // Switches whether a service counts as a loyalty visit. The update endpoint replaces the booking
+  // fields too, so they are sent back exactly as they are to leave them untouched.
+  async function handleSetCountsForLoyalty(id: string, counts: boolean) {
+    if (!session) return;
+    const existing = catalog.find((c) => c.id === id);
+    if (!existing) return;
+    const item = await api.updateServiceCatalogItem(session.token, id, {
+      serviceTypeId: existing.serviceTypeId,
+      name: existing.name,
+      price: existing.price,
+      bookableOnline: existing.bookableOnline,
+      durationMinutes: existing.durationMinutes,
+      maxConcurrentBookings: existing.maxConcurrentBookings,
+      requiresLocation: existing.requiresLocation,
+      paymentPolicyOverride: existing.paymentPolicyOverride ?? "",
+      countsForLoyalty: counts,
+    });
+    setCatalog((prev) => prev.map((c) => (c.id === id ? item : c)));
+  }
+
   async function handleCreatePackage(payload: ServicePackagePayload) {
     if (!session) return;
     const pkg = await api.createServicePackage(session.token, payload);
@@ -222,6 +242,7 @@ export default function ServiceCatalogPage() {
                 onCreate={handleCreateCatalogItem}
                 onEdit={handleEditCatalogItem}
                 onToggleActive={handleToggleCatalogItem}
+                onSetCountsForLoyalty={business?.enabledModules?.includes("LOYALTY") ? handleSetCountsForLoyalty : undefined}
                 onUpdateBookingSettings={handleUpdateCatalogBookingSettings}
               />
             </div>

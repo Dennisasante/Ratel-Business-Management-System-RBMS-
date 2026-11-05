@@ -10,6 +10,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import CustomerForm from "@/components/CustomerForm";
+import LoyaltyStatusPanel from "@/components/LoyaltyStatusPanel";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import StatCard from "@/components/ui/StatCard";
@@ -95,6 +96,8 @@ export default function CustomerDetailPage() {
             <StatCard label="Sales" value={sales.length} icon={ShoppingCart} tone="accent" />
             <StatCard label="Service orders" value={serviceOrders.length} icon={Wrench} tone="info" />
           </div>
+
+          <LoyaltyStatusPanel token={session.token} customerId={customer.id} name={customer.fullName} />
 
           {customer.notes && (
             <Card className="p-4">

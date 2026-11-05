@@ -18,6 +18,7 @@ public record ServiceCatalogItemResponse(
         int maxConcurrentBookings,
         boolean requiresLocation,
         String paymentPolicyOverride,
+        boolean countsForLoyalty,
         Instant createdAt
 ) {
     public static ServiceCatalogItemResponse from(ServiceCatalogItem item, String serviceTypeName) {
@@ -33,6 +34,7 @@ public record ServiceCatalogItemResponse(
                 item.getMaxConcurrentBookings(),
                 item.isRequiresLocation(),
                 item.getPaymentPolicyOverride(),
+                item.isCountsForLoyalty(),
                 item.getCreatedAt()
         );
     }

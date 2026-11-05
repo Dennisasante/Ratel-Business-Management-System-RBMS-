@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import Modal from "@/components/Modal";
 import CustomerPicker from "@/components/CustomerPicker";
+import LoyaltyStatusPanel from "@/components/LoyaltyStatusPanel";
 import QuickServiceCatalogForm from "@/components/QuickServiceCatalogForm";
 import PaymentCollectionPanel from "@/components/PaymentCollectionPanel";
 import PageHeader from "@/components/ui/PageHeader";
@@ -117,6 +118,9 @@ export default function SalesPage() {
   // What happened to the text receipt for the sale just completed.
   const [smsNotice, setSmsNotice] = useState<{ saleId: string; status: SmsReceiptStatus } | null>(null);
   const [sendingSms, setSendingSms] = useState(false);
+  // The customer just rung up — their points panel appears a moment after the sale, once the visit has been counted.
+  const [loyaltyAfterSale, setLoyaltyAfterSale] = useState<{ customerId: string; name: string | null; key: number } | null>(null);
+  const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const smsWatchRef = useRef(0);
   // Any sale currently open in the "Collect payment" modal — set right after
   // checkout for a CARD/MOBILE_MONEY sale, or by clicking "Collect payment"
@@ -179,6 +183,14 @@ export default function SalesPage() {
           : current
       );
     }
+  }
+
+  // Visits are counted in the background right after payment, so look a moment later.
+  function showLoyaltyAfterSale(customerId: string | null, name: string | null) {
+    if (!customerId) return;
+    if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current);
+    setLoyaltyAfterSale(null);
+    loyaltyTimerRef.current = setTimeout(() => setLoyaltyAfterSale({ customerId, name, key: Date.now() }), 1800);
   }
 
   async function handleSendSmsReceipt() {
@@ -348,6 +360,7 @@ export default function SalesPage() {
         // Cash/direct mobile money are PAID the instant they're rung up.
         openReceiptForPrint(sale.id);
         void watchSmsReceipt(sale.id);
+        showLoyaltyAfterSale(sale.customerId ?? null, sale.customerName);
       }
       // loadAll() refreshes stock quantities; loadSales() picks up the new
       // sale itself — but only if it actually falls inside the currently
@@ -374,6 +387,7 @@ export default function SalesPage() {
       if (justPaid) {
         openReceiptForPrint(updated.id);
         void watchSmsReceipt(updated.id);
+        showLoyaltyAfterSale(updated.customerId ?? null, updated.customerName);
       }
     }
   }
@@ -651,7 +665,10 @@ export default function SalesPage() {
               <CustomerPicker
                 key={customerPickerKey}
                 token={session.token}
-                onSelect={(c) => setCustomerId(c.id)}
+                onSelect={(c) => {
+                  setCustomerId(c.id);
+                  setLoyaltyAfterSale(null);
+                }}
               />
             </div>
 
@@ -684,6 +701,24 @@ export default function SalesPage() {
             </div>
 
             {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+
+            {/* Points: where the customer stands before this sale, and a prompt when a reward is due. */}
+            {customerId && (
+              <div className="mt-3">
+                <LoyaltyStatusPanel key={customerId} token={session.token} customerId={customerId} compact />
+              </div>
+            )}
+            {!customerId && loyaltyAfterSale && (
+              <div className="mt-3">
+                <LoyaltyStatusPanel
+                  key={loyaltyAfterSale.key}
+                  token={session.token}
+                  customerId={loyaltyAfterSale.customerId}
+                  name={loyaltyAfterSale.name}
+                  compact
+                />
+              </div>
+            )}
 
             {smsNotice && smsNotice.status.status !== "OFF" && (
               <div

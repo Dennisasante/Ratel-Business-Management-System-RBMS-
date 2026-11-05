@@ -31,6 +31,9 @@ public record ServiceCatalogItemRequest(
 
         // "NONE"/"DEPOSIT"/"FULL" to override the business's default payment
         // policy for just this service, or null/blank to use the default.
-        String paymentPolicyOverride
+        String paymentPolicyOverride,
+
+        // Does this service count as a loyalty visit? Null leaves it as it is (on for a new service).
+        Boolean countsForLoyalty
 ) {
 }
