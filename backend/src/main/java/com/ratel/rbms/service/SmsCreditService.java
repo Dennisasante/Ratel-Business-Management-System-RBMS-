@@ -2,6 +2,9 @@ package com.ratel.rbms.service;
 
 import com.ratel.rbms.dto.CheckoutResponse;
 import com.ratel.rbms.dto.SmsBundleResponse;
+import com.ratel.rbms.dto.SmsPricingResponse;
+import com.ratel.rbms.entity.SmsPlatformSettings;
+import com.ratel.rbms.repository.SmsPlatformSettingsRepository;
 import com.ratel.rbms.dto.SmsPurchaseVerifyResponse;
 import com.ratel.rbms.entity.SmsBundle;
 import com.ratel.rbms.entity.SmsCreditLedger;
@@ -51,6 +54,7 @@ public class SmsCreditService {
     private static final Duration PENDING_EXPIRY = Duration.ofHours(24);
 
     private final SmsBundleRepository bundleRepository;
+    private final SmsPlatformSettingsRepository settingsRepository;
     private final SmsCreditPurchaseRepository purchaseRepository;
     private final SmsAccountRepository accountRepository;
     private final UserRepository userRepository;
@@ -62,6 +66,7 @@ public class SmsCreditService {
 
     public SmsCreditService(
             SmsBundleRepository bundleRepository,
+            SmsPlatformSettingsRepository settingsRepository,
             SmsCreditPurchaseRepository purchaseRepository,
             SmsAccountRepository accountRepository,
             UserRepository userRepository,
@@ -72,6 +77,7 @@ public class SmsCreditService {
             PlatformTransactionManager transactionManager
     ) {
         this.bundleRepository = bundleRepository;
+        this.settingsRepository = settingsRepository;
         this.purchaseRepository = purchaseRepository;
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
@@ -89,40 +95,87 @@ public class SmsCreditService {
                 .toList();
     }
 
+    /** Smallest and largest single top-up, in GHS. */
+    public static final BigDecimal MIN_AMOUNT = new BigDecimal("5.00");
+    public static final BigDecimal MAX_AMOUNT = new BigDecimal("5000.00");
+
+    /** The price of one credit and the allowed amounts, for the "Buy credits" screen. */
+    public SmsPricingResponse pricing() {
+        moduleAccessService.requireModule(TenantContext.getBusinessId(), SmsService.MODULE);
+        return new SmsPricingResponse(sellPrice(), MIN_AMOUNT, MAX_AMOUNT, "GHS");
+    }
+
+    /** How many credits an amount buys at a price — whole credits only, the remainder is never charged for. */
+    public static int creditsFor(BigDecimal amount, BigDecimal pricePerCredit) {
+        return amount.divide(pricePerCredit, 0, RoundingMode.DOWN).intValueExact();
+    }
+
+    /** Buy by amount: the business types how much to spend and gets amount / price-per-credit credits. */
+    public CheckoutResponse startPurchaseByAmount(BigDecimal requestedAmount) {
+        UUID businessId = TenantContext.getBusinessId();
+        moduleAccessService.requireModule(businessId, SmsService.MODULE);
+        requireProvider();
+
+        BigDecimal price = sellPrice();
+        if (price == null) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Credits aren't on sale yet. Please contact support.");
+        }
+        BigDecimal amount = requestedAmount.setScale(2, RoundingMode.HALF_UP);
+        if (amount.compareTo(MIN_AMOUNT) < 0 || amount.compareTo(MAX_AMOUNT) > 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Enter an amount between GHS " + MIN_AMOUNT.toPlainString() + " and GHS " + MAX_AMOUNT.toPlainString() + ".");
+        }
+        int credits = creditsFor(amount, price);
+        if (credits < 1) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "That amount is too small to buy a credit.");
+        }
+        return checkout(businessId, null, "Top-up", credits, amount, "amount");
+    }
+
     public CheckoutResponse startPurchase(UUID bundleId) {
         UUID businessId = TenantContext.getBusinessId();
         moduleAccessService.requireModule(businessId, SmsService.MODULE);
-
-        if (!gateway.isConfigured()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SMS isn't available right now. Please contact support.");
-        }
+        requireProvider();
 
         SmsBundle bundle = bundleRepository.findById(bundleId)
                 .filter(SmsBundle::isActive)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "This bundle isn't available."));
+        return checkout(businessId, bundle.getId(), bundle.getName(), bundle.getCredits(), bundle.getPrice(), bundle.getId().toString());
+    }
 
+    private void requireProvider() {
+        if (!gateway.isConfigured()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SMS isn't available right now. Please contact support.");
+        }
+    }
+
+    private BigDecimal sellPrice() {
+        return settingsRepository.findById(SmsPlatformSettings.ROW_ID).map(SmsPlatformSettings::getSellPricePerCredit).orElse(null);
+    }
+
+    private CheckoutResponse checkout(UUID businessId, UUID bundleId, String name, int credits, BigDecimal amount, String source) {
         User owner = userRepository.findById(TenantContext.getUserId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found."));
 
         String reference = REFERENCE_PREFIX + businessId.toString().substring(0, 8) + "-" + UUID.randomUUID().toString().substring(0, 8);
-        long amountMinorUnits = bundle.getPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        long amountMinorUnits = amount.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValueExact();
 
         PaystackService.InitResult init = paystackService.initializeTransaction(
                 paystackService.resolvePlatformSecretKey(),
                 owner.getEmail(),
                 amountMinorUnits,
                 reference,
-                Map.of("businessId", businessId.toString(), "purpose", "sms_credits", "bundleId", bundle.getId().toString())
+                Map.of("businessId", businessId.toString(), "purpose", "sms_credits", "source", source)
         );
 
-        // The bundle's name/credits/price are copied onto the purchase so a later
-        // edit to the bundle can't change what this payment is for.
+        // The name, credits and amount are copied onto the purchase so a later price change
+        // can't alter what this payment is for.
         purchaseRepository.save(SmsCreditPurchase.builder()
                 .businessId(businessId)
-                .bundleId(bundle.getId())
-                .bundleName(bundle.getName())
-                .credits(bundle.getCredits())
-                .amount(bundle.getPrice())
+                .bundleId(bundleId)
+                .bundleName(name)
+                .credits(credits)
+                .amount(amount)
                 .paystackReference(init.reference())
                 .build());
 

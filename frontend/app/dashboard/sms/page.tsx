@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, History, Megaphone, MessageSquare, Receipt, Send, ShoppingBag, Wallet } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { api, ApiError, SmsAccount, SmsBundle, SmsEstimate, SmsLedgerEntry, SmsMessage, SmsReceiptMode } from "@/lib/api";
-import PaystackCheckoutButton from "@/components/PaystackCheckoutButton";
+import { api, ApiError, SmsAccount, SmsEstimate, SmsLedgerEntry, SmsMessage, SmsReceiptMode } from "@/lib/api";
 import SmsReceiptCard from "@/components/SmsReceiptCard";
 import SmsCampaignsPanel from "@/components/SmsCampaignsPanel";
+import SmsBuyCredits from "@/components/SmsBuyCredits";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -68,7 +68,6 @@ export default function SmsPage() {
   const isOwner = session?.role === "OWNER";
 
   const [account, setAccount] = useState<SmsAccount | null>(null);
-  const [bundles, setBundles] = useState<SmsBundle[]>([]);
   const [messages, setMessages] = useState<SmsMessage[]>([]);
   const [ledger, setLedger] = useState<SmsLedgerEntry[]>([]);
   const [fetching, setFetching] = useState(true);
@@ -108,8 +107,6 @@ export default function SmsPage() {
     setAccount(a);
     setMessages(m);
     setLedger(l);
-    // Bundles are an Owner-only endpoint — a Manager can send but not buy.
-    if (session.role === "OWNER") setBundles(await api.listSmsBundles(session.token));
   }, [session]);
 
   // The tab lives in the address (?tab=receipts) so it survives a refresh and can be linked to.
@@ -340,33 +337,8 @@ export default function SmsPage() {
                 </div>
                 {!account.providerConfigured ? (
                   <p className="text-sm text-ink-500">Credits can&apos;t be bought until SMS is switched on for your account.</p>
-                ) : bundles.length === 0 ? (
-                  <p className="text-sm text-ink-500">No credit bundles are on sale yet — check back soon.</p>
                 ) : (
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {bundles.map((bundle) => (
-                      <Card key={bundle.id} className="flex flex-col gap-3 p-5">
-                        <h3 className="text-sm font-semibold text-ink-900">{bundle.name}</h3>
-                        <div>
-                          <p className="text-2xl font-semibold text-ink-900">GHS {bundle.price.toFixed(2)}</p>
-                          <p className="text-xs text-ink-500">
-                            {bundle.credits.toLocaleString()} credits · GHS {bundle.pricePerCredit.toFixed(3)} each
-                          </p>
-                        </div>
-                        {/* The checkout button is shared with subscriptions, which call this
-                            field a plan id — here it carries the bundle id (months is unused). */}
-                        <PaystackCheckoutButton
-                          planId={bundle.id}
-                          months={1}
-                          buttonLabel="Pay with Paystack"
-                          className="mt-1 w-full rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-                          onStartCheckout={(bundleId) => api.startSmsPurchase(session.token, bundleId)}
-                          onVerify={handleVerify}
-                          onError={setError}
-                        />
-                      </Card>
-                    ))}
-                  </div>
+                  <SmsBuyCredits token={session.token} onVerify={handleVerify} onError={setError} />
                 )}
               </div>
             )}

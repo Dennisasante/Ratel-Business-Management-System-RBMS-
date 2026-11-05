@@ -101,6 +101,18 @@ public class SmsController {
         return smsCreditService.listBundles();
     }
 
+    @GetMapping("/pricing")
+    @PreAuthorize("hasRole('OWNER')")
+    public com.ratel.rbms.dto.SmsPricingResponse pricing() {
+        return smsCreditService.pricing();
+    }
+
+    @PostMapping("/purchase/amount")
+    @PreAuthorize("hasRole('OWNER')")
+    public CheckoutResponse checkoutByAmount(@Valid @RequestBody com.ratel.rbms.dto.SmsAmountCheckoutRequest request) {
+        return smsCreditService.startPurchaseByAmount(request.amount());
+    }
+
     @PostMapping("/purchase/checkout")
     @PreAuthorize("hasRole('OWNER')")
     public CheckoutResponse checkout(@Valid @RequestBody SmsPurchaseCheckoutRequest request) {

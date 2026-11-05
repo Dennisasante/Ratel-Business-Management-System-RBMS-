@@ -74,6 +74,7 @@ public class SmsPlatformService {
                 balance.map(SmsGateway.ProviderBalance::bonus).orElse(null),
                 accountRepository.totalOutstandingCredits(),
                 providerCost(),
+                sellPrice(),
                 key.source().name(),
                 key.hint());
     }
@@ -104,13 +105,21 @@ public class SmsPlatformService {
         return settingsRepository.findById(SmsPlatformSettings.ROW_ID).map(SmsPlatformSettings::getProviderCostPerCredit).orElse(null);
     }
 
-    // What the provider charges Tallia per credit — the basis for every profit figure on this page.
+    private BigDecimal sellPrice() {
+        return settingsRepository.findById(SmsPlatformSettings.ROW_ID).map(SmsPlatformSettings::getSellPricePerCredit).orElse(null);
+    }
+
+    // What the provider charges Tallia per credit (the basis for every profit figure) and what a
+    // business pays Tallia per credit (the price of buying by amount).
     public void updateSettings(UUID adminId, SmsPlatformSettingsRequest req) {
         SmsPlatformSettings settings = settingsRepository.findById(SmsPlatformSettings.ROW_ID).orElseGet(SmsPlatformSettings::new);
         settings.setProviderCostPerCredit(req.providerCostPerCredit());
+        settings.setSellPricePerCredit(req.sellPricePerCredit());
         settingsRepository.save(settings);
-        auditLogService.log(adminId, "SMS provider cost per credit set to "
-                + (req.providerCostPerCredit() == null ? "(none)" : req.providerCostPerCredit().toPlainString()), null, null, null);
+        auditLogService.log(adminId, "SMS pricing set: provider cost per credit "
+                + (req.providerCostPerCredit() == null ? "(none)" : req.providerCostPerCredit().toPlainString())
+                + ", selling price per credit "
+                + (req.sellPricePerCredit() == null ? "(none)" : req.sellPricePerCredit().toPlainString()), null, null, null);
     }
 
     // ---- Bundles ----

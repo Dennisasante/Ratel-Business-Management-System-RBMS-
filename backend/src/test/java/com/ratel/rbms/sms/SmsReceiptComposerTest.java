@@ -10,86 +10,69 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SmsReceiptComposerTest {
 
-    private static SmsReceiptComposer.Input input(String business, String name, String saved, String points, String link) {
-        return new SmsReceiptComposer.Input(business, name, 1042, "GHS", new BigDecimal("770"),
-                saved == null ? null : new BigDecimal(saved), points, link, null);
+    private static final String POINTS = "Points: 7 (reach 10 to earn a reward)";
+
+    private static SmsReceiptComposer.Input input(String name, String saved, String points, String link, String label) {
+        return new SmsReceiptComposer.Input(name, 1042, "GHS", new BigDecimal("85"),
+                saved == null ? null : new BigDecimal(saved), points, link, label);
     }
 
     @Test
-    void theCompactReceiptFitsInOneCreditWithEverythingKept() {
-        String text = SmsReceiptComposer.compose(input("Glow Salon", "Ama", "20", null, "app.example.com/book/glow"));
+    void theFullReceiptReadsAsShortSeparateLines() {
+        String text = SmsReceiptComposer.compose(input("Dennis", "10", POINTS,
+                "app.example.com/p/k3x9a2f81m", "Book an appointment or check your points:"));
 
-        assertEquals("Glow Salon: Hi Ama, receipt #1042 GHS 770.00 (saved 20.00). Book: app.example.com/book/glow", text);
+        assertEquals("Thank you for shopping with us, Dennis!\n"
+                + "\n"
+                + "Receipt #1042\n"
+                + "Total: GHS 85.00 (saved 10.00)\n"
+                + "Points: 7 (reach 10 to earn a reward)\n"
+                + "\n"
+                + "Book an appointment or check your points:\n"
+                + "app.example.com/p/k3x9a2f81m", text);
+    }
+
+    @Test
+    void withoutAPointsProgramTheLinkIsJustTheBookingPage() {
+        String text = SmsReceiptComposer.compose(input("Dennis", null, null, "app.example.com/book/glow", null));
+
+        assertEquals("Thank you for shopping with us, Dennis!\n\nReceipt #1042\nTotal: GHS 85.00"
+                + "\n\nBook an appointment:\napp.example.com/book/glow", text);
         assertEquals(1, SmsSegmentCalculator.calculate(text).segments());
     }
 
     @Test
-    void noDiscountMeansNoSavedBracket() {
-        String text = SmsReceiptComposer.compose(input("Glow Salon", "Ama", null, null, null));
+    void noDiscountMeansNoSavedBracketAndNoLinkMeansNoLinkBlock() {
+        String text = SmsReceiptComposer.compose(input("Dennis", null, null, null, null));
 
-        assertEquals("Glow Salon: Hi Ama, receipt #1042 GHS 770.00.", text);
-        assertFalse(text.contains("saved"));
+        assertEquals("Thank you for shopping with us, Dennis!\n\nReceipt #1042\nTotal: GHS 85.00", text);
     }
 
     @Test
     void aZeroDiscountIsNotShown() {
-        assertFalse(SmsReceiptComposer.compose(input("Glow Salon", "Ama", "0.00", null, null)).contains("saved"));
+        assertFalse(SmsReceiptComposer.compose(input("Dennis", "0.00", null, null, null)).contains("saved"));
     }
 
     @Test
-    void aWalkInWithoutANameGetsNoGreeting() {
-        String text = SmsReceiptComposer.compose(input("Glow Salon", null, null, null, null));
+    void aWalkInWithoutANameStillGetsAThankYou() {
+        String text = SmsReceiptComposer.compose(input(null, null, null, null, null));
 
-        assertFalse(text.contains("Hi "));
-        assertTrue(text.startsWith("Glow Salon: receipt #1042"));
+        assertTrue(text.startsWith("Thank you for shopping with us!\n"), text);
     }
 
     @Test
-    void whenTooLongTheGreetingGoesFirstThenTheLink() {
-        // Sized so the full version is 161 characters (one over) and only the greeting has to go.
-        String business = "B".repeat(67);
-        String link = "app.ratelsystems.tech/book/glow-studio";
+    void theRewardReadyLineIsPassedThroughAsIs() {
+        String text = SmsReceiptComposer.compose(input("Dennis", null, "Points: 10 - reward ready!", null, null));
 
-        String text = SmsReceiptComposer.compose(input(business, "Ama", "20", null, link));
-
-        assertEquals(1, SmsSegmentCalculator.calculate(text).segments());
-        assertFalse(text.contains("Hi Ama"), "the greeting is the first thing dropped");
-        // The receipt itself is never dropped.
-        assertTrue(text.contains("#1042") && text.contains("770.00") && text.contains("saved 20.00"));
+        assertTrue(text.contains("\nPoints: 10 - reward ready!"), text);
     }
 
     @Test
-    void thePointsLineIsKeptAheadOfTheLinkWhenSpaceIsTight() {
-        // Sized so dropping the greeting still leaves 161 characters: the link has to go too, the points stay.
-        String text = SmsReceiptComposer.compose(input("B".repeat(62), "Ama", "20", "Points 7/10",
-                "app.ratelsystems.tech/book/glow-studio"));
+    void theCurrencyIsWrittenAsACodeAndTheTextStaysInTheCheapEncoding() {
+        String text = SmsReceiptComposer.compose(input("Dennis", "10", POINTS, "app.example.com/p/k3x9a2f81m",
+                "Book an appointment or check your points:"));
 
-        assertEquals(1, SmsSegmentCalculator.calculate(text).segments());
-        assertTrue(text.contains("Points 7/10"));
-        assertFalse(text.contains("Book:"));
-    }
-
-    @Test
-    void anImpossiblyLongBusinessNameStillSendsTheFullReceipt() {
-        String text = SmsReceiptComposer.compose(input("A".repeat(150), "Ama", "20", null, null));
-
-        assertTrue(text.contains("#1042 GHS 770.00 (saved 20.00)"), "information is never dropped to save a credit");
-    }
-
-    @Test
-    void aPointsLineThatAlreadyEndsInPunctuationIsNotGivenASecondOne() {
-        String due = SmsReceiptComposer.compose(input("Glow Salon", "Ama", null, "Reward due!", null));
-        String counting = SmsReceiptComposer.compose(input("Glow Salon", "Ama", null, "Points 7/10", null));
-
-        assertTrue(due.contains("Reward due!") && !due.contains("!."), due);
-        assertTrue(counting.contains("Points 7/10."), counting);
-    }
-
-    @Test
-    void theCurrencyIsWrittenAsACodeNeverTheCediSign() {
-        String text = SmsReceiptComposer.compose(input("Glow Salon", "Ama", "20", null, null));
-
-        assertFalse(SmsSegmentCalculator.calculate(text).unicode());
+        assertFalse(SmsSegmentCalculator.calculate(text).unicode(), "line breaks and plain letters stay in the 160-character encoding");
         assertFalse(text.contains("₵"));
     }
 }

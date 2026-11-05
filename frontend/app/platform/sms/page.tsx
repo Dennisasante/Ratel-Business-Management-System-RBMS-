@@ -7,7 +7,6 @@ import {
   api,
   ApiError,
   PlatformSmsAccount,
-  PlatformSmsBundle,
   PlatformSmsOverview,
   SmsSenderStatus,
 } from "@/lib/api";
@@ -26,20 +25,17 @@ const INPUT_CLASS =
 export default function PlatformSmsPage() {
   const { session } = usePlatformAuth();
   const [overview, setOverview] = useState<PlatformSmsOverview | null>(null);
-  const [bundles, setBundles] = useState<PlatformSmsBundle[]>([]);
   const [accounts, setAccounts] = useState<PlatformSmsAccount[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!session) return;
-    const [o, b, a] = await Promise.all([
+    const [o, a] = await Promise.all([
       api.getPlatformSmsOverview(session.token),
-      api.listPlatformSmsBundles(session.token),
       api.listPlatformSmsAccounts(session.token),
     ]);
     setOverview(o);
-    setBundles(b);
     setAccounts(a);
   }, [session]);
 
@@ -52,7 +48,7 @@ export default function PlatformSmsPage() {
   return (
     <PlatformShell>
       <div className="flex flex-col gap-6">
-        <PageHeader title="SMS" subtitle="The SMS provider, the credit bundles on sale, and each business's sender name and credits." />
+        <PageHeader title="SMS" subtitle="The SMS provider, what a credit costs and sells for, and each business's sender name and credits." />
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
@@ -61,7 +57,6 @@ export default function PlatformSmsPage() {
         ) : (
           <>
             {session && <OverviewCard token={session.token} overview={overview} onChanged={load} />}
-            {session && <BundlesSection token={session.token} bundles={bundles} onChanged={load} />}
             {session && <AccountsSection token={session.token} accounts={accounts} onChanged={load} />}
           </>
         )}
@@ -151,16 +146,27 @@ function ProviderKeyForm({ token, overview, onChanged }: { token: string; overvi
 function OverviewCard({ token, overview, onChanged }: { token: string; overview: PlatformSmsOverview; onChanged: () => Promise<void> }) {
   const short =
     overview.providerBalance != null && overview.outstandingClientCredits > overview.providerBalance;
-  const [cost, setCost] = useState(overview.providerCostPerCredit != null ? String(overview.providerCostPerCredit) : "");
+  const savedCost = overview.providerCostPerCredit != null ? String(overview.providerCostPerCredit) : "";
+  const savedSell = overview.sellPricePerCredit != null ? String(overview.sellPricePerCredit) : "";
+  const [cost, setCost] = useState(savedCost);
+  const [sell, setSell] = useState(savedSell);
   const [saving, setSaving] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
-  const costChanged = cost !== (overview.providerCostPerCredit != null ? String(overview.providerCostPerCredit) : "");
+  const priceChanged = cost !== savedCost || sell !== savedSell;
 
-  async function saveCost() {
+  // A worked example, so the numbers can be sanity-checked before a client sees them.
+  const costNum = cost.trim() === "" ? null : Number(cost);
+  const sellNum = sell.trim() === "" ? null : Number(sell);
+  const example = 100;
+  const exampleCredits = sellNum && sellNum > 0 ? Math.floor(example / sellNum) : null;
+  const profitPerCredit = costNum != null && sellNum != null ? sellNum - costNum : null;
+  const exampleProfit = exampleCredits != null && costNum != null ? example - exampleCredits * costNum : null;
+
+  async function savePricing() {
     setSaving(true);
     setCostError(null);
     try {
-      await api.updatePlatformSmsSettings(token, cost.trim() === "" ? null : Number(cost));
+      await api.updatePlatformSmsSettings(token, costNum, sellNum);
       await onChanged();
     } catch (err) {
       setCostError(err instanceof ApiError ? err.message : "Couldn't save that.");
@@ -200,148 +206,57 @@ function OverviewCard({ token, overview, onChanged }: { token: string; overview:
         )}
       </div>
       <div className="sm:col-span-3 border-t border-border pt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">What the provider charges us per credit (GHS)</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            type="number"
-            step="0.0001"
-            min="0"
-            value={cost}
-            onChange={(e) => setCost(e.target.value)}
-            placeholder="e.g. 0.0800"
-            aria-label="Provider cost per credit"
-            className={`${INPUT_CLASS} w-36`}
-          />
-          <Button type="button" variant="secondary" onClick={saveCost} disabled={saving || !costChanged}>
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Pricing per credit (GHS)</p>
+        <div className="mt-2 flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1 text-xs text-ink-500">
+            What the provider charges us
+            <input
+              type="number"
+              step="0.001"
+              min="0"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="e.g. 0.035"
+              aria-label="Provider cost per credit"
+              className={`${INPUT_CLASS} w-36`}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-500">
+            What we sell it for
+            <input
+              type="number"
+              step="0.001"
+              min="0"
+              value={sell}
+              onChange={(e) => setSell(e.target.value)}
+              placeholder="e.g. 0.05"
+              aria-label="Selling price per credit"
+              className={`${INPUT_CLASS} w-36`}
+            />
+          </label>
+          <Button type="button" variant="secondary" onClick={savePricing} disabled={saving || !priceChanged}>
             {saving ? "Saving..." : "Save"}
           </Button>
-          <span className="text-xs text-ink-500">Used only to show your profit on each bundle below. Clients never see it.</span>
         </div>
+        <p className="mt-2 text-xs text-ink-500">
+          {exampleCredits != null ? (
+            <>
+              A business paying GHS {example} gets <strong>{exampleCredits.toLocaleString()} credits</strong> (amount ÷ selling price).
+              {profitPerCredit != null && (
+                <>
+                  {" "}You make GHS {profitPerCredit.toFixed(3)} per credit
+                  {exampleProfit != null && <>, about GHS {exampleProfit.toFixed(2)} on that purchase</>}.
+                </>
+              )}
+              {profitPerCredit != null && profitPerCredit < 0 && <span className="text-danger"> That is a loss.</span>}
+            </>
+          ) : (
+            <>Businesses can&apos;t buy credits until you set a selling price. The provider cost is only for your profit figures; clients never see it.</>
+          )}
+        </p>
         {costError && <p className="mt-1 text-xs text-danger">{costError}</p>}
       </div>
     </Card>
-  );
-}
-
-function BundlesSection({ token, bundles, onChanged }: { token: string; bundles: PlatformSmsBundle[]; onChanged: () => Promise<void> }) {
-  const [editing, setEditing] = useState<PlatformSmsBundle | null>(null);
-  const [name, setName] = useState("");
-  const [credits, setCredits] = useState("");
-  const [price, setPrice] = useState("");
-  const [active, setActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function startEdit(bundle: PlatformSmsBundle | null) {
-    setEditing(bundle);
-    setName(bundle?.name ?? "");
-    setCredits(bundle ? String(bundle.credits) : "");
-    setPrice(bundle ? String(bundle.price) : "");
-    setActive(bundle?.active ?? true);
-    setError(null);
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSaving(true);
-    const payload = {
-      name,
-      credits: Number(credits),
-      price: Number(price),
-      active,
-      sortOrder: editing?.sortOrder ?? bundles.length,
-    };
-    try {
-      if (editing) await api.updatePlatformSmsBundle(token, editing.id, payload);
-      else await api.createPlatformSmsBundle(token, payload);
-      startEdit(null);
-      await onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold text-ink-900">Bundles</h2>
-      <Card className="p-0">
-        {bundles.length === 0 ? (
-          <p className="p-5 text-sm text-ink-500">No bundles yet — add one below so businesses can buy credits.</p>
-        ) : (
-          <Table>
-            <THead>
-              <Tr>
-                <Th>Name</Th>
-                <Th>Credits</Th>
-                <Th>Price (GHS)</Th>
-                <Th>Per credit</Th>
-                <Th>Profit per bundle</Th>
-                <Th>Status</Th>
-                <Th />
-              </Tr>
-            </THead>
-            <TBody>
-              {bundles.map((b) => (
-                <Tr key={b.id}>
-                  <Td>{b.name}</Td>
-                  <Td>{b.credits.toLocaleString()}</Td>
-                  <Td>{b.price.toFixed(2)}</Td>
-                  <Td>{b.pricePerCredit.toFixed(3)}</Td>
-                  <Td className={b.profitPerBundle != null && b.profitPerBundle < 0 ? "text-danger" : ""}>
-                    {b.profitPerBundle != null ? `GHS ${b.profitPerBundle.toFixed(2)}` : "—"}
-                  </Td>
-                  <Td>
-                    <Badge tone={b.active ? "success" : "neutral"}>{b.active ? "On sale" : "Hidden"}</Badge>
-                  </Td>
-                  <Td>
-                    <button onClick={() => startEdit(b)} className="text-xs font-medium text-accent hover:underline">
-                      Edit
-                    </button>
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </Card>
-
-      <Card className="max-w-lg p-5">
-        <form onSubmit={handleSave} className="flex flex-col gap-4">
-          <h3 className="text-sm font-semibold text-ink-900">{editing ? `Edit ${editing.name}` : "Add a bundle"}</h3>
-          <FormField label="Name" name="bundleName" required value={name} onChange={setName} />
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Credits" name="bundleCredits" type="number" required value={credits} onChange={setCredits} />
-            <FormField label="Price (GHS)" name="bundlePrice" type="number" required value={price} onChange={setPrice} />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-ink-700">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-              className="rounded border-border text-accent focus:ring-accent/20"
-            />
-            On sale
-          </label>
-          <p className="-mt-2 text-xs text-ink-500">
-            Changing a bundle only affects future purchases — past ones keep the price they were bought at.
-          </p>
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : editing ? "Save changes" : "Add bundle"}
-            </Button>
-            {editing && (
-              <Button type="button" variant="secondary" onClick={() => startEdit(null)}>
-                Cancel
-              </Button>
-            )}
-          </div>
-        </form>
-      </Card>
-    </section>
   );
 }
 

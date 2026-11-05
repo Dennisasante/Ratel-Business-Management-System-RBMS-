@@ -2,21 +2,22 @@ package com.ratel.rbms.sms;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Builds the short SMS receipt. Every message of 160 characters or fewer costs a
- * business one credit and the next tier costs two, so this tries the richest
- * version first and drops pieces, least valuable first, until it fits in one:
+ * Builds the SMS receipt. Laid out as a few short lines so it reads cleanly on a phone:
  *
- *   1. "Hi {name}," greeting   (dropped first)
- *   2. the booking link
- *   3. the points line
+ *   Thank you for shopping with us, Ama!
  *
- * The business name, receipt number, total and any discount are never dropped —
- * that is the receipt. If even that doesn't fit in one message (a very long
- * business name) it is sent anyway rather than losing information.
+ *   Receipt #1042
+ *   Total: GHS 85.00 (saved 10.00)
+ *   Points: 7 (reach 10 to earn a reward)
+ *
+ *   Book an appointment or check your points:
+ *   app.example.com/p/k3x9a2f81m
+ *
+ * The business name is deliberately not in the text: it already shows as the sender name on
+ * the customer's phone. A message is billed per 160-character segment, and this layout is
+ * normally two segments (the cost is worked out from the real text before sending).
  */
 public final class SmsReceiptComposer {
 
@@ -24,58 +25,33 @@ public final class SmsReceiptComposer {
     }
 
     public record Input(
-            String businessName,
-            String firstName,        // null/blank -> no greeting
+            String firstName,        // null/blank -> no name in the thank-you
             long receiptNumber,
             String currency,
             BigDecimal total,
             BigDecimal saved,        // null or zero -> no discount shown
-            String pointsLine,       // e.g. "Points 7/10"; null when the business has no points program
-            String link,             // e.g. "app.example.com/p/k3x9a2f81m"; null -> none
-            String linkLabel         // what the link is for, e.g. "Book:" or "Book/points:"; null -> "Book:"
+            String pointsLine,       // e.g. "Points: 7 (reach 10 to earn a reward)"; null when there is no points program
+            String link,             // e.g. "app.example.com/p/k3x9a2f81m"; null -> no link
+            String linkLabel         // what the link is for, e.g. "Book an appointment:"; null -> "Book an appointment:"
     ) {
     }
 
     public static String compose(Input in) {
-        List<String> candidates = new ArrayList<>();
-        candidates.add(build(in, true, true, true));
-        candidates.add(build(in, false, true, true));
-        candidates.add(build(in, false, false, true));
-        candidates.add(build(in, false, false, false));
-
-        for (String candidate : candidates) {
-            if (SmsSegmentCalculator.calculate(candidate).segments() <= 1) {
-                return candidate;
-            }
+        StringBuilder sb = new StringBuilder("Thank you for shopping with us");
+        if (in.firstName() != null && !in.firstName().isBlank()) {
+            sb.append(", ").append(in.firstName().trim());
         }
-        return candidates.get(candidates.size() - 1);
-    }
-
-    private static String build(Input in, boolean greeting, boolean link, boolean points) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(in.businessName()).append(": ");
-        if (greeting && in.firstName() != null && !in.firstName().isBlank()) {
-            sb.append("Hi ").append(in.firstName().trim()).append(", receipt");
-        } else {
-            sb.append("receipt");
-        }
-        sb.append(" #").append(in.receiptNumber()).append(' ')
-                .append(in.currency()).append(' ').append(money(in.total()));
+        sb.append("!\n\nReceipt #").append(in.receiptNumber())
+                .append("\nTotal: ").append(in.currency()).append(' ').append(money(in.total()));
         if (in.saved() != null && in.saved().compareTo(BigDecimal.ZERO) > 0) {
             sb.append(" (saved ").append(money(in.saved())).append(')');
         }
-        sb.append('.');
-        if (points && in.pointsLine() != null && !in.pointsLine().isBlank()) {
-            String line = in.pointsLine().trim();
-            sb.append(' ').append(line);
-            // "Points 7/10" needs a full stop; "Reward due!" already has its own punctuation.
-            if (!line.endsWith(".") && !line.endsWith("!")) {
-                sb.append('.');
-            }
+        if (in.pointsLine() != null && !in.pointsLine().isBlank()) {
+            sb.append('\n').append(in.pointsLine().trim());
         }
-        if (link && in.link() != null && !in.link().isBlank()) {
-            sb.append(' ').append(in.linkLabel() == null || in.linkLabel().isBlank() ? "Book:" : in.linkLabel().trim())
-                    .append(' ').append(in.link().trim());
+        if (in.link() != null && !in.link().isBlank()) {
+            String label = in.linkLabel() == null || in.linkLabel().isBlank() ? "Book an appointment:" : in.linkLabel().trim();
+            sb.append("\n\n").append(label).append('\n').append(in.link().trim());
         }
         return sb.toString();
     }

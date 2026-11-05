@@ -15,6 +15,8 @@ public record SmsPlatformOverviewResponse(
         long outstandingClientCredits,
         // What the provider charges Tallia per credit (Super-Admin-entered); null if not entered yet.
         BigDecimal providerCostPerCredit,
+        // What a business pays Tallia per credit (Super-Admin-entered); null while buying is closed.
+        BigDecimal sellPricePerCredit,
         // Where the provider key in use comes from: SETTINGS (saved on this page), SERVER (.env) or NONE.
         String keySource,
         // The key in use with all but its last four characters hidden; null when there is none.

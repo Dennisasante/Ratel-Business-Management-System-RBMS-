@@ -33,6 +33,10 @@ public class SmsPlatformSettings {
     @Column(name = "provider_cost_per_credit", precision = 10, scale = 4)
     private BigDecimal providerCostPerCredit;
 
+    // What a business pays Tallia per credit when it buys by amount. Null until the Super Admin sets it.
+    @Column(name = "sell_price_per_credit", precision = 10, scale = 4)
+    private BigDecimal sellPricePerCredit;
+
     // The provider's API key, saved from the Super Admin SMS page. Encrypted at rest; never sent back to the browser.
     // Takes priority over the server's MNOTIFY_API_KEY, which remains as the fallback.
     @Convert(converter = EncryptedStringConverter.class)

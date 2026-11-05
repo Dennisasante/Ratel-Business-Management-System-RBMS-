@@ -300,10 +300,10 @@ class LoyaltyIntegrationTest {
         assertNull(loyaltyService.receiptLine(businessId, customerId), "nothing to say before a first visit");
 
         earnVisits(1);
-        assertEquals("Points 1/2", loyaltyService.receiptLine(businessId, customerId));
+        assertEquals("Points: 1 (reach 2 to earn a reward)", loyaltyService.receiptLine(businessId, customerId));
 
         earnVisits(1);
-        assertEquals("Reward due!", loyaltyService.receiptLine(businessId, customerId));
+        assertEquals("Points: 2 - reward ready!", loyaltyService.receiptLine(businessId, customerId));
     }
 
     // ---- helpers ----

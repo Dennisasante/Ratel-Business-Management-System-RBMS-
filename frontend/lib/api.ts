@@ -1234,6 +1234,14 @@ export interface SmsPurchaseVerifyResult {
   message: string;
 }
 
+// What a business sees when buying credits: the price of one credit and the allowed amounts.
+export interface SmsPricing {
+  pricePerCredit: number | null;
+  minAmount: number;
+  maxAmount: number;
+  currency: string;
+}
+
 export interface PlatformSmsOverview {
   provider: string;
   providerConfigured: boolean;
@@ -1241,6 +1249,8 @@ export interface PlatformSmsOverview {
   providerBonus: number | null;
   outstandingClientCredits: number;
   providerCostPerCredit: number | null;
+  // What a business pays per credit when it buys by amount; null while buying is closed.
+  sellPricePerCredit: number | null;
   // Where the provider key in use comes from: saved on this page, the server's own settings, or none yet.
   keySource: "SETTINGS" | "SERVER" | "NONE";
   // The key in use with all but its last four characters hidden. Null when there is none.
@@ -2603,6 +2613,11 @@ export const api = {
 
   listSmsBundles: (token: string) => request<SmsBundle[]>("/api/sms/bundles", {}, token),
 
+  getSmsPricing: (token: string) => request<SmsPricing>("/api/sms/pricing", {}, token),
+
+  startSmsPurchaseByAmount: (token: string, amount: number) =>
+    request<CheckoutResponse>("/api/sms/purchase/amount", { method: "POST", body: JSON.stringify({ amount }) }, token),
+
   startSmsPurchase: (token: string, bundleId: string) =>
     request<CheckoutResponse>("/api/sms/purchase/checkout", { method: "POST", body: JSON.stringify({ bundleId }) }, token),
 
@@ -2625,8 +2640,12 @@ export const api = {
   updatePlatformSmsProviderKey: (token: string, apiKey: string) =>
     request<PlatformSmsOverview>("/api/platform/sms/provider-key", { method: "PUT", body: JSON.stringify({ apiKey }) }, token),
 
-  updatePlatformSmsSettings: (token: string, providerCostPerCredit: number | null) =>
-    request<PlatformSmsOverview>("/api/platform/sms/settings", { method: "PUT", body: JSON.stringify({ providerCostPerCredit }) }, token),
+  updatePlatformSmsSettings: (token: string, providerCostPerCredit: number | null, sellPricePerCredit: number | null) =>
+    request<PlatformSmsOverview>(
+      "/api/platform/sms/settings",
+      { method: "PUT", body: JSON.stringify({ providerCostPerCredit, sellPricePerCredit }) },
+      token
+    ),
 
   verifyPlatformSmsSender: (token: string, businessId: string) =>
     request<PlatformSmsAccount>(`/api/platform/sms/accounts/${businessId}/verify-sender`, { method: "POST" }, token),

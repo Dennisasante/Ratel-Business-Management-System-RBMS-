@@ -82,7 +82,7 @@ export default function SmsReceiptCard({
         {sendsSms && (
           <div className="mt-4 flex flex-col gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-ink-500">What the customer receives</p>
-            <p className="rounded-lg bg-canvas px-3 py-2 text-sm text-ink-900">{preview ? preview.message : "..."}</p>
+            <p className="whitespace-pre-line break-words rounded-lg bg-canvas px-3 py-2 text-sm text-ink-900">{preview ? preview.message : "..."}</p>
             {preview && (
               <p className="text-xs text-ink-500">
                 {preview.length} characters · {preview.segments} credit{preview.segments === 1 ? "" : "s"} per receipt (sample details shown).
@@ -91,7 +91,7 @@ export default function SmsReceiptCard({
             <ul className="list-disc pl-5 text-xs text-ink-500">
               <li>It sends on its own as soon as a sale is fully paid, and uses your SMS credits.</li>
               <li>If a customer has no phone number, or you run out of credits, the sale still goes through and staff see a note.</li>
-              <li>A discount, when there is one, shows as &ldquo;saved&rdquo;. Very long business names drop the greeting first, then the booking link.</li>
+              <li>A discount, when there is one, shows as &ldquo;saved&rdquo;. A receipt with points and a link is usually two texts (2 credits); without them it is often one.</li>
             </ul>
             {!account.senderApproved && (
               <p className="text-xs text-danger">Texts won&apos;t go out until your sender name is approved — contact support.</p>

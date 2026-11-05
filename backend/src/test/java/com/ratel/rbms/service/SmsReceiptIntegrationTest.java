@@ -115,8 +115,8 @@ class SmsReceiptIntegrationTest {
         assertEquals(SmsReceiptService.SENT, result.status());
         ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
         verify(gateway).send(anyString(), anyString(), text.capture());
-        assertTrue(text.getValue().startsWith("Shell Luxury Hair: Hi Dennis, receipt #"), text.getValue());
-        assertTrue(text.getValue().contains("GHS 770.00 (saved 20.00)"), text.getValue());
+        assertTrue(text.getValue().startsWith("Thank you for shopping with us, Dennis!\n\nReceipt #"), text.getValue());
+        assertTrue(text.getValue().contains("Total: GHS 770.00 (saved 20.00)"), text.getValue());
         assertTrue(text.getValue().contains("/book/shell-"), "the booking link rides along");
         assertEquals(9, smsService.balanceOf(businessId), "one credit for one compact message");
     }
@@ -269,10 +269,10 @@ class SmsReceiptIntegrationTest {
         ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
         verify(gateway).send(anyString(), anyString(), text.capture());
         // This sale's visit is counted BEFORE the text is written, so it already shows 1/10.
-        assertTrue(text.getValue().contains("Points 1/10."), text.getValue());
-        assertTrue(text.getValue().matches(".*Book/points: \\S+/p/[a-z2-9]{10}$"), text.getValue());
+        assertTrue(text.getValue().contains("\nPoints: 1 (reach 10 to earn a reward)\n"), text.getValue());
+        assertTrue(text.getValue().matches("(?s).*\\n\\nBook an appointment or check your points:\\n\\S+/p/[a-z2-9]{10}$"), text.getValue());
         assertFalse(text.getValue().contains("/book/"), "the personal link replaces the plain booking link");
-        assertEquals(1, com.ratel.rbms.sms.SmsSegmentCalculator.calculate(text.getValue()).segments(), "still one credit");
+        assertEquals(2, com.ratel.rbms.sms.SmsSegmentCalculator.calculate(text.getValue()).segments(), "the full wording costs two credits");
     }
 
     @Test
@@ -284,7 +284,7 @@ class SmsReceiptIntegrationTest {
         ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
         verify(gateway).send(anyString(), anyString(), text.capture());
         assertFalse(text.getValue().contains("Points"), text.getValue());
-        assertTrue(text.getValue().contains("Book: ") && text.getValue().contains("/book/shell-"), text.getValue());
+        assertTrue(text.getValue().contains("Book an appointment:\n") && text.getValue().contains("/book/shell-"), text.getValue());
     }
 
     // ---- helpers ----

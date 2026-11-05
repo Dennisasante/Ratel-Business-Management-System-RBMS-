@@ -135,11 +135,11 @@ public class SmsReceiptService {
         // With a points program on, the sample shows the points line and the personal link, as real receipts will.
         boolean points = loyaltyService.isActive(businessId);
         String text = SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                business.getName(), "Ama", 1042, business.getCurrency(),
+                "Ama", 1042, business.getCurrency(),
                 new BigDecimal("770.00"), new BigDecimal("20.00"),
-                points ? "Points 7/10" : null,
+                points ? "Points: 7 (reach 10 to earn a reward)" : null,
                 points ? frontendHost() + "/p/k3x9a2f81m" : bookingLink(business),
-                points ? "Book/points:" : null));
+                points ? pointsLinkLabel(business) : null));
         SmsSegmentCalculator.Result size = SmsSegmentCalculator.calculate(text);
         return new SmsReceiptPreviewResponse(text, size.segments(), size.length(), size.unicode());
     }
@@ -167,7 +167,7 @@ public class SmsReceiptService {
 
         Business business = businessRepository.findById(businessId).orElseThrow();
         Customer customer = customerRepository.findById(sale.getCustomerId()).orElseThrow();
-        // Count today's visit BEFORE writing the text, so "Points 7/10" already includes this sale.
+        // Count today's visit BEFORE writing the text, so the points shown already include this sale.
         // Idempotent — the loyalty listener may well have done it already.
         try {
             loyaltyService.recordVisitForSale(saleId);
@@ -257,11 +257,19 @@ public class SmsReceiptService {
         String pointsLink = loyaltyService.shortLink(business.getId(), customer.getId());
         boolean usePoints = pointsLine != null && pointsLink != null;
         return SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),
+                firstName(customer), sale.getSaleNumber(), business.getCurrency(),
                 sale.getTotalAmount(), totalSaved(sale),
-                pointsLine,
+                usePoints ? pointsLine : null,
                 usePoints ? pointsLink : bookingLink(business),
-                usePoints ? "Book/points:" : null));
+                usePoints ? pointsLinkLabel(business) : null));
+    }
+
+    // The personal link leads to the customer's points and, when the business takes online
+    // bookings, a Book button — so the line only promises what the page really offers.
+    private String pointsLinkLabel(Business business) {
+        return moduleAccessService.hasModule(business.getId(), "BOOKINGS")
+                ? "Book an appointment or check your points:"
+                : "Check your points:";
     }
 
     private String frontendHost() {
