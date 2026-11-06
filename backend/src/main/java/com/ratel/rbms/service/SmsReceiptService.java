@@ -135,9 +135,9 @@ public class SmsReceiptService {
         // With a points program on, the sample shows the points line and the personal link, as real receipts will.
         boolean points = loyaltyService.isActive(businessId);
         String text = SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                "Ama", 1042, business.getCurrency(),
+                business.getName(), "Ama", 1042, business.getCurrency(),
                 new BigDecimal("770.00"), new BigDecimal("20.00"),
-                points ? "Points: 7 (reach 10 to earn a reward)" : null,
+                points ? "You currently have 7 points (reach 10 points to earn a reward)" : null,
                 points ? frontendHost() + "/p/k3x9a2f81m" : bookingLink(business),
                 points ? pointsLinkLabel(business) : null));
         SmsSegmentCalculator.Result size = SmsSegmentCalculator.calculate(text);
@@ -257,7 +257,7 @@ public class SmsReceiptService {
         String pointsLink = loyaltyService.shortLink(business.getId(), customer.getId());
         boolean usePoints = pointsLine != null && pointsLink != null;
         return SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
-                firstName(customer), sale.getSaleNumber(), business.getCurrency(),
+                business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),
                 sale.getTotalAmount(), totalSaved(sale),
                 usePoints ? pointsLine : null,
                 usePoints ? pointsLink : bookingLink(business),
@@ -268,8 +268,8 @@ public class SmsReceiptService {
     // bookings, a Book button — so the line only promises what the page really offers.
     private String pointsLinkLabel(Business business) {
         return moduleAccessService.hasModule(business.getId(), "BOOKINGS")
-                ? "Book an appointment or check your points:"
-                : "Check your points:";
+                ? "To book an appointment or check your points:"
+                : "To check your points:";
     }
 
     private String frontendHost() {

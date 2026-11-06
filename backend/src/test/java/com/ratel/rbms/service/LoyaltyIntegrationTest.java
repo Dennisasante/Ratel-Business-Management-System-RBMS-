@@ -156,6 +156,17 @@ class LoyaltyIntegrationTest {
     }
 
     @Test
+    void aSaleOfServicesAndProductsTogetherCountsAsAVisit() {
+        UUID mixed = serviceSale(countingService, "PAID");
+        saleItemRepository.save(SaleItem.builder()
+                .businessId(businessId).saleId(mixed).itemType(SaleItemType.PRODUCT)
+                .productName("Shampoo").unitPrice(new BigDecimal("50")).quantity(1).subtotal(new BigDecimal("50")).build());
+
+        assertTrue(loyaltyService.recordVisitForSale(mixed), "a service plus a product is a visit");
+        assertEquals(1, loyaltyService.statusFor(businessId, customerId).visits());
+    }
+
+    @Test
     void anUnpaidSaleAndAWalkInDoNotCount() {
         assertFalse(loyaltyService.recordVisitForSale(serviceSale(countingService, "UNPAID")));
 
@@ -300,10 +311,10 @@ class LoyaltyIntegrationTest {
         assertNull(loyaltyService.receiptLine(businessId, customerId), "nothing to say before a first visit");
 
         earnVisits(1);
-        assertEquals("Points: 1 (reach 2 to earn a reward)", loyaltyService.receiptLine(businessId, customerId));
+        assertEquals("You currently have 1 point (reach 2 points to earn a reward)", loyaltyService.receiptLine(businessId, customerId));
 
         earnVisits(1);
-        assertEquals("Points: 2 - reward ready!", loyaltyService.receiptLine(businessId, customerId));
+        assertEquals("You currently have 2 points - your reward is ready!", loyaltyService.receiptLine(businessId, customerId));
     }
 
     // ---- helpers ----

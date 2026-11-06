@@ -201,15 +201,16 @@ public class LoyaltyService {
         return statusFor(businessId, customerId);
     }
 
-    /** A line for the receipt text, e.g. "Points: 7 (reach 10 to earn a reward)" or "Points: 10 - reward ready!", or null when there is nothing to say. */
+    /** A line for the receipt text, e.g. "You currently have 7 points (reach 10 points to earn a reward)", or null when there is nothing to say. */
     public String receiptLine(UUID businessId, UUID customerId) {
         LoyaltyStatusResponse status = statusFor(businessId, customerId);
         if (!status.active() || status.pointsUrl() == null) {
             return null;
         }
+        String have = "You currently have " + status.visits() + (status.visits() == 1 ? " point" : " points");
         return status.rewardDue()
-                ? "Points: " + status.visits() + " - reward ready!"
-                : "Points: " + status.visits() + " (reach " + status.target() + " to earn a reward)";
+                ? have + " - your reward is ready!"
+                : have + " (reach " + status.target() + " points to earn a reward)";
     }
 
     /** The short form of the customer's points link for a text message (no https://, to save characters). */

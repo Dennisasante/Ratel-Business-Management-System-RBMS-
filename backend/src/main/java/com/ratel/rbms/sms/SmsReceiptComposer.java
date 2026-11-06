@@ -6,18 +6,17 @@ import java.math.RoundingMode;
 /**
  * Builds the SMS receipt. Laid out as a few short lines so it reads cleanly on a phone:
  *
- *   Thank you for shopping with us, Ama!
+ *   Thank you for choosing Glow Studio, Ama!
  *
  *   Receipt #1042
  *   Total: GHS 85.00 (saved 10.00)
- *   Points: 7 (reach 10 to earn a reward)
+ *   You currently have 7 points (reach 10 points to earn a reward)
  *
- *   Book an appointment or check your points:
+ *   To book an appointment or check your points:
  *   app.example.com/p/k3x9a2f81m
  *
- * The business name is deliberately not in the text: it already shows as the sender name on
- * the customer's phone. A message is billed per 160-character segment, and this layout is
- * normally two segments (the cost is worked out from the real text before sending).
+ * A message is billed per 160-character segment, and this layout is normally two segments
+ * (the cost is worked out from the real text before sending).
  */
 public final class SmsReceiptComposer {
 
@@ -25,19 +24,21 @@ public final class SmsReceiptComposer {
     }
 
     public record Input(
+            String businessName,
             String firstName,        // null/blank -> no name in the thank-you
             long receiptNumber,
             String currency,
             BigDecimal total,
             BigDecimal saved,        // null or zero -> no discount shown
-            String pointsLine,       // e.g. "Points: 7 (reach 10 to earn a reward)"; null when there is no points program
+            String pointsLine,       // e.g. "You currently have 7 points (reach 10 points to earn a reward)"; null when there is no points program
             String link,             // e.g. "app.example.com/p/k3x9a2f81m"; null -> no link
-            String linkLabel         // what the link is for, e.g. "Book an appointment:"; null -> "Book an appointment:"
+            String linkLabel         // what the link is for, e.g. "To book an appointment:"; null -> "To book an appointment:"
     ) {
     }
 
     public static String compose(Input in) {
-        StringBuilder sb = new StringBuilder("Thank you for shopping with us");
+        StringBuilder sb = new StringBuilder("Thank you for choosing ");
+        sb.append(in.businessName() == null || in.businessName().isBlank() ? "us" : in.businessName().trim());
         if (in.firstName() != null && !in.firstName().isBlank()) {
             sb.append(", ").append(in.firstName().trim());
         }
@@ -50,7 +51,7 @@ public final class SmsReceiptComposer {
             sb.append('\n').append(in.pointsLine().trim());
         }
         if (in.link() != null && !in.link().isBlank()) {
-            String label = in.linkLabel() == null || in.linkLabel().isBlank() ? "Book an appointment:" : in.linkLabel().trim();
+            String label = in.linkLabel() == null || in.linkLabel().isBlank() ? "To book an appointment:" : in.linkLabel().trim();
             sb.append("\n\n").append(label).append('\n').append(in.link().trim());
         }
         return sb.toString();
