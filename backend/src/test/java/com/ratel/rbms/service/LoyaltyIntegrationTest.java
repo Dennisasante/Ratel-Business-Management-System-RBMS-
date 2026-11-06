@@ -177,10 +177,10 @@ class LoyaltyIntegrationTest {
     @Test
     void aBusinessWithoutTheLoyaltyModuleOrWithTheProgramOffEarnsNothing() {
         UUID sale = serviceSale(countingService, "PAID");
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(false, 10, "a free service"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(false, 10, null, "a free service"));
         assertFalse(loyaltyService.recordVisitForSale(sale), "program switched off");
 
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, "a free service"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
         jdbc.update("UPDATE businesses SET enabled_modules = ARRAY['INVENTORY','SALES','CUSTOMERS','EXPENSES'] WHERE id = ?", businessId);
         assertFalse(loyaltyService.recordVisitForSale(sale), "module not enabled");
     }
@@ -202,7 +202,7 @@ class LoyaltyIntegrationTest {
 
     @Test
     void reachingTheTargetMakesARewardDueAndRedeemingConsumesExactlyThatMany() {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, "a free wash"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, null, "a free wash"));
         earnVisits(4);
 
         LoyaltyStatusResponse due = loyaltyService.statusFor(businessId, customerId);
@@ -228,7 +228,7 @@ class LoyaltyIntegrationTest {
 
     @Test
     void onlyOneOfManySimultaneousRedeemClicksGetsTheSingleReward() throws Exception {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, "a free wash"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, null, "a free wash"));
         earnVisits(3);
 
         int clicks = 8; // a cashier and a manager both pressing it, double-clicks, two tills...
@@ -264,11 +264,11 @@ class LoyaltyIntegrationTest {
 
     @Test
     void changingTheTargetLaterDoesNotRewriteHistory() {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, "a free wash"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 3, null, "a free wash"));
         earnVisits(3);
         loyaltyService.redeem(customerId); // consumed 3
 
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, "a free service"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
 
         LoyaltyStatusResponse status = loyaltyService.statusFor(businessId, customerId);
         assertEquals(0, status.visits(), "the redeemed visits stay consumed under the new target");
@@ -277,7 +277,7 @@ class LoyaltyIntegrationTest {
 
     @Test
     void aRewardOfAnotherBusinessesCustomerCannotBeRedeemedHere() {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 1, "x"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 1, null, "x"));
         earnVisits(1);
         TenantContext.setBusinessId(UUID.randomUUID());
 
@@ -286,7 +286,7 @@ class LoyaltyIntegrationTest {
 
     @Test
     void theCustomersOwnPageShowsOnlyTheMinimumAndRejectsBadLinks() {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, "a free service"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
         earnVisits(1);
         String token = loyaltyService.statusFor(businessId, customerId).pointsUrl().replaceFirst(".*/p/", "");
 
@@ -307,14 +307,112 @@ class LoyaltyIntegrationTest {
 
     @Test
     void theReceiptLineSaysPointsOrRewardDue() {
-        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 2, "a free wash"));
-        assertNull(loyaltyService.receiptLine(businessId, customerId), "nothing to say before a first visit");
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 2, null, "a free wash"));
+        assertEquals("You currently have 0 points (reach 2 points to earn a reward)", loyaltyService.receiptLine(businessId, customerId),
+                "a customer with no visits yet is told how far away the reward is");
 
         earnVisits(1);
         assertEquals("You currently have 1 point (reach 2 points to earn a reward)", loyaltyService.receiptLine(businessId, customerId));
 
         earnVisits(1);
         assertEquals("You currently have 2 points - your reward is ready!", loyaltyService.receiptLine(businessId, customerId));
+    }
+
+    @Test
+    void aVisitIsWorthTheConfiguredNumberOfPoints() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 4, 5, "a free wash"));
+        earnVisits(2);
+
+        var status = loyaltyService.statusFor(businessId, customerId);
+        assertEquals(2, status.visits());
+        assertEquals(10, status.points(), "2 visits x 5 points");
+        assertEquals(20, status.targetPoints(), "4 visits x 5 points");
+        assertEquals(5, status.pointsPerVisit());
+        assertEquals("You currently have 10 points (reach 20 points to earn a reward)", loyaltyService.receiptLine(businessId, customerId));
+
+        earnVisits(2);
+        assertTrue(loyaltyService.statusFor(businessId, customerId).rewardDue(), "the reward still arrives after the set number of visits");
+        assertEquals("You currently have 20 points - your reward is ready!", loyaltyService.receiptLine(businessId, customerId));
+    }
+
+    @Test
+    void leavingPointsPerVisitBlankKeepsWhatWasSet() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 4, 5, "a free wash"));
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 6, null, "a free wash"));
+
+        assertEquals(5, loyaltyService.getProgram().pointsPerVisit());
+        assertEquals(6, loyaltyService.getProgram().visitsForReward());
+    }
+
+    @Test
+    void theTillIsToldWhenTodaysVisitWasAlreadyCounted() {
+        UUID first = serviceSale(countingService, "PAID");
+        assertFalse(loyaltyService.statusFor(businessId, customerId).visitedToday(), "no visits yet");
+
+        assertTrue(loyaltyService.recordVisitForSale(first));
+        assertTrue(loyaltyService.statusFor(businessId, customerId).visitedToday());
+
+        // A second sale the same day, services and products together, adds nothing more: one visit a day.
+        UUID second = serviceSale(countingService, "PAID");
+        saleItemRepository.save(com.ratel.rbms.entity.SaleItem.builder()
+                .businessId(businessId).saleId(second).itemType(SaleItemType.PRODUCT)
+                .productName("Shampoo").unitPrice(new BigDecimal("50")).quantity(1).subtotal(new BigDecimal("50")).build());
+        assertFalse(loyaltyService.recordVisitForSale(second));
+        assertEquals(1, loyaltyService.statusFor(businessId, customerId).visits());
+    }
+
+    @Test
+    void aCustomerFindsTheirPointsByPhoneNumberHoweverItIsTyped() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, 2, "a free service"));
+        earnVisits(3);
+        String slug = businessRepository.findById(businessId).orElseThrow().getSlug();
+
+        for (String typed : List.of("0244112233", "024 411 2233", "+233244112233", "233244112233", "244112233")) {
+            PublicLoyaltyResponse page = loyaltyService.lookupByPhone(slug, typed);
+            assertEquals("Dennis", page.customerFirstName(), "first name only, for " + typed);
+            assertEquals(6, page.points(), typed);
+            assertEquals(20, page.targetPoints(), typed);
+            assertEquals("Shell Luxury Hair", page.businessName());
+        }
+    }
+
+    @Test
+    void aNumberThatIsNotACustomerOrTooShortIsRefused() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
+        String slug = businessRepository.findById(businessId).orElseThrow().getSlug();
+
+        assertThrows(ApiException.class, () -> loyaltyService.lookupByPhone(slug, "0200000000"));
+        assertThrows(ApiException.class, () -> loyaltyService.lookupByPhone(slug, "0244"));
+        assertThrows(ApiException.class, () -> loyaltyService.lookupByPhone(slug, ""));
+        assertThrows(ApiException.class, () -> loyaltyService.lookupByPhone("no-such-business", "0244112233"));
+    }
+
+    @Test
+    void aCustomerWithNoVisitsYetStillSeesZeroPoints() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
+        String slug = businessRepository.findById(businessId).orElseThrow().getSlug();
+
+        PublicLoyaltyResponse page = loyaltyService.lookupByPhone(slug, "0244112233");
+
+        assertEquals(0, page.points());
+        assertEquals(10, page.targetPoints());
+    }
+
+    @Test
+    void theLookupAndTheLinkStopWorkingWhenTheProgramIsOff() {
+        String slug = businessRepository.findById(businessId).orElseThrow().getSlug();
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(false, 10, null, "a free service"));
+
+        assertThrows(ApiException.class, () -> loyaltyService.lookupByPhone(slug, "0244112233"));
+        assertThrows(ApiException.class, () -> loyaltyService.publicBusiness(slug));
+        assertNull(loyaltyService.pointsPageLink(businessId));
+    }
+
+    @Test
+    void thePointsPageLinkIsTheBusinessesOwnAddress() {
+        loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
+
+        assertTrue(loyaltyService.pointsPageLink(businessId).matches(".*/points/shell-[0-9a-f]{8}$"), loyaltyService.pointsPageLink(businessId));
     }
 
     // ---- helpers ----

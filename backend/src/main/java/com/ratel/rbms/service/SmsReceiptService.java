@@ -138,7 +138,7 @@ public class SmsReceiptService {
                 business.getName(), "Ama", 1042, business.getCurrency(),
                 new BigDecimal("770.00"), new BigDecimal("20.00"),
                 points ? "You currently have 7 points (reach 10 points to earn a reward)" : null,
-                points ? frontendHost() + "/p/k3x9a2f81m" : bookingLink(business),
+                points ? frontendHost() + "/points/" + business.getSlug() : bookingLink(business),
                 points ? pointsLinkLabel(business) : null));
         SmsSegmentCalculator.Result size = SmsSegmentCalculator.calculate(text);
         return new SmsReceiptPreviewResponse(text, size.segments(), size.length(), size.unicode());
@@ -254,7 +254,7 @@ public class SmsReceiptService {
     // their personal link (which leads to their points and a Book button); otherwise the booking link.
     private String receiptText(Sale sale, Business business, Customer customer) {
         String pointsLine = loyaltyService.receiptLine(business.getId(), customer.getId());
-        String pointsLink = loyaltyService.shortLink(business.getId(), customer.getId());
+        String pointsLink = loyaltyService.pointsPageLink(business.getId());
         boolean usePoints = pointsLine != null && pointsLink != null;
         return SmsReceiptComposer.compose(new SmsReceiptComposer.Input(
                 business.getName(), firstName(customer), sale.getSaleNumber(), business.getCurrency(),

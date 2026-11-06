@@ -92,7 +92,7 @@ export default function LoyaltyStatusPanel({
   if (!status || !status.active) return null;
 
   const first = name ? name.trim().split(/\s+/)[0] : null;
-  const remaining = Math.max(status.target - status.visits, 0);
+  const remaining = Math.max(status.targetPoints - status.points, 0);
 
   return (
     <div className={`rounded-lg border ${status.rewardDue ? "border-success bg-success-soft" : "border-border bg-surface"} ${compact ? "px-3 py-2" : "p-4"}`}>
@@ -102,8 +102,11 @@ export default function LoyaltyStatusPanel({
           <p className={`${compact ? "text-xs" : "text-sm"} font-medium text-ink-900`}>
             {status.rewardDue
               ? `${first ?? "This customer"} has earned a reward: ${status.rewardDescription}`
-              : `${first ? `${first} · ` : ""}${status.visits} of ${status.target} visits${remaining > 0 ? ` · ${remaining} more for ${status.rewardDescription}` : ""}`}
+              : `${first ? `${first} · ` : ""}${status.points} of ${status.targetPoints} points${remaining > 0 ? ` · ${remaining} more for ${status.rewardDescription}` : ""}`}
           </p>
+          {status.visitedToday && (
+            <p className="text-xs text-ink-500">Today&apos;s visit is already counted — only one visit counts per day.</p>
+          )}
           {!compact && <LoyaltyStamps visits={status.visits} target={status.target} />}
           {status.rewardDue && (
             <div className="flex flex-col items-start gap-1">

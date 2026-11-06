@@ -1,4 +1,4 @@
 package com.ratel.rbms.dto;
 
-public record LoyaltyProgramResponse(boolean enabled, int visitsForReward, String rewardDescription) {
+public record LoyaltyProgramResponse(boolean enabled, int visitsForReward, int pointsPerVisit, String rewardDescription) {
 }

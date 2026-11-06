@@ -34,6 +34,19 @@ public interface LoyaltyCustomerRepository extends JpaRepository<LoyaltyCustomer
 
     Optional<LoyaltyCustomer> findByToken(String token);
 
+    /** Has a visit already been counted for this customer on this day? (Only one is allowed per day.) */
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM loyalty_visits WHERE business_id = :businessId "
+            + "AND customer_id = :customerId AND visit_date = :day)", nativeQuery = true)
+    boolean visitedOn(@Param("businessId") UUID businessId, @Param("customerId") UUID customerId, @Param("day") LocalDate day);
+
+    /**
+     * Customers of a business whose phone ends in these nine digits, whatever way the number was typed
+     * (0244..., +233 244..., 233244...). A handful at most — duplicates are possible.
+     */
+    @Query(value = "SELECT c.id FROM customers c WHERE c.business_id = :businessId AND c.phone IS NOT NULL "
+            + "AND right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 9) = :suffix ORDER BY c.created_at LIMIT 5", nativeQuery = true)
+    List<UUID> findCustomerIdsByPhoneSuffix(@Param("businessId") UUID businessId, @Param("suffix") String suffix);
+
     @Modifying
     @Query(value = "INSERT INTO loyalty_customers (business_id, customer_id, token) VALUES (:businessId, :customerId, :token) "
             + "ON CONFLICT (business_id, customer_id) DO NOTHING", nativeQuery = true)

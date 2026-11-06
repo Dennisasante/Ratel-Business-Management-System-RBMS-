@@ -28,6 +28,7 @@ export default function LoyaltyPage() {
 
   const [enabled, setEnabled] = useState(true);
   const [visits, setVisits] = useState("10");
+  const [pointsPerVisit, setPointsPerVisit] = useState("1");
   const [reward, setReward] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export default function LoyaltyPage() {
     setProgram(p);
     setEnabled(p.enabled);
     setVisits(String(p.visitsForReward));
+    setPointsPerVisit(String(p.pointsPerVisit));
     setReward(p.rewardDescription);
     setRows(r);
   }, [session]);
@@ -63,7 +65,7 @@ export default function LoyaltyPage() {
     setSaveError(null);
     setSaved(false);
     try {
-      await api.updateLoyaltyProgram(session.token, { enabled, visitsForReward: Number(visits), rewardDescription: reward });
+      await api.updateLoyaltyProgram(session.token, { enabled, visitsForReward: Number(visits), pointsPerVisit: Number(pointsPerVisit), rewardDescription: reward });
       await load();
       setSaved(true);
     } catch (err) {
@@ -96,7 +98,7 @@ export default function LoyaltyPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Loyalty" subtitle="Reward your regulars. Every visit earns a point; enough points earn a reward." />
+      <PageHeader title="Loyalty" subtitle="Reward your regulars. Every visit earns points; enough points earn a reward." />
 
       {fetching ? (
         <CardSkeleton count={2} />
@@ -116,7 +118,7 @@ export default function LoyaltyPage() {
                 />
                 Points program is on
               </label>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="loyalty-visits" className="text-sm font-medium text-ink-700">
                     Visits for a reward
@@ -128,6 +130,20 @@ export default function LoyaltyPage() {
                     max={100}
                     value={visits}
                     onChange={(e) => setVisits(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="loyalty-points" className="text-sm font-medium text-ink-700">
+                    Points per visit
+                  </label>
+                  <input
+                    id="loyalty-points"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={pointsPerVisit}
+                    onChange={(e) => setPointsPerVisit(e.target.value)}
                     className={INPUT_CLASS}
                   />
                 </div>
@@ -145,13 +161,23 @@ export default function LoyaltyPage() {
                   />
                 </div>
               </div>
+              <p className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-700">
+                {Number(visits) > 0 && Number(pointsPerVisit) > 0 ? (
+                  <>
+                    A customer reaches <strong>{Number(visits) * Number(pointsPerVisit)} points</strong> after {Number(visits)} visits
+                    ({Number(pointsPerVisit)} point{Number(pointsPerVisit) === 1 ? "" : "s"} each), and claims the reward on their next visit.
+                  </>
+                ) : (
+                  <>Set how many visits earn a reward and how many points each visit is worth.</>
+                )}
+              </p>
               <ul className="list-disc pl-5 text-xs text-ink-500">
-                <li>A customer earns at most one visit a day, when a sale including a counting service is paid or a service order is completed.</li>
+                <li>A customer earns at most one visit a day, when a sale that includes a counting service is paid (products alongside the service are fine) or a service order is completed.</li>
                 <li>
                   Choose which services count under <Link href="/dashboard/service-orders/catalog" className="text-accent-hover hover:underline">Service catalog</Link>.
                   Product-only sales never count.
                 </li>
-                <li>Changing the target only affects visits from now on — rewards already given stay given.</li>
+                <li>Changing the target only affects visits from now on — rewards already given stay given. Changing points per visit re-values everyone&apos;s existing visits.</li>
               </ul>
               {saveError && <p className="text-sm text-danger">{saveError}</p>}
               <div className="flex items-center gap-3">
@@ -204,7 +230,7 @@ export default function LoyaltyPage() {
                             <Badge tone="success">Reward due{r.rewardsDue > 1 ? ` ×${r.rewardsDue}` : ""}</Badge>
                           ) : (
                             <span className="tabular">
-                              {r.visits} / {r.target}
+                              {r.visits * program.pointsPerVisit} / {r.target * program.pointsPerVisit} pts
                             </span>
                           )}
                         </Td>

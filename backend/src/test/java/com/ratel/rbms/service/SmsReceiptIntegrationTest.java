@@ -270,8 +270,8 @@ class SmsReceiptIntegrationTest {
         verify(gateway).send(anyString(), anyString(), text.capture());
         // This sale's visit is counted BEFORE the text is written, so it already shows 1/10.
         assertTrue(text.getValue().contains("\nYou currently have 1 point (reach 10 points to earn a reward)\n"), text.getValue());
-        assertTrue(text.getValue().matches("(?s).*\\n\\nTo book an appointment or check your points:\\n\\S+/p/[a-z2-9]{10}$"), text.getValue());
-        assertFalse(text.getValue().contains("/book/"), "the personal link replaces the plain booking link");
+        assertTrue(text.getValue().matches("(?s).*\\n\\nTo book an appointment or check your points:\\n\\S+/points/shell-[0-9a-f]{8}$"), text.getValue());
+        assertFalse(text.getValue().contains("/book/"), "the points page link replaces the plain booking link");
         assertEquals(2, com.ratel.rbms.sms.SmsSegmentCalculator.calculate(text.getValue()).segments(), "the full wording costs two credits");
     }
 

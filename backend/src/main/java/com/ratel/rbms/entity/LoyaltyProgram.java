@@ -39,6 +39,11 @@ public class LoyaltyProgram {
     @Builder.Default
     private int visitsForReward = DEFAULT_VISITS_FOR_REWARD;
 
+    // How many points one visit is worth (points = visits x this).
+    @Column(name = "points_per_visit", nullable = false)
+    @Builder.Default
+    private int pointsPerVisit = 1;
+
     @Column(name = "reward_description", nullable = false, length = 120)
     @Builder.Default
     private String rewardDescription = DEFAULT_REWARD;

@@ -1112,6 +1112,8 @@ export interface SmsCampaignDetail {
 export interface LoyaltyProgram {
   enabled: boolean;
   visitsForReward: number;
+  // How many points one visit is worth (points = visits x this).
+  pointsPerVisit: number;
   rewardDescription: string;
 }
 
@@ -1122,6 +1124,12 @@ export interface LoyaltyStatus {
   // Visits counted toward the NEXT reward (can exceed the target while rewards are waiting).
   visits: number;
   target: number;
+  // The same standing in points: visits x points-per-visit, and the target x points-per-visit.
+  points: number;
+  targetPoints: number;
+  pointsPerVisit: number;
+  // Today's visit has already been counted (only one counts per day), so another sale today adds nothing.
+  visitedToday: boolean;
   rewardDue: boolean;
   rewardsDue: number;
   rewardDescription: string | null;
@@ -1146,10 +1154,20 @@ export interface PublicLoyalty {
   customerFirstName: string | null;
   visits: number;
   target: number;
+  points: number;
+  targetPoints: number;
   rewardDue: boolean;
   rewardDescription: string;
   // e.g. "/book/glow-salon"; null when the business has no online booking.
   bookingPath: string | null;
+}
+
+// What the business's public points page shows before a customer enters their number.
+export interface PublicLoyaltyBusiness {
+  businessName: string;
+  logoUrl: string | null;
+  targetPoints: number;
+  rewardDescription: string;
 }
 
 export interface SmsReceiptStatus {
@@ -2582,6 +2600,11 @@ export const api = {
 
   // The customer's own page — open to anyone with the link, no login.
   getPublicLoyalty: (loyaltyToken: string) => request<PublicLoyalty>(`/api/public/loyalty/${loyaltyToken}`),
+
+  getPublicLoyaltyBusiness: (slug: string) => request<PublicLoyaltyBusiness>(`/api/public/loyalty/business/${slug}`),
+
+  lookupPublicLoyalty: (slug: string, phone: string) =>
+    request<PublicLoyalty>(`/api/public/loyalty/business/${slug}/lookup`, { method: "POST", body: JSON.stringify({ phone }) }),
 
   // --- SMS campaigns (Owner/Manager) ---
 

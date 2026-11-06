@@ -34,7 +34,7 @@ export default function PointsPage() {
     );
   }
 
-  const remaining = Math.max(data.target - data.visits, 0);
+  const remaining = Math.max(data.targetPoints - data.points, 0);
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-canvas px-4 py-10">
@@ -48,8 +48,8 @@ export default function PointsPage() {
 
         <div className="mt-6 flex flex-col items-center gap-3">
           <p className="text-4xl font-semibold text-ink-900">
-            {Math.min(data.visits, data.target)}
-            <span className="text-xl font-normal text-ink-400"> / {data.target}</span>
+            {Math.min(data.points, data.targetPoints)}
+            <span className="text-xl font-normal text-ink-400"> / {data.targetPoints} points</span>
           </p>
           <div className="flex justify-center">
             <LoyaltyStamps visits={data.visits} target={data.target} />
@@ -63,7 +63,7 @@ export default function PointsPage() {
             </div>
           ) : (
             <p className="text-sm text-ink-500">
-              {remaining} more visit{remaining === 1 ? "" : "s"} to earn <strong className="text-ink-700">{data.rewardDescription}</strong>.
+              Reach {data.targetPoints} points to earn <strong className="text-ink-700">{data.rewardDescription}</strong> ({remaining} to go).
             </p>
           )}
         </div>

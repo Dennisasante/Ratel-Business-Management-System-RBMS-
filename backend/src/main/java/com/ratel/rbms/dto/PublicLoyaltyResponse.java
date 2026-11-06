@@ -7,6 +7,8 @@ public record PublicLoyaltyResponse(
         String customerFirstName,
         int visits,
         int target,
+        int points,
+        int targetPoints,
         boolean rewardDue,
         String rewardDescription,
         // Path of the business's online booking page, e.g. /book/glow-salon; null when they don't take bookings online.

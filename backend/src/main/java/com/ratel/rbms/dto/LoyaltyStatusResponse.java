@@ -7,6 +7,12 @@ public record LoyaltyStatusResponse(
         // Visits counted toward the NEXT reward (can exceed the target when rewards are waiting).
         int visits,
         int target,
+        // The same standing in points: visits x points-per-visit, and the target x points-per-visit.
+        int points,
+        int targetPoints,
+        int pointsPerVisit,
+        // A visit was already counted for this customer today (only one per day), so another sale today adds nothing.
+        boolean visitedToday,
         boolean rewardDue,
         int rewardsDue,
         String rewardDescription,
