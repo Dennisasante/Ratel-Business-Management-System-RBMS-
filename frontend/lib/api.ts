@@ -1638,6 +1638,8 @@ export interface StartHubConfig {
   businessName: string;
   bookingEnabled: boolean;
   customOrderEnabled: boolean;
+  // The business has an active points program, so customers can check their points by phone number.
+  pointsEnabled: boolean;
   businessWhatsappLink: string | null;
 }
 

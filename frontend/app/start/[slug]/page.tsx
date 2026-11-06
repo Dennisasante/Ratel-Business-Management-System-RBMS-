@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, CalendarDays, MessageCircle, ChevronRight } from "lucide-react";
+import { Sparkles, CalendarDays, MessageCircle, ChevronRight, Gift } from "lucide-react";
 import { api, ApiError, StartHubConfig } from "@/lib/api";
 import PoweredByRatel from "@/components/PoweredByRatel";
 import InstallAppButton from "@/components/InstallAppButton";
@@ -32,7 +32,7 @@ export default function StartHubPage() {
     load();
   }, [load]);
 
-  const hasAnyOption = config && (config.bookingEnabled || config.customOrderEnabled);
+  const hasAnyOption = config && (config.bookingEnabled || config.customOrderEnabled || config.pointsEnabled);
 
   return (
     <main
@@ -93,6 +93,25 @@ export default function StartHubPage() {
                     <span>
                       <span className="block text-sm font-semibold text-[#2a2018]">Place a custom order</span>
                       <span className="block text-xs text-[#9a8c7c]">Build your own, with live pricing as you go.</span>
+                    </span>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-[#c9bba8] transition group-hover:translate-x-0.5" />
+                </Link>
+              )}
+
+              {config.pointsEnabled && (
+                <Link
+                  href={`/points/${slug}`}
+                  className="group flex items-center justify-between rounded-2xl border-[1.5px] border-[#ece1d2] px-4 py-4 text-left transition hover:border-[#a76545]/40"
+                  style={{ background: "#fff" }}
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: "rgba(167,101,69,0.1)", color: ACCENT }}>
+                      <Gift size={18} />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-[#2a2018]">Check your points</span>
+                      <span className="block text-xs text-[#9a8c7c]">Enter your phone number to see your points and rewards.</span>
                     </span>
                   </span>
                   <ChevronRight size={16} className="shrink-0 text-[#c9bba8] transition group-hover:translate-x-0.5" />

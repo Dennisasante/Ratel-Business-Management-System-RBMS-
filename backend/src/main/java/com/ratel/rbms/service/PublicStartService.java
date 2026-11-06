@@ -33,6 +33,7 @@ public class PublicStartService {
     private final CustomItemAttributeRepository customItemAttributeRepository;
     private final PlanFeatureService planFeatureService;
     private final WhatsAppLinkService whatsAppLinkService;
+    private final LoyaltyService loyaltyService;
 
     public PublicStartService(
             BusinessRepository businessRepository,
@@ -40,7 +41,8 @@ public class PublicStartService {
             ServiceCatalogItemRepository serviceCatalogItemRepository,
             CustomItemAttributeRepository customItemAttributeRepository,
             PlanFeatureService planFeatureService,
-            WhatsAppLinkService whatsAppLinkService
+            WhatsAppLinkService whatsAppLinkService,
+            LoyaltyService loyaltyService
     ) {
         this.businessRepository = businessRepository;
         this.businessIntegrationsRepository = businessIntegrationsRepository;
@@ -48,6 +50,7 @@ public class PublicStartService {
         this.customItemAttributeRepository = customItemAttributeRepository;
         this.planFeatureService = planFeatureService;
         this.whatsAppLinkService = whatsAppLinkService;
+        this.loyaltyService = loyaltyService;
     }
 
     public StartHubConfigResponse getConfigBySlug(String slug) {
@@ -67,6 +70,8 @@ public class PublicStartService {
                         "Hi " + business.getName() + ", I have a question.")
                 : null;
 
-        return new StartHubConfigResponse(business.getName(), bookingEnabled, customOrderEnabled, businessWhatsappLink);
+        boolean pointsEnabled = loyaltyService.isActive(businessId);
+
+        return new StartHubConfigResponse(business.getName(), bookingEnabled, customOrderEnabled, pointsEnabled, businessWhatsappLink);
     }
 }
