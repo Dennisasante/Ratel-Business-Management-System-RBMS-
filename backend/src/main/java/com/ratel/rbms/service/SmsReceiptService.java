@@ -138,7 +138,7 @@ public class SmsReceiptService {
                 business.getName(), "Ama", 1042, business.getCurrency(),
                 new BigDecimal("770.00"), new BigDecimal("20.00"),
                 points ? "You currently have 7 points (reach 10 points to earn a reward)" : null,
-                points ? frontendHost() + "/points/" + business.getSlug() : bookingLink(business),
+                points ? frontendHost() + "/start/" + business.getSlug() : bookingLink(business),
                 points ? pointsLinkLabel(business) : null));
         SmsSegmentCalculator.Result size = SmsSegmentCalculator.calculate(text);
         return new SmsReceiptPreviewResponse(text, size.segments(), size.length(), size.unicode());

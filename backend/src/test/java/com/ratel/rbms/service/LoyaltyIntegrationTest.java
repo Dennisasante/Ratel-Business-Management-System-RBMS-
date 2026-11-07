@@ -412,7 +412,7 @@ class LoyaltyIntegrationTest {
     void thePointsPageLinkIsTheBusinessesOwnAddress() {
         loyaltyService.updateProgram(new LoyaltyProgramRequest(true, 10, null, "a free service"));
 
-        assertTrue(loyaltyService.pointsPageLink(businessId).matches(".*/points/shell-[0-9a-f]{8}$"), loyaltyService.pointsPageLink(businessId));
+        assertTrue(loyaltyService.pointsPageLink(businessId).matches(".*/start/shell-[0-9a-f]{8}$"), loyaltyService.pointsPageLink(businessId));
     }
 
     // ---- helpers ----

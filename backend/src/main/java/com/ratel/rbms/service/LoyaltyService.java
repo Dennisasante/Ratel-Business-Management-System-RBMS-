@@ -224,15 +224,15 @@ public class LoyaltyService {
     }
 
     /**
-     * The business's public points page for a text message (no https://, to save characters), where a customer
-     * types their phone number to see their points. Null when the program isn't active.
+     * The business's one public link for a text message (no https://, to save characters): its welcome page, where a
+     * customer chooses to book an appointment or check their points. Null when the program isn't active.
      */
     public String pointsPageLink(UUID businessId) {
         if (!isActive(businessId)) {
             return null;
         }
         return businessRepository.findById(businessId)
-                .map(b -> frontendUrl.replaceFirst("^https?://", "").replaceFirst("/+$", "") + "/points/" + b.getSlug())
+                .map(b -> frontendUrl.replaceFirst("^https?://", "").replaceFirst("/+$", "") + "/start/" + b.getSlug())
                 .orElse(null);
     }
 
